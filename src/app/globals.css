@@ -1,4 +1,5 @@
-@import "tailwindcss";
+@import "tailwindcss" source("../");
+@source not "../.devcontainer";
 
 :root {
   --background: oklch(0.98 0.005 250);

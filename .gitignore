@@ -20,3 +20,5 @@ coverage/
 
 # debug
 npm-debug.log*
+
+.devcontainer/.tmux-shared
