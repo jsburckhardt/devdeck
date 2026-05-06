@@ -1,0 +1,19 @@
+# Verification commands for the Soft Factory pipeline.
+# The verifier agent loads these commands to validate work before committing.
+
+steps:
+  - name: lint
+    command: npm run lint
+    description: Run ESLint on the codebase
+
+  - name: format_check
+    command: npm run format:check
+    description: Check code formatting with Prettier
+
+  - name: build
+    command: npm run build
+    description: Build the Next.js application
+
+  - name: test
+    command: npm run test
+    description: Run vitest test suite

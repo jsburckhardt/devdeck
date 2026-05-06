@@ -2,6 +2,14 @@ AGENTS.md                                                   — Agent definition
 CONTRIBUTING.md                                             — Human contribution guide
 LLM.txt                                                     — This file; repo map for AI agents
 README.md                                                   — Project overview
+justfile                                                    — Development task runner (just)
+vitest.config.ts                                            — Vitest test configuration
+package.json                                                — Node.js dependencies and scripts
+tsconfig.json                                               — TypeScript configuration
+next.config.ts                                              — Next.js configuration
+postcss.config.mjs                                          — PostCSS configuration (Tailwind)
+eslint.config.mjs                                           — ESLint configuration
+.prettierrc                                                 — Prettier configuration
 .devcontainer/devcontainer.json                             — Dev container configuration
 .github/agents/aps-v1.2.2.agent.md                         — APS prompt generator agent
 .github/agents/bootstrap.agent.md                           — Bootstrap agent (new project scaffolding)
@@ -12,13 +20,22 @@ README.md                                                   — Project overview
 .github/agents/implementer.agent.md                   — Implementer agent (code, tests, verification)
 .github/agents/planner.agent.md                       — Planner agent (ADRs, core-components, action plans, task breakdown, test plans)
 .github/agents/research.agent.md                      — Research agent (exploration, scope classification)
+.github/soft-factory/verification.yml                 — Verification commands for CI/verifier
 docs/README.md                                              — Application documentation index
 project/README.md                                             — Project documentation index
 project/architecture/README.md                                 — Architecture documentation index
 project/architecture/soft-factory-pipeline.excalidraw          — Pipeline diagram source
 project/architecture/ADR/ADR-0001-template.md                  — ADR template (read-only, copy to create new)
+project/architecture/ADR/ADR-0002-tech-stack.md                — Tech stack decision (Next.js + xterm.js + node-pty)
 project/architecture/ADR/DECISION-LOG.md                       — Registry of all ADR and core-component decisions
 project/architecture/core-components/CORE-COMPONENT-0001-template.md — Core-component template (read-only, copy to create new)
 project/architecture/core-components/CORE-COMPONENT-0002-commit-standards.md — Commit standards (Conventional Commits, Co-authored-by)
+project/architecture/core-components/CORE-COMPONENT-0003-websocket-terminal.md — WebSocket terminal communication pattern
+project/architecture/core-components/CORE-COMPONENT-0004-theming.md — Theming system (dark/light, CSS custom properties)
+project/architecture/core-components/CORE-COMPONENT-0005-error-handling.md — Error handling patterns (reconnection, boundaries, toasts)
+project/architecture/core-components/CORE-COMPONENT-0006-development-standards.md — Development standards (lint, format, test, commit)
 project/architecture/core-components/README.md                 — Core-components index
 project/issues/README.md                                       — Issues index and canonical structure
+src/app/layout.tsx                                             — Next.js root layout
+src/app/page.tsx                                               — Next.js home page
+src/app/globals.css                                            — Global styles and CSS custom properties
