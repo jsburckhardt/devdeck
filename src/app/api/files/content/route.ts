@@ -7,6 +7,8 @@ import type { FileContent } from "@/lib/types";
 
 const MAX_FILE_SIZE = 1024 * 1024; // 1MB
 
+const CACHE_HEADERS = { "Cache-Control": "private, max-age=5, stale-while-revalidate=15" };
+
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const slug = searchParams.get("slug");
@@ -38,7 +40,7 @@ export async function GET(request: NextRequest) {
         path: filePath,
         name: filename,
       };
-      return NextResponse.json(result);
+      return NextResponse.json(result, { headers: CACHE_HEADERS });
     }
 
     if (stat.size > MAX_FILE_SIZE) {
@@ -50,7 +52,7 @@ export async function GET(request: NextRequest) {
         path: filePath,
         name: filename,
       };
-      return NextResponse.json(result);
+      return NextResponse.json(result, { headers: CACHE_HEADERS });
     }
 
     const content = await fs.readFile(fullPath, "utf-8");
@@ -62,7 +64,7 @@ export async function GET(request: NextRequest) {
       path: filePath,
       name: filename,
     };
-    return NextResponse.json(result);
+    return NextResponse.json(result, { headers: CACHE_HEADERS });
   } catch (error) {
     return NextResponse.json(
       { error: "Failed to read file", details: String(error) },

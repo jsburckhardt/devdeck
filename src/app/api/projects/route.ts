@@ -82,7 +82,9 @@ export async function GET() {
       return dateB - dateA;
     });
 
-    return NextResponse.json(projects);
+    return NextResponse.json(projects, {
+      headers: { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" },
+    });
   } catch (error) {
     return NextResponse.json(
       { error: "Failed to list projects", details: String(error) },
