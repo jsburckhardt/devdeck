@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
+import { resolveProjectPath } from "@/app/api/projects/route";
 import type { FileNode } from "@/lib/types";
 
 const execFileAsync = promisify(execFile);
@@ -61,7 +62,6 @@ async function readDirectory(
   const nodes: FileNode[] = [];
 
   for (const entry of entries) {
-    if (entry.name.startsWith(".") && IGNORED_DIRS.has(entry.name)) continue;
     if (IGNORED_DIRS.has(entry.name)) continue;
     if (IGNORED_FILES.has(entry.name)) continue;
 
@@ -112,16 +112,18 @@ function inferDirStatus(
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
-  const root = searchParams.get("root");
+  const slug = searchParams.get("slug");
 
-  if (!root) {
-    return NextResponse.json({ error: "Missing 'root' parameter" }, { status: 400 });
+  if (!slug) {
+    return NextResponse.json({ error: "Missing 'slug' parameter" }, { status: 400 });
   }
+
+  const root = resolveProjectPath(slug);
 
   try {
     await fs.access(root);
   } catch {
-    return NextResponse.json({ error: "Project path not found" }, { status: 404 });
+    return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
 
   try {

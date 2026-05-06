@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
+import { resolveProjectPath } from "@/app/api/projects/route";
 import { getLanguageFromFilename, isBinaryFile } from "@/lib/file-utils";
 import type { FileContent } from "@/lib/types";
 
@@ -8,17 +9,19 @@ const MAX_FILE_SIZE = 1024 * 1024; // 1MB
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
-  const root = searchParams.get("root");
+  const slug = searchParams.get("slug");
   const filePath = searchParams.get("path");
 
-  if (!root || !filePath) {
-    return NextResponse.json({ error: "Missing 'root' or 'path' parameter" }, { status: 400 });
+  if (!slug || !filePath) {
+    return NextResponse.json({ error: "Missing 'slug' or 'path' parameter" }, { status: 400 });
   }
 
-  const fullPath = path.join(root, filePath);
+  const root = resolveProjectPath(slug);
+  const fullPath = path.resolve(root, filePath);
 
-  // Prevent path traversal
-  if (!fullPath.startsWith(root)) {
+  // Prevent path traversal — resolved path must remain under root
+  const relative = path.relative(root, fullPath);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
     return NextResponse.json({ error: "Invalid path" }, { status: 403 });
   }
 

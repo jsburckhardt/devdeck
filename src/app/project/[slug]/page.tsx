@@ -1,19 +1,14 @@
 "use client";
 
-import { use } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Spinner } from "@phosphor-icons/react";
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { WorkspaceProvider } from "@/lib/workspace-context";
 import { WorkspaceLayout } from "@/components/workspace-layout";
 import { Header } from "@/components/header";
 import type { Project } from "@/lib/types";
 
-interface ProjectPageProps {
-  params: Promise<{ slug: string }>;
-}
-
-export default function ProjectPage({ params }: ProjectPageProps) {
+export default function ProjectPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const router = useRouter();
   const [project, setProject] = useState<Project | null>(null);

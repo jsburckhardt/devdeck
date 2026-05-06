@@ -99,7 +99,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
   const fetchTree = useCallback(async () => {
     setFileTreeLoading(true);
     try {
-      const res = await fetch(`/api/files?root=${encodeURIComponent(project.path)}`);
+      const res = await fetch(`/api/files?slug=${encodeURIComponent(project.slug)}`);
       if (!res.ok) throw new Error("Failed to fetch file tree");
       const data = await res.json();
       setFileTree(data);
@@ -108,7 +108,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     } finally {
       setFileTreeLoading(false);
     }
-  }, [project.path, setFileTree, setFileTreeLoading]);
+  }, [project.slug, setFileTree, setFileTreeLoading]);
 
   useEffect(() => {
     fetchTree();

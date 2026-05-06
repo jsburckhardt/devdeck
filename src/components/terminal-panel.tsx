@@ -4,7 +4,9 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { WarningCircle } from "@phosphor-icons/react";
 
 const TERMINAL_WS_URL =
-  typeof window !== "undefined" ? `ws://${window.location.hostname}:3001` : "ws://localhost:3001";
+  typeof window !== "undefined"
+    ? `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api/terminal`
+    : "ws://localhost:8001/api/terminal";
 
 export function TerminalPanel() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -16,6 +18,12 @@ export function TerminalPanel() {
 
   const connect = useCallback(async () => {
     if (!containerRef.current) return;
+
+    // Close any existing connection before creating a new one
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
 
     const { Terminal } = await import("@xterm/xterm");
     const { FitAddon } = await import("@xterm/addon-fit");

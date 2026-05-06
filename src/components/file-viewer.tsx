@@ -15,6 +15,7 @@ import yaml from "highlight.js/lib/languages/yaml";
 import python from "highlight.js/lib/languages/python";
 import sql from "highlight.js/lib/languages/sql";
 import { marked } from "marked";
+import DOMPurify from "dompurify";
 import { useWorkspace } from "@/lib/workspace-context";
 import type { FileContent } from "@/lib/types";
 
@@ -47,31 +48,30 @@ function highlightCode(code: string, language: string): string {
 
 function CodeView({ content, language }: { content: string; language: string }) {
   const highlighted = highlightCode(content, language);
-  const lines = highlighted.split("\n");
+  const lineCount = content.split("\n").length;
 
   return (
     <div className="overflow-auto font-mono text-[13px] leading-relaxed">
-      <table className="w-full border-collapse">
-        <tbody>
-          {lines.map((line, i) => (
-            <tr key={i} className="hover:bg-accent/30">
-              <td className="select-none border-r border-border px-3 py-0 text-right text-xs text-muted-foreground/50">
-                {i + 1}
-              </td>
-              <td
-                className="whitespace-pre px-4 py-0"
-                dangerouslySetInnerHTML={{ __html: line || " " }}
-              />
-            </tr>
+      <div className="flex">
+        <div
+          className="select-none border-r border-border px-3 text-right text-xs text-muted-foreground/50"
+          aria-hidden="true"
+        >
+          {Array.from({ length: lineCount }, (_, i) => (
+            <div key={i}>{i + 1}</div>
           ))}
-        </tbody>
-      </table>
+        </div>
+        <pre className="flex-1 px-4">
+          <code dangerouslySetInnerHTML={{ __html: highlighted }} />
+        </pre>
+      </div>
     </div>
   );
 }
 
 function MarkdownView({ content }: { content: string }) {
-  const html = marked.parse(content, { async: false }) as string;
+  const rawHtml = marked.parse(content, { async: false }) as string;
+  const html = DOMPurify.sanitize(rawHtml);
 
   return (
     <div className="overflow-auto p-6">
@@ -114,7 +114,7 @@ export function FileViewer() {
     setError(null);
 
     fetch(
-      `/api/files/content?root=${encodeURIComponent(project.path)}&path=${encodeURIComponent(selectedFile)}`,
+      `/api/files/content?slug=${encodeURIComponent(project.slug)}&path=${encodeURIComponent(selectedFile)}`,
     )
       .then((res) => {
         if (!res.ok) throw new Error(`Failed to load file: ${res.statusText}`);

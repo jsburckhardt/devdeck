@@ -2,7 +2,6 @@ export interface Project {
   slug: string;
   name: string;
   description: string;
-  path: string;
   language?: string;
   lastModified?: string;
 }

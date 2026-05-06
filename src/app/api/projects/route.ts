@@ -5,6 +5,11 @@ import type { Project } from "@/lib/types";
 
 const PROJECTS_DIR = process.env.DEVDECK_PROJECTS_DIR ?? "/workspaces";
 
+export function resolveProjectPath(slug: string): string {
+  const sanitized = slug.replace(/[^a-zA-Z0-9_-]/g, "");
+  return path.resolve(PROJECTS_DIR, sanitized);
+}
+
 async function detectLanguage(projectPath: string): Promise<string> {
   try {
     const files = await fs.readdir(projectPath);
@@ -63,7 +68,6 @@ export async function GET() {
           slug: entry.name,
           name: pkg.name ?? entry.name,
           description: pkg.description ?? `A ${language} project`,
-          path: projectPath,
           language,
           lastModified: stat.mtime.toISOString(),
         });

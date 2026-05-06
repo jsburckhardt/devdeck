@@ -22,3 +22,5 @@ coverage/
 npm-debug.log*
 
 .devcontainer/.tmux-shared
+.playwright-mcpthe
+.playwright-mcp

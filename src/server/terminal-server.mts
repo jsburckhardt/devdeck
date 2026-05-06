@@ -2,12 +2,14 @@ import { WebSocketServer, WebSocket } from "ws";
 import { spawn, type IPty } from "node-pty";
 import os from "os";
 
-const PORT = Number(process.env.TERMINAL_PORT ?? 3001);
+const PORT = Number(process.env.TERMINAL_PORT ?? 3100);
+const HOST = process.env.TERMINAL_HOST ?? "127.0.0.1";
 const SHELL = process.env.SHELL ?? (os.platform() === "win32" ? "powershell.exe" : "bash");
 
-const wss = new WebSocketServer({ port: PORT });
+const wss = new WebSocketServer({ port: PORT, host: HOST });
+const activePtys = new Set<IPty>();
 
-console.log(`Terminal WebSocket server listening on port ${PORT}`);
+console.log(`Terminal WebSocket server listening on ${HOST}:${PORT}`);
 
 wss.on("connection", (ws: WebSocket) => {
   console.log("Client connected");
@@ -22,6 +24,8 @@ wss.on("connection", (ws: WebSocket) => {
       cwd: process.env.HOME ?? "/",
       env: process.env as Record<string, string>,
     });
+
+    activePtys.add(pty);
 
     pty.onData((data: string) => {
       if (ws.readyState === WebSocket.OPEN) {
@@ -58,6 +62,7 @@ wss.on("connection", (ws: WebSocket) => {
     ws.on("close", () => {
       console.log("Client disconnected");
       if (pty) {
+        activePtys.delete(pty);
         pty.kill();
         pty = null;
       }
@@ -66,6 +71,7 @@ wss.on("connection", (ws: WebSocket) => {
     ws.on("error", (err: Error) => {
       console.error("WebSocket error:", err.message);
       if (pty) {
+        activePtys.delete(pty);
         pty.kill();
         pty = null;
       }
@@ -81,6 +87,10 @@ wss.on("connection", (ws: WebSocket) => {
 
 process.on("SIGINT", () => {
   console.log("\nShutting down terminal server...");
+  for (const pty of activePtys) {
+    pty.kill();
+  }
+  activePtys.clear();
   wss.close();
   process.exit(0);
 });
