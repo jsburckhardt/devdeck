@@ -46,6 +46,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
 
   return (
     <button
+      data-testid="project-card"
       onClick={handleClick}
       className="group relative flex flex-col gap-3 rounded-lg border border-border bg-card p-6 text-left transition-all duration-200 hover:scale-[1.02] hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 active:scale-[0.98]"
     >
