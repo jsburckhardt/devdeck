@@ -2,14 +2,11 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { ThemeProvider } from "@/components/theme-provider";
 
-vi.mock("react-resizable-panels", () => ({
-  Group: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-    <div data-testid="panel-group" {...props}>
-      {children}
-    </div>
-  ),
-  Panel: ({ children }: React.PropsWithChildren) => <div data-testid="panel">{children}</div>,
-  Separator: (props: Record<string, unknown>) => <div data-testid="resize-handle" {...props} />,
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    back: vi.fn(),
+  }),
 }));
 
 import Home from "./page";
@@ -18,16 +15,20 @@ function renderWithProviders(ui: React.ReactElement) {
   return render(<ThemeProvider>{ui}</ThemeProvider>);
 }
 
-describe("DevDeck Shell Page", () => {
+describe("DevDeck Home Page", () => {
   it("renders DevDeck header text", () => {
     renderWithProviders(<Home />);
     expect(screen.getByText("DevDeck")).toBeInTheDocument();
   });
 
-  it("renders panel placeholders", () => {
+  it("renders page title", () => {
     renderWithProviders(<Home />);
-    expect(screen.getByText("File Explorer")).toBeInTheDocument();
-    expect(screen.getByText("Editor")).toBeInTheDocument();
-    expect(screen.getByText("Terminal")).toBeInTheDocument();
+    expect(screen.getByText("Projects")).toBeInTheDocument();
+  });
+
+  it("shows loading state initially", () => {
+    renderWithProviders(<Home />);
+    // Loading spinner should be present
+    expect(screen.getByText("Select a project to open the workspace")).toBeInTheDocument();
   });
 });

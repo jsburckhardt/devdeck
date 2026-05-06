@@ -1,7 +1,8 @@
 {
-  "name": "devdeck",
+  "name": "thedevdeck",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
-  "forwardPorts": [3000],
+  // "forwardPorts": [8001],
+  "runArgs": ["--name", "thedevdeck", "-p", "8001:8001"],
   "features": {
     "ghcr.io/devcontainers/features/common-utils:2": {
       "configureZshAsDefaultShell": true,
