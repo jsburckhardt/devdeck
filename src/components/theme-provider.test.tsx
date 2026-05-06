@@ -53,8 +53,7 @@ describe("ThemeProvider", () => {
       </ThemeProvider>,
     );
 
-    // After the useEffect reads localStorage, it should update to light
-    // We need to wait for the effect
+    // ThemeProvider reads localStorage in useState initializer, so theme is set immediately
     expect(screen.getByTestId("theme-value").textContent).toBe("light");
     expect(document.documentElement.classList.contains("dark")).toBe(false);
   });

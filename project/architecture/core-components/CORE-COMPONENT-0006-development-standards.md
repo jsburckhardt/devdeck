@@ -25,8 +25,8 @@ Define coding conventions, commit standards, and testing practices for the DevDe
 - Prefer named exports over default exports
 - Use async/await over raw Promises
 - Use `@/*` import alias for project imports
-- Component files use PascalCase; utility files use kebab-case
-- React components must be functional components (no class components)
+- Component files use kebab-case (e.g., `theme-provider.tsx`); utility files use kebab-case
+- React components must be functional components, except where React requires class components (e.g., ErrorBoundary)
 
 #### Commit Standards
 - Follow Conventional Commits specification v1.0.0

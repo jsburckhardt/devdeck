@@ -20,7 +20,7 @@ Define the top-level IDE shell structure that all DevDeck pages share. The shell
 
 ### Rules
 - The shell MUST consist of a fixed header and a flex-grow panel workspace area filling the viewport height
-- The panel workspace MUST use `react-resizable-panels` (`PanelGroup`, `Panel`, `PanelResizeHandle`) for resizable layout
+- The panel workspace MUST use `react-resizable-panels` (`Group`, `Panel`, `Separator`) for resizable layout
 - Each panel MUST be wrapped in its own `ErrorBoundary` component (per CORE-COMPONENT-0005)
 - Panel components MUST be client components (marked with `"use client"`) since they depend on browser APIs
 - The header MUST contain the application title ("DevDeck") and a theme toggle button
@@ -31,12 +31,12 @@ Define the top-level IDE shell structure that all DevDeck pages share. The shell
 - **ShellLayout:** The top-level page component composing Header + PanelGroup
 - **Header:** Fixed-height bar with app branding and toolbar actions (theme toggle)
 - **Panel placeholders:** Each panel renders a centered icon + label when no real content is loaded
-- **PanelResizeHandle:** Visible drag handle between panels with hover/active states
+- **Separator:** Visible drag handle between panels with hover/active states
 
 ### Expectations
 - The shell MUST render without JavaScript errors when all panels contain only placeholder content
 - The layout MUST fill 100vh with no scroll on the outer shell (individual panels may scroll internally)
-- `PanelGroup` direction MUST be `"horizontal"` for the primary split; nested vertical splits are optional
+- `Group` orientation MUST be `"horizontal"` for the primary split; nested vertical splits are optional
 - Future panels (terminal, file explorer, editor) slot into the existing PanelGroup without layout changes
 
 ## Rationale
@@ -49,7 +49,7 @@ Establishing the shell structure in the bootstrap phase ensures all future panel
 // src/app/page.tsx (simplified)
 "use client";
 
-import { PanelGroup, Panel, PanelResizeHandle } from "react-resizable-panels";
+import { Group, Panel, Separator } from "react-resizable-panels";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Header } from "@/components/header";
 
@@ -57,25 +57,25 @@ export default function Home() {
   return (
     <div className="flex h-screen flex-col">
       <Header />
-      <PanelGroup direction="horizontal" className="flex-1">
+      <Group orientation="horizontal" className="flex-1">
         <Panel defaultSize={25} minSize={15}>
           <ErrorBoundary>
             <PlaceholderPanel icon="FolderOpen" label="File Explorer" />
           </ErrorBoundary>
         </Panel>
-        <PanelResizeHandle className="w-1 bg-border hover:bg-accent" />
+        <Separator className="w-1 bg-border hover:bg-accent" />
         <Panel defaultSize={50} minSize={30}>
           <ErrorBoundary>
             <PlaceholderPanel icon="Code" label="Editor" />
           </ErrorBoundary>
         </Panel>
-        <PanelResizeHandle className="w-1 bg-border hover:bg-accent" />
+        <Separator className="w-1 bg-border hover:bg-accent" />
         <Panel defaultSize={25} minSize={15}>
           <ErrorBoundary>
             <PlaceholderPanel icon="TerminalWindow" label="Terminal" />
           </ErrorBoundary>
         </Panel>
-      </PanelGroup>
+      </Group>
     </div>
   );
 }
