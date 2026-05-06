@@ -1,12 +1,21 @@
 "use client";
 
 import { useEffect, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Spinner, FileCode, TerminalWindow } from "@phosphor-icons/react";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { FileTree } from "@/components/file-tree";
-import { FileViewer } from "@/components/file-viewer";
 import { TerminalPanel } from "@/components/terminal-panel";
+
+const FileViewer = dynamic(() => import("@/components/file-viewer"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full items-center justify-center">
+      <Spinner size={24} className="animate-spin text-muted-foreground" />
+    </div>
+  ),
+});
 import { useWorkspace } from "@/lib/workspace-context";
 import { cn } from "@/lib/utils";
 import type { Project } from "@/lib/types";

@@ -1,84 +1,10 @@
 import React, { useCallback } from "react";
-import {
-  Folder,
-  FolderOpen,
-  CaretRight,
-  Plus,
-  PencilSimple,
-  Trash,
-  File,
-  FileTs,
-  FileJs,
-  FileCss,
-  FileHtml,
-  FileDoc,
-  FileMd,
-  FileText,
-  FileImage,
-  GearSix,
-  GitBranch,
-} from "@phosphor-icons/react";
+import { Folder, FolderOpen, CaretRight, Plus, PencilSimple, Trash } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useWorkspace } from "@/lib/workspace-context";
+import { getFileIcon } from "@/lib/file-icons";
 import { cn } from "@/lib/utils";
 import type { FileNode } from "@/lib/types";
-
-const extensionIconMap: Record<
-  string,
-  React.ComponentType<{
-    size?: number;
-    className?: string;
-    weight?: "thin" | "light" | "regular" | "bold" | "fill" | "duotone";
-  }>
-> = {
-  ts: FileTs,
-  tsx: FileTs,
-  js: FileJs,
-  jsx: FileJs,
-  mjs: FileJs,
-  mts: FileTs,
-  css: FileCss,
-  scss: FileCss,
-  html: FileHtml,
-  htm: FileHtml,
-  md: FileMd,
-  mdx: FileMd,
-  json: FileText,
-  png: FileImage,
-  jpg: FileImage,
-  jpeg: FileImage,
-  gif: FileImage,
-  svg: FileImage,
-  webp: FileImage,
-  ico: FileImage,
-  doc: FileDoc,
-  docx: FileDoc,
-  pdf: FileDoc,
-};
-
-const nameIconMap: Record<
-  string,
-  React.ComponentType<{
-    size?: number;
-    className?: string;
-    weight?: "thin" | "light" | "regular" | "bold" | "fill" | "duotone";
-  }>
-> = {
-  ".gitignore": GitBranch,
-  ".gitmodules": GitBranch,
-  ".eslintrc": GearSix,
-  ".prettierrc": GearSix,
-  "tsconfig.json": GearSix,
-  "next.config.ts": GearSix,
-  "vitest.config.ts": GearSix,
-  "postcss.config.mjs": GearSix,
-};
-
-function resolveFileIcon(filename: string) {
-  if (nameIconMap[filename]) return nameIconMap[filename];
-  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
-  return extensionIconMap[ext] ?? File;
-}
 
 // Declared as a stable component to satisfy react-hooks/static-components
 const FolderIcon = Folder;
@@ -106,7 +32,7 @@ function FileNodeIcon({
           className: "flex-shrink-0 text-primary",
         });
   }
-  const IconComponent = resolveFileIcon(name);
+  const IconComponent = getFileIcon(name);
   return React.createElement(IconComponent, {
     size: 16,
     weight: "regular",
@@ -154,7 +80,13 @@ function StatusIcon({ status }: { status?: "added" | "modified" | "deleted" }) {
   return <Icon size={10} weight="bold" />;
 }
 
-function FileTreeItem({ node, depth = 0 }: { node: FileNode; depth: number }) {
+const FileTreeItem = React.memo(function FileTreeItem({
+  node,
+  depth = 0,
+}: {
+  node: FileNode;
+  depth: number;
+}) {
   const { selectedFile, expandedFolders, selectFile, toggleFolder } = useWorkspace();
 
   const isExpanded = expandedFolders.has(node.path);
@@ -216,7 +148,7 @@ function FileTreeItem({ node, depth = 0 }: { node: FileNode; depth: number }) {
       </AnimatePresence>
     </div>
   );
-}
+});
 
 export function FileTree({ nodes, depth = 0 }: FileTreeProps) {
   if (nodes.length === 0) {

@@ -59,35 +59,51 @@ async function readDirectory(
   if (depth > maxDepth) return [];
 
   const entries = await fs.readdir(dirPath, { withFileTypes: true });
+
+  const filteredEntries = entries.filter(
+    (entry) => !IGNORED_DIRS.has(entry.name) && !IGNORED_FILES.has(entry.name),
+  );
+
   const nodes: FileNode[] = [];
 
-  for (const entry of entries) {
-    if (IGNORED_DIRS.has(entry.name)) continue;
-    if (IGNORED_FILES.has(entry.name)) continue;
+  // Separate directories and files for processing
+  const dirEntries = filteredEntries.filter((e) => e.isDirectory());
+  const fileEntries = filteredEntries.filter((e) => !e.isDirectory());
 
+  // Process directories (sequential recursion is fine)
+  for (const entry of dirEntries) {
     const fullPath = path.join(dirPath, entry.name);
     const relativePath = path.relative(projectRoot, fullPath);
+    const children = await readDirectory(fullPath, projectRoot, gitStatus, depth + 1, maxDepth);
+    const dirStatus = inferDirStatus(relativePath, gitStatus);
+    nodes.push({
+      name: entry.name,
+      path: relativePath,
+      type: "directory",
+      children,
+      status: dirStatus,
+    });
+  }
 
-    if (entry.isDirectory()) {
-      const children = await readDirectory(fullPath, projectRoot, gitStatus, depth + 1, maxDepth);
-      const dirStatus = inferDirStatus(relativePath, gitStatus);
-      nodes.push({
-        name: entry.name,
-        path: relativePath,
-        type: "directory",
-        children,
-        status: dirStatus,
-      });
-    } else {
-      const stat = await fs.stat(fullPath).catch(() => null);
-      nodes.push({
-        name: entry.name,
-        path: relativePath,
-        type: "file",
-        size: stat?.size ?? 0,
-        status: gitStatus.get(relativePath),
-      });
-    }
+  // Parallelize fs.stat() calls for files
+  const fileStats = await Promise.all(
+    fileEntries.map((entry) => {
+      const fullPath = path.join(dirPath, entry.name);
+      return fs.stat(fullPath).catch(() => null);
+    }),
+  );
+
+  for (let i = 0; i < fileEntries.length; i++) {
+    const entry = fileEntries[i];
+    const relativePath = path.relative(projectRoot, path.join(dirPath, entry.name));
+    const stat = fileStats[i];
+    nodes.push({
+      name: entry.name,
+      path: relativePath,
+      type: "file",
+      size: stat?.size ?? 0,
+      status: gitStatus.get(relativePath),
+    });
   }
 
   nodes.sort((a, b) => {
@@ -129,7 +145,9 @@ export async function GET(request: NextRequest) {
   try {
     const gitStatus = await getGitStatus(root);
     const tree = await readDirectory(root, root, gitStatus);
-    return NextResponse.json(tree);
+    return NextResponse.json(tree, {
+      headers: { "Cache-Control": "private, max-age=5, stale-while-revalidate=15" },
+    });
   } catch (error) {
     return NextResponse.json(
       { error: "Failed to read directory", details: String(error) },
