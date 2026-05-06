@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { WebSocket } from "ws";
-import type { TerminalServerHandle } from "./terminal-server.mjs";
+import type { TerminalServerHandle } from "./terminal-server.mts";
 
 // --- Fake IPty ---
 function createFakePty() {
@@ -45,7 +45,7 @@ vi.mock("node-pty", () => ({
 const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
 
 async function createServer(): Promise<{ handle: TerminalServerHandle; port: number }> {
-  const { createTerminalServer } = await import("./terminal-server.mjs");
+  const { createTerminalServer } = await import("./terminal-server.mts");
   const handle = createTerminalServer({ port: 0 });
   const port = await new Promise<number>((resolve) => {
     const addr = handle.wss.address();

@@ -137,6 +137,20 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
         resizeObserverRef.current = observer;
       }
 
+      // Close any existing WebSocket before creating a new one
+      if (wsRef.current) {
+        try {
+          wsRef.current.onclose = null;
+          wsRef.current.onerror = null;
+          wsRef.current.onmessage = null;
+          wsRef.current.onopen = null;
+          wsRef.current.close();
+        } catch {
+          // ignore
+        }
+        wsRef.current = null;
+      }
+
       // Connect WebSocket
       const ws = new WebSocket(wsUrl);
       ws.binaryType = "arraybuffer";

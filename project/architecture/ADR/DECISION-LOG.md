@@ -13,7 +13,7 @@ This file is the single registry of all architectural decisions and core-compone
 | ID | Title | Status | Date |
 |----|-------|--------|------|
 | CORE-COMPONENT-0002 | Commit Standards | Adopted | 2026-05-05 |
-| CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2025-07-15 |
+| CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2026-05-06 |
 | CORE-COMPONENT-0004 | Theming | Adopted | 2026-05-06 |
 | CORE-COMPONENT-0005 | Error Handling | Adopted | 2026-05-06 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
@@ -47,6 +47,6 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 20 | Use react-resizable-panels for the IDE shell panel layout | CORE-COMPONENT-0007 | 2026-05-07 |
 | 21 | Wrap each shell panel in its own ErrorBoundary component | CORE-COMPONENT-0007 | 2026-05-07 |
 | 22 | Require shell layout to fill 100vh with no outer scroll | CORE-COMPONENT-0007 | 2026-05-07 |
-| 23 | Use `src/server/terminal-server.mts` as the WebSocket server file path | CORE-COMPONENT-0003 | 2025-07-15 |
-| 24 | Require server to send PTY output as binary WebSocket frames via `Buffer.from(data, 'utf8')` | CORE-COMPONENT-0003 | 2025-07-15 |
-| 25 | Require frontend to set `ws.binaryType = "arraybuffer"` for binary terminal I/O | CORE-COMPONENT-0003 | 2025-07-15 |
+| 23 | Use `src/server/terminal-server.mts` as the WebSocket server file path | CORE-COMPONENT-0003 | 2026-05-06 |
+| 24 | Require server to send PTY output as binary WebSocket frames via `Buffer.from(data, 'utf8')` | CORE-COMPONENT-0003 | 2026-05-06 |
+| 25 | Require frontend to set `ws.binaryType = "arraybuffer"` for binary terminal I/O | CORE-COMPONENT-0003 | 2026-05-06 |

@@ -25,7 +25,9 @@ export function TerminalPanel() {
                 ? "bg-green-500"
                 : status === "reconnecting"
                   ? "animate-pulse bg-yellow-500"
-                  : "bg-muted-foreground/30"
+                  : status === "failed"
+                    ? "bg-red-500"
+                    : "bg-muted-foreground/30"
             }`}
           />
           <span className="text-[10px] text-muted-foreground">
@@ -35,7 +37,9 @@ export function TerminalPanel() {
                 ? "Reconnecting..."
                 : status === "connecting"
                   ? "Connecting..."
-                  : "Disconnected"}
+                  : status === "failed"
+                    ? "Failed"
+                    : "Disconnected"}
           </span>
         </div>
       </div>

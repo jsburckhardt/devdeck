@@ -29,13 +29,15 @@ export function createTerminalServer(options?: TerminalServerOptions): TerminalS
   const activePtys = new Set<IPty>();
 
   wss.on("connection", (ws: WebSocket) => {
+    console.log("Client connected");
     let pty: IPty | null = null;
     let cleaned = false;
 
-    function cleanupPty() {
+    function cleanupPty(reason: string) {
       if (cleaned) return;
       cleaned = true;
       if (pty) {
+        console.log(`Cleaning up PTY (pid: ${pty.pid}, reason: ${reason})`);
         activePtys.delete(pty);
         try {
           pty.kill();
@@ -56,6 +58,7 @@ export function createTerminalServer(options?: TerminalServerOptions): TerminalS
       });
 
       activePtys.add(pty);
+      console.log(`PTY spawned (pid: ${pty.pid}, shell: ${shell}, cwd: ${cwd})`);
 
       pty.onData((data: string) => {
         if (ws.readyState === WebSocket.OPEN) {
@@ -67,10 +70,11 @@ export function createTerminalServer(options?: TerminalServerOptions): TerminalS
         }
       });
 
-      pty.onExit(() => {
-        cleanupPty();
+      pty.onExit(({ exitCode }) => {
+        console.log(`PTY exited (code: ${exitCode})`);
+        cleanupPty("pty-exit");
         if (ws.readyState === WebSocket.OPEN) {
-          ws.close();
+          ws.close(1011, "PTY exited");
         }
       });
 
@@ -102,8 +106,12 @@ export function createTerminalServer(options?: TerminalServerOptions): TerminalS
         if (msg.type === "resize") {
           const rawCols = Number(msg.cols);
           const rawRows = Number(msg.rows);
-          const cols = Number.isFinite(rawCols) ? Math.max(1, Math.min(500, rawCols)) : 1;
-          const rows = Number.isFinite(rawRows) ? Math.max(1, Math.min(200, rawRows)) : 1;
+          const cols = Number.isFinite(rawCols)
+            ? Math.max(1, Math.min(500, Math.round(rawCols)))
+            : 1;
+          const rows = Number.isFinite(rawRows)
+            ? Math.max(1, Math.min(200, Math.round(rawRows)))
+            : 1;
           try {
             pty.resize(cols, rows);
           } catch {
@@ -113,13 +121,16 @@ export function createTerminalServer(options?: TerminalServerOptions): TerminalS
       });
 
       ws.on("close", () => {
-        cleanupPty();
+        console.log("Client disconnected");
+        cleanupPty("ws-close");
       });
 
-      ws.on("error", () => {
-        cleanupPty();
+      ws.on("error", (err: Error) => {
+        console.error("WebSocket error:", err.message);
+        cleanupPty("ws-error");
       });
     } catch (err) {
+      console.error("Failed to spawn shell:", err);
       if (ws.readyState === WebSocket.OPEN) {
         try {
           ws.send(JSON.stringify({ type: "error", message: String(err) }));
