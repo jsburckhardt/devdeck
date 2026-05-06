@@ -56,10 +56,11 @@ shell.onData((data) => ws.send(data));
 
 ## Integration Guidelines
 
-- The WebSocket server setup should be in `src/server/terminal.ts`
+- The WebSocket server setup should be in `src/server/terminal-server.mts` (`.mts` extension required for ESM interop with `tsx` runner)
 - The frontend hook should be in `src/hooks/use-terminal.ts`
 - xterm.js addons (fit, web-links, unicode11) should be loaded in the hook
 - PTY shell selection should default to the user's `$SHELL` or fall back to `/bin/bash`
+- **Binary framing note:** `node-pty`'s `onData` emits `string`; the server must call `ws.send(Buffer.from(data, 'utf8'))` to produce a binary WebSocket frame. The frontend must set `ws.binaryType = "arraybuffer"` and check `event.data instanceof ArrayBuffer` in `onmessage`.
 
 ## Exceptions
 

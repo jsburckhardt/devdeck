@@ -1,96 +1,184 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { spawn, type IPty } from "node-pty";
-import os from "os";
 
-const PORT = Number(process.env.TERMINAL_PORT ?? 3100);
-const HOST = process.env.TERMINAL_HOST ?? "127.0.0.1";
-const SHELL = process.env.SHELL ?? (os.platform() === "win32" ? "powershell.exe" : "bash");
+const MAX_CONTROL_MESSAGE_BYTES = 1024;
 
-const wss = new WebSocketServer({ port: PORT, host: HOST });
-const activePtys = new Set<IPty>();
+export interface TerminalServerOptions {
+  port?: number;
+  host?: string;
+  shell?: string;
+  cwd?: string;
+}
 
-console.log(`Terminal WebSocket server listening on ${HOST}:${PORT}`);
+export interface TerminalServerHandle {
+  wss: WebSocketServer;
+  cleanup: () => void;
+}
 
-wss.on("connection", (ws: WebSocket) => {
-  console.log("Client connected");
+export function createTerminalServer(options?: TerminalServerOptions): TerminalServerHandle {
+  const port = options?.port ?? Number(process.env.TERMINAL_PORT ?? 3100);
+  const host = options?.host ?? process.env.TERMINAL_HOST ?? "127.0.0.1";
+  const shell = options?.shell ?? process.env.SHELL ?? "/bin/bash";
+  const cwd = options?.cwd ?? process.env.DEVDECK_WORKSPACE_ROOT ?? process.cwd();
 
-  let pty: IPty | null = null;
+  const sanitizedEnv = Object.fromEntries(
+    Object.entries(process.env).filter((e): e is [string, string] => typeof e[1] === "string"),
+  );
 
-  try {
-    pty = spawn(SHELL, [], {
-      name: "xterm-256color",
-      cols: 80,
-      rows: 24,
-      cwd: process.env.HOME ?? "/",
-      env: process.env as Record<string, string>,
-    });
+  const wss = new WebSocketServer({ port, host });
+  const activePtys = new Set<IPty>();
 
-    activePtys.add(pty);
+  wss.on("connection", (ws: WebSocket) => {
+    console.log("Client connected");
+    let pty: IPty | null = null;
+    let cleaned = false;
 
-    pty.onData((data: string) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(data);
+    function cleanupPty(reason: string) {
+      if (cleaned) return;
+      cleaned = true;
+      if (pty) {
+        console.log(`Cleaning up PTY (pid: ${pty.pid}, reason: ${reason})`);
+        activePtys.delete(pty);
+        try {
+          pty.kill();
+        } catch {
+          // already dead
+        }
+        pty = null;
       }
-    });
+    }
 
-    pty.onExit(({ exitCode }) => {
-      console.log(`Shell exited with code ${exitCode}`);
+    try {
+      pty = spawn(shell, [], {
+        name: "xterm-256color",
+        cols: 80,
+        rows: 24,
+        cwd,
+        env: sanitizedEnv,
+      });
+
+      activePtys.add(pty);
+      console.log(`PTY spawned (pid: ${pty.pid}, shell: ${shell}, cwd: ${cwd})`);
+
+      pty.onData((data: string) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          try {
+            ws.send(Buffer.from(data, "utf8"));
+          } catch {
+            // send failed
+          }
+        }
+      });
+
+      pty.onExit(({ exitCode }) => {
+        console.log(`PTY exited (code: ${exitCode})`);
+        cleanupPty("pty-exit");
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.close(1011, "PTY exited");
+        }
+      });
+
+      ws.on("message", (data: Buffer, isBinary: boolean) => {
+        if (!pty) return;
+
+        if (isBinary) {
+          try {
+            pty.write(data.toString("utf8"));
+          } catch {
+            // write failed
+          }
+          return;
+        }
+
+        // Text frame — control message
+        const text = data.toString("utf8");
+        if (Buffer.byteLength(text, "utf8") > MAX_CONTROL_MESSAGE_BYTES) {
+          return;
+        }
+
+        let msg: { type?: string; cols?: number; rows?: number };
+        try {
+          msg = JSON.parse(text) as { type?: string; cols?: number; rows?: number };
+        } catch {
+          return;
+        }
+
+        if (msg.type === "resize") {
+          const rawCols = Number(msg.cols);
+          const rawRows = Number(msg.rows);
+          const cols = Number.isFinite(rawCols)
+            ? Math.max(1, Math.min(500, Math.round(rawCols)))
+            : 1;
+          const rows = Number.isFinite(rawRows)
+            ? Math.max(1, Math.min(200, Math.round(rawRows)))
+            : 1;
+          try {
+            pty.resize(cols, rows);
+          } catch {
+            // resize failed
+          }
+        }
+      });
+
+      ws.on("close", () => {
+        console.log("Client disconnected");
+        cleanupPty("ws-close");
+      });
+
+      ws.on("error", (err: Error) => {
+        console.error("WebSocket error:", err.message);
+        cleanupPty("ws-error");
+      });
+    } catch (err) {
+      console.error("Failed to spawn shell:", err);
       if (ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(JSON.stringify({ type: "error", message: String(err) }));
+        } catch {
+          // send failed
+        }
         ws.close();
       }
-    });
-
-    ws.on("message", (raw: Buffer | string) => {
-      try {
-        const msg = JSON.parse(raw.toString());
-
-        if (msg.type === "input" && pty) {
-          pty.write(msg.data);
-        } else if (msg.type === "resize" && pty) {
-          const cols = Math.max(1, Math.min(500, msg.cols));
-          const rows = Math.max(1, Math.min(200, msg.rows));
-          pty.resize(cols, rows);
-        }
-      } catch {
-        // If not JSON, treat as raw input
-        if (pty) {
-          pty.write(raw.toString());
-        }
-      }
-    });
-
-    ws.on("close", () => {
-      console.log("Client disconnected");
-      if (pty) {
-        activePtys.delete(pty);
-        pty.kill();
-        pty = null;
-      }
-    });
-
-    ws.on("error", (err: Error) => {
-      console.error("WebSocket error:", err.message);
-      if (pty) {
-        activePtys.delete(pty);
-        pty.kill();
-        pty = null;
-      }
-    });
-  } catch (err) {
-    console.error("Failed to spawn shell:", err);
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(`\r\nFailed to start terminal: ${err}\r\n`);
-      ws.close();
     }
-  }
-});
+  });
 
-process.on("SIGINT", () => {
-  console.log("\nShutting down terminal server...");
-  for (const pty of activePtys) {
-    pty.kill();
+  function cleanup() {
+    for (const p of activePtys) {
+      try {
+        p.kill();
+      } catch {
+        // already dead
+      }
+    }
+    activePtys.clear();
+    wss.close();
   }
-  activePtys.clear();
-  wss.close();
-  process.exit(0);
-});
+
+  return { wss, cleanup };
+}
+
+export function startTerminalServer(): TerminalServerHandle {
+  const handle = createTerminalServer();
+
+  const address = handle.wss.address();
+  const addrStr =
+    address && typeof address === "object" ? `${address.address}:${address.port}` : String(address);
+  console.log(`Terminal WebSocket server listening on ${addrStr}`);
+
+  const shutdown = () => {
+    console.log("\nShutting down terminal server...");
+    handle.cleanup();
+    process.exit(0);
+  };
+
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+
+  return handle;
+}
+
+// Auto-start when run directly via tsx
+// When invoked as `npx tsx src/server/terminal-server.mts`, process.argv[1] contains the file path
+if (process.argv[1] && /terminal-server\.mts$/.test(process.argv[1])) {
+  startTerminalServer();
+}
