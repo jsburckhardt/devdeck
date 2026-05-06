@@ -38,7 +38,7 @@ You MUST verify the branch is clean with no uncommitted changes after all commit
 You MUST NOT force-push or use --no-verify.
 You MUST push the feature branch to the remote origin.
 You MUST use the GitHub CLI (gh pr create) to create a pull request.
-You MUST assign the PR to Copilot for review using the --reviewer flag.
+You MUST assign the PR to Copilot for review using the GitHub API after creation, since `gh pr create --reviewer Copilot` and `gh pr edit --add-reviewer Copilot` fail to resolve the user. Use: `gh api repos/<OWNER>/<REPO>/pulls/<PR_NUMBER>/requested_reviewers --method POST -f "reviewers[]=Copilot"` instead.
 You MUST stop and instruct the user to authenticate if the gh CLI is not authenticated.
 You MUST summarize what was done, reference the GitHub issue with "Closes #<number>" in the PR body, and list all ADRs and core-components.
 You SHOULD update documentation when implementation changes warrant it.
@@ -277,9 +277,11 @@ CAPTURE PUSH_OUTPUT from `execute/runInTerminal`
 SET PR_TITLE := <TITLE> (from "Agent Inference" using ISSUE_NUMBER, SHORT_SLUG)
 SET PR_BODY := <BODY> (from "Agent Inference" using ISSUE_NUMBER, COMMITS, ADR_CHANGES, CC_CHANGES)
 USE `edit/createFile` where: content=PR_BODY, filePath="/tmp/pr-body.md"
-USE `execute/runInTerminal` where: command="gh pr create --title '<PR_TITLE>' --body-file /tmp/pr-body.md --reviewer Copilot"
+USE `execute/runInTerminal` where: command="gh pr create --title '<PR_TITLE>' --body-file /tmp/pr-body.md"
 CAPTURE PR_OUTPUT from `execute/runInTerminal`
 SET PR_URL := <URL> (from "Agent Inference" using PR_OUTPUT)
+SET PR_NUMBER := <NUMBER> (from "Agent Inference" using PR_URL)
+USE `execute/runInTerminal` where: command="gh api repos/<OWNER>/<REPO>/pulls/<PR_NUMBER>/requested_reviewers --method POST -f 'reviewers[]=Copilot'"
 </process>
 </processes>
 

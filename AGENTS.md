@@ -238,7 +238,7 @@ verifier:
     - must not force-push or use --no-verify
     - must not modify application source code
     - must verify the branch is clean after all commits
-    - must assign the PR to Copilot for review
+    - must assign the PR to Copilot for review using the GitHub API (`gh api repos/.../pulls/.../requested_reviewers --method POST -f "reviewers[]=Copilot"`), since `gh pr create --reviewer Copilot` fails to resolve the user
 >>
 TEMPLATE_PATHS: YAML<<
 adr: project/architecture/ADR/ADR-0001-template.md
