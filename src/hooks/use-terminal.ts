@@ -124,17 +124,28 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
         resizeObserverRef.current.disconnect();
       }
       if (containerRef.current) {
+        let resizeTimer: ReturnType<typeof setTimeout> | null = null;
         const observer = new ResizeObserver(() => {
           if (fitAddonRef.current && termRef.current) {
-            try {
-              fitAddonRef.current.fit();
-            } catch {
-              // ignore fit errors during rapid resize
-            }
+            if (resizeTimer) clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+              try {
+                fitAddonRef.current?.fit();
+              } catch {
+                // ignore fit errors during rapid resize
+              }
+            }, 150);
           }
         });
         observer.observe(containerRef.current);
         resizeObserverRef.current = observer;
+
+        // Store the timer cleanup for the effect cleanup
+        const originalDisconnect = observer.disconnect.bind(observer);
+        observer.disconnect = () => {
+          if (resizeTimer) clearTimeout(resizeTimer);
+          originalDisconnect();
+        };
       }
 
       // Close any existing WebSocket before creating a new one

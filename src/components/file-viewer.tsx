@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Spinner, FileX, WarningCircle } from "@phosphor-icons/react";
 import hljs from "highlight.js/lib/core";
@@ -47,8 +47,8 @@ function highlightCode(code: string, language: string): string {
 }
 
 function CodeView({ content, language }: { content: string; language: string }) {
-  const highlighted = highlightCode(content, language);
-  const lineCount = content.split("\n").length;
+  const highlighted = useMemo(() => highlightCode(content, language), [content, language]);
+  const lineCount = useMemo(() => content.split("\n").length, [content]);
 
   return (
     <div className="overflow-auto font-mono text-[13px] leading-relaxed">
@@ -96,7 +96,7 @@ function BinaryFileView({ name, size }: { name: string; size: number }) {
   );
 }
 
-export function FileViewer() {
+export default function FileViewer() {
   const { project, selectedFile } = useWorkspace();
   const [fileContent, setFileContent] = useState<FileContent | null>(null);
   const [loading, setLoading] = useState(false);
