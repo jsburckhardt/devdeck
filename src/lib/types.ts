@@ -39,7 +39,7 @@ export interface FileContent {
   isBinary: boolean;
   path: string;
   name: string;
-  mtime?: number;
+  mtime: number;
 }
 
 export interface DiffLine {

@@ -28,8 +28,8 @@ This feature adds three capabilities to the existing `FileViewer` component:
 ## Files to Create
 | File | Purpose |
 |------|---------|
-| `src/lib/diff-utils.ts` | Unified diff parser utility |
-| `src/lib/diff-utils.test.ts` | Unit tests for diff parser |
+| `src/lib/diff-parser.ts` | Unified diff parser utility |
+| `src/lib/diff-parser.test.ts` | Unit tests for diff parser |
 | `src/components/diff-view.tsx` | DiffView component |
 | `src/components/diff-view.test.tsx` | Component tests for DiffView |
 | `src/app/api/files/diff/route.ts` | GET /api/files/diff endpoint |

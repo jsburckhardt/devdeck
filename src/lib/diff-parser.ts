@@ -3,7 +3,7 @@ import type { DiffHunk } from "./types";
 export function parseDiff(diffText: string): DiffHunk[] {
   if (!diffText.trim()) return [];
 
-  const lines = diffText.split("\n");
+  const lines = diffText.trimEnd().split("\n");
   const hunks: DiffHunk[] = [];
   let currentHunk: DiffHunk | null = null;
   let oldLine = 0;

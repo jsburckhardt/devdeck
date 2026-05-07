@@ -22,7 +22,7 @@ Add `DiffLine` and `DiffHunk` types to `src/lib/types.ts`. Add `mtime` field to 
 ### Test Coverage
 - Unit test `findFileStatus` with flat tree, nested tree, missing file, and root-level file
 - Test returns `undefined` for files not in tree
-- Co-located test file: `src/lib/file-utils.test.ts`
+- Co-located test file: `src/components/file-viewer.test.tsx`
 
 ---
 
@@ -88,7 +88,7 @@ Add a toggle button in the file viewer header bar that switches between raw sour
 - **Related Core-Components:** CORE-COMPONENT-0006
 
 ### Description
-Create `src/lib/diff-utils.ts` with a `parseDiff(rawDiff: string): DiffHunk[]` function. The parser handles standard unified diff output from `git diff`:
+Create `src/lib/diff-parser.ts` with a `parseDiff(rawDiff: string): DiffHunk[]` function. The parser handles standard unified diff output from `git diff`:
 - `@@` hunk headers with line number extraction
 - `+` lines → `added`
 - `-` lines → `removed`
@@ -114,7 +114,7 @@ Create `src/lib/diff-utils.ts` with a `parseDiff(rawDiff: string): DiffHunk[]` f
 - Unit test: diff with only deletions
 - Unit test: hunk header parsing extracts correct old/new start line numbers
 - Unit test: `\ No newline at end of file` is handled
-- Co-located test file: `src/lib/diff-utils.test.ts`
+- Co-located test file: `src/lib/diff-parser.test.ts`
 
 ---
 
@@ -318,7 +318,7 @@ Add an edit mode to the file viewer for non-binary files:
 
 ### Description
 Update `LLM.txt` to document all new and modified files:
-- `src/lib/diff-utils.ts` — Unified diff parser utility
+- `src/lib/diff-parser.ts` — Unified diff parser utility
 - `src/components/diff-view.tsx` — Diff view component for rendering unified diffs
 - `src/app/api/files/diff/route.ts` — GET /api/files/diff endpoint
 - Updated entry for `src/app/api/files/content/route.ts` noting PUT handler for file editing

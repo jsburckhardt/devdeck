@@ -34,6 +34,7 @@ project/architecture/core-components/CORE-COMPONENT-0003-websocket-terminal.md �
 project/architecture/core-components/CORE-COMPONENT-0004-theming.md — Theming system (dark/light, CSS custom properties)
 project/architecture/core-components/CORE-COMPONENT-0005-error-handling.md — Error handling patterns (reconnection, boundaries, toasts)
 project/architecture/core-components/CORE-COMPONENT-0006-development-standards.md — Development standards (lint, format, test, commit)
+project/architecture/core-components/CORE-COMPONENT-0007-shell-layout.md — Shell layout core-component
 project/architecture/core-components/README.md                 — Core-components index
 project/issues/README.md                                       — Issues index and canonical structure
 src/app/layout.tsx                                             — Next.js root layout
@@ -41,24 +42,20 @@ src/app/page.tsx                                               — Next.js home 
 src/app/globals.css                                            — Global styles and CSS custom properties
 src/middleware.ts                                              — Next.js middleware for token-based HTTP auth
 src/lib/auth.ts                                                — Token generation, validation (timingSafeEqual), cookie parsing
+src/lib/types.ts                                               — Shared TypeScript types (FileContent, DiffHunk, DiffLine, etc.)
+src/lib/file-utils.ts                                          — Language detection and binary file identification
+src/lib/diff-parser.ts                                         — Unified diff parser utility (parseDiff)
+src/lib/workspace-context.tsx                                  — Workspace state provider (project, file tree, selection)
 src/server/start-dev.mts                                       — Dev startup script: generates token, starts Next.js + terminal server
 src/server/terminal-server.mts                                 — WebSocket terminal server with token auth, login shell, $HOME cwd
 src/hooks/use-terminal.ts                                      — React hook for terminal WebSocket connection with 4401 handling
 src/components/terminal-panel.tsx                              — Terminal panel UI with auth error state
 src/components/diff-view.tsx                                   — Diff view component: renders unified diff with colored lines and dual line numbers
-src/lib/diff-parser.ts                                         — Unified diff parser utility: converts git diff output to structured DiffHunk[] data
-src/app/api/files/diff/route.ts                                — GET /api/files/diff endpoint: runs git diff server-side for a project file
+src/components/file-viewer.tsx                                 — File viewer with markdown preview, raw toggle, diff tabs, edit mode
+src/app/api/files/route.ts                                     — GET /api/files — file tree with git status
+src/app/api/files/content/route.ts                             — /api/files/content GET/PUT read and write file content with mtime 
+src/app/api/files/diff/route.ts                                — GET /api/files/diff — git diff for a single file (handles untracked, staged, modified)
 project/architecture/ADR/ADR-0003-project-registry-persistence.md — Project registry persistence decision
 project/architecture/ADR/ADR-0004-token-authentication.md      — Token-based authentication decision
-project/architecture/core-components/CORE-COMPONENT-0007-shell-layout.md — Shell layout core-component
 e2e/terminal.spec.ts                                           — Playwright E2E tests for terminal with token auth
 playwright.config.ts                                           — Playwright configuration (ports, token env)
-src/components/diff-view.tsx                                   — Diff view component for inline unified diff rendering
-src/components/file-viewer.tsx                                 — File viewer with markdown preview, raw toggle, diff tabs, edit mode
-src/lib/diff-parser.ts                                         — Unified diff parser utility (parseDiff)
-src/lib/file-utils.ts                                          — Language detection and binary file identification
-src/lib/types.ts                                               — Shared TypeScript types (FileContent, DiffHunk, DiffLine, etc.)
-src/lib/workspace-context.tsx                                  — Workspace state provider (project, file tree, selection)
-src/app/api/files/content/route.ts                             — GET/PUT /api/files/content — read and write file content
-src/app/api/files/diff/route.ts                                — GET /api/files/diff — git diff for a single file
-src/app/api/files/route.ts                                     — GET /api/files — file tree with git status

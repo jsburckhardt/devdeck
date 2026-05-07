@@ -112,7 +112,7 @@ export async function PUT(request: NextRequest) {
     const stat = await fs.stat(fullPath);
 
     // Optimistic concurrency: reject if file was modified since load
-    if (mtime !== undefined && Math.abs(stat.mtimeMs - mtime) > 1000) {
+    if (mtime !== undefined && Math.floor(stat.mtimeMs) !== Math.floor(mtime)) {
       return NextResponse.json(
         { error: "File was modified externally", code: "CONFLICT" },
         { status: 409 },

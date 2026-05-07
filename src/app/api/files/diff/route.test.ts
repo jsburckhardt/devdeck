@@ -51,9 +51,12 @@ describe("GET /api/files/diff", () => {
     expect(res.status).toBe(403);
   });
 
-  it("2.3 — returns diff for valid request", async () => {
+  it("2.3 — returns diff for modified file", async () => {
     const diffText = "@@ -1,3 +1,3 @@\n context\n-old\n+new";
-    mockExecFile.mockResolvedValue({ stdout: diffText, stderr: "" } as never);
+    // First call: git status returns modified
+    mockExecFile.mockResolvedValueOnce({ stdout: " M src/index.ts\n", stderr: "" } as never);
+    // Second call: git diff returns diff
+    mockExecFile.mockResolvedValueOnce({ stdout: diffText, stderr: "" } as never);
 
     const res = await GET(makeRequest({ slug: "test", path: "src/index.ts" }));
     expect(res.status).toBe(200);
@@ -62,7 +65,10 @@ describe("GET /api/files/diff", () => {
   });
 
   it("2.4 — returns empty diff for no changes", async () => {
-    mockExecFile.mockResolvedValue({ stdout: "", stderr: "" } as never);
+    // git status returns no output (no changes)
+    mockExecFile.mockResolvedValueOnce({ stdout: "", stderr: "" } as never);
+    // git diff returns empty
+    mockExecFile.mockResolvedValueOnce({ stdout: "", stderr: "" } as never);
 
     const res = await GET(makeRequest({ slug: "test", path: "src/index.ts" }));
     expect(res.status).toBe(200);
@@ -71,9 +77,38 @@ describe("GET /api/files/diff", () => {
   });
 
   it("2.5 — returns 500 for git error", async () => {
-    mockExecFile.mockRejectedValue(new Error("git not found"));
+    // git status succeeds
+    mockExecFile.mockResolvedValueOnce({ stdout: " M src/index.ts\n", stderr: "" } as never);
+    // git diff fails
+    mockExecFile.mockRejectedValueOnce(new Error("git not found"));
 
     const res = await GET(makeRequest({ slug: "test", path: "src/index.ts" }));
     expect(res.status).toBe(500);
+  });
+
+  it("2.6 — uses --no-index for untracked files", async () => {
+    const diffText = "@@ -0,0 +1,2 @@\n+new line 1\n+new line 2";
+    // git status returns untracked
+    mockExecFile.mockResolvedValueOnce({ stdout: "?? new-file.ts\n", stderr: "" } as never);
+    // git diff --no-index exits with code 1 (normal for differences), stdout has diff
+    mockExecFile.mockRejectedValueOnce({ stdout: diffText, code: 1 });
+
+    const res = await GET(makeRequest({ slug: "test", path: "new-file.ts" }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.diff).toBe(diffText);
+  });
+
+  it("2.7 — uses --cached for staged files", async () => {
+    const diffText = "@@ -0,0 +1,1 @@\n+staged content";
+    // git status returns staged
+    mockExecFile.mockResolvedValueOnce({ stdout: "A  staged.ts\n", stderr: "" } as never);
+    // git diff --cached returns diff
+    mockExecFile.mockResolvedValueOnce({ stdout: diffText, stderr: "" } as never);
+
+    const res = await GET(makeRequest({ slug: "test", path: "staged.ts" }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.diff).toBe(diffText);
   });
 });
