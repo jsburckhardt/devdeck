@@ -150,12 +150,14 @@ describe("terminal-server", () => {
   let handle: TerminalServerHandle | null = null;
   const clients: WebSocket[] = [];
   const savedToken = process.env.DEVDECK_TOKEN;
+  const savedWorkspaceRoot = process.env.DEVDECK_WORKSPACE_ROOT;
 
   beforeEach(() => {
     fakePty = createFakePty();
     spawnShouldThrow = false;
     clients.length = 0;
     delete process.env.DEVDECK_TOKEN;
+    delete process.env.DEVDECK_WORKSPACE_ROOT;
     // Reset slug/tmux mock state
     mockResolvedPath = "/workspaces/test-project";
     resolvePathShouldThrow = false;
@@ -178,6 +180,11 @@ describe("terminal-server", () => {
       process.env.DEVDECK_TOKEN = savedToken;
     } else {
       delete process.env.DEVDECK_TOKEN;
+    }
+    if (savedWorkspaceRoot !== undefined) {
+      process.env.DEVDECK_WORKSPACE_ROOT = savedWorkspaceRoot;
+    } else {
+      delete process.env.DEVDECK_WORKSPACE_ROOT;
     }
   });
 
@@ -588,5 +595,54 @@ describe("terminal-server", () => {
     const sessionNameArg = lastCall[1][lastCall[1].indexOf("-t") + 1];
     expect(sessionNameArg).toBe("myproject");
     expect(sessionNameArg).toMatch(/^[a-zA-Z0-9_-]+$/);
+  });
+
+  it("T22: tmux PTY exit with non-zero code falls back to regular shell", async () => {
+    mockResolvedPath = "/workspaces/tmux-fail";
+    fsStatResults["/workspaces/tmux-fail"] = { isDirectory: true, isSocket: false };
+    fsStatResults["/workspaces/tmux-fail/.devcontainer/.tmux-shared"] = {
+      isDirectory: false,
+      isSocket: true,
+    };
+    tmuxHasSessionResult = true;
+
+    const srv = await createServer();
+    handle = srv.handle;
+
+    const client = await connectClientWithSlug(srv.port, "tmux-fail");
+    clients.push(client);
+    await tick();
+
+    const nodePty = await import("node-pty");
+    const spawnFn = nodePty.spawn as ReturnType<typeof vi.fn>;
+
+    // First spawn should be tmux
+    const tmuxCall = spawnFn.mock.calls[spawnFn.mock.calls.length - 1] as [
+      string,
+      string[],
+      { cwd: string },
+    ];
+    expect(tmuxCall[0]).toBe("tmux");
+
+    // Create a new fakePty for the fallback spawn
+    const fallbackPty = createFakePty();
+    spawnFn.mockReturnValueOnce(fallbackPty);
+
+    // Simulate tmux PTY exiting with non-zero code
+    fakePty._emitExit(1, 0);
+    await tick();
+
+    // A second spawn should have occurred with the regular shell
+    expect(spawnFn.mock.calls.length).toBeGreaterThan(1);
+    const fallbackCall = spawnFn.mock.calls[spawnFn.mock.calls.length - 1] as [
+      string,
+      string[],
+      { cwd: string },
+    ];
+    expect(fallbackCall[0]).not.toBe("tmux");
+    expect(fallbackCall[2].cwd).toBe("/workspaces/tmux-fail");
+
+    // Client should still be open
+    expect(client.readyState).toBe(WebSocket.OPEN);
   });
 });

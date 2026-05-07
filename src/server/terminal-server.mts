@@ -97,9 +97,15 @@ async function resolveTerminalSetup(
     return { command: shell, args: shellArgs, cwd: defaultCwd, mode: "shell" };
   }
 
+  const sanitizedSlug = sanitizeSessionName(slug);
+  if (!sanitizedSlug) {
+    console.log(`Slug "${slug}" invalid after sanitization, falling back to default CWD`);
+    return { command: shell, args: shellArgs, cwd: defaultCwd, mode: "shell" };
+  }
+
   let resolvedCwd: string;
   try {
-    const resolvedPath = await resolveProjectPath(slug);
+    const resolvedPath = await resolveProjectPath(sanitizedSlug);
     const stat = await fs.stat(resolvedPath);
     if (!stat.isDirectory()) throw new Error("Not a directory");
     resolvedCwd = resolvedPath;
@@ -113,11 +119,10 @@ async function resolveTerminalSetup(
   try {
     const socketStat = await fs.stat(tmuxSocketPath);
     if (socketStat.isSocket()) {
-      const sessionName = sanitizeSessionName(slug);
-      if (sessionName && (await tmuxHasSession(tmuxSocketPath, sessionName))) {
+      if (await tmuxHasSession(tmuxSocketPath, sanitizedSlug)) {
         return {
           command: "tmux",
-          args: ["-S", tmuxSocketPath, "attach-session", "-t", sessionName],
+          args: ["-S", tmuxSocketPath, "attach-session", "-t", sanitizedSlug],
           cwd: resolvedCwd,
           mode: "tmux",
         };
@@ -170,6 +175,53 @@ async function handleConnection(
     }
   }
 
+  function wirePty(currentPty: IPty, isTmux: boolean) {
+    currentPty.onData((data: string) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(Buffer.from(data, "utf8"));
+        } catch {
+          // send failed
+        }
+      }
+    });
+
+    currentPty.onExit(({ exitCode }) => {
+      console.log(`PTY exited (code: ${exitCode})`);
+
+      // If tmux attach failed, fall back to a regular shell in the project directory
+      if (isTmux && exitCode !== 0 && ws.readyState === WebSocket.OPEN) {
+        console.log("tmux attach failed, falling back to regular shell");
+        activePtys.delete(currentPty);
+        try {
+          const fallbackPty = spawn(shell, shellArgs, {
+            name: "xterm-256color",
+            cols: 80,
+            rows: 24,
+            cwd: setup.cwd,
+            env,
+          });
+          pty = fallbackPty;
+          activePtys.add(fallbackPty);
+          console.log(
+            `Fallback PTY spawned (pid: ${fallbackPty.pid}, shell: ${shell}, cwd: ${setup.cwd})`,
+          );
+          wirePty(fallbackPty, false);
+        } catch (fallbackErr) {
+          console.error("Fallback shell spawn failed:", fallbackErr);
+          cleanupPty("fallback-failed");
+          if (ws.readyState === WebSocket.OPEN) ws.close(1011, "PTY exited");
+        }
+        return;
+      }
+
+      cleanupPty("pty-exit");
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close(1011, "PTY exited");
+      }
+    });
+  }
+
   try {
     pty = spawn(setup.command, setup.args, {
       name: "xterm-256color",
@@ -184,23 +236,7 @@ async function handleConnection(
       `PTY spawned (pid: ${pty.pid}, command: ${setup.command}, cwd: ${setup.cwd}, mode: ${setup.mode})`,
     );
 
-    pty.onData((data: string) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        try {
-          ws.send(Buffer.from(data, "utf8"));
-        } catch {
-          // send failed
-        }
-      }
-    });
-
-    pty.onExit(({ exitCode }) => {
-      console.log(`PTY exited (code: ${exitCode})`);
-      cleanupPty("pty-exit");
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.close(1011, "PTY exited");
-      }
-    });
+    wirePty(pty, setup.mode === "tmux");
 
     ws.on("message", (data: Buffer, isBinary: boolean) => {
       if (!pty) return;

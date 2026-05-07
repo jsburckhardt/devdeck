@@ -22,7 +22,7 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - The backend MUST clean up PTY processes when the WebSocket connection closes
 - Terminal resize events MUST be propagated from xterm.js to node-pty
 - The WebSocket endpoint MUST be served from the Next.js backend (API route or custom server)
-- The WebSocket upgrade request MUST include a valid bearer token as a `token` query parameter
+- The WebSocket upgrade request MUST include a valid bearer token as a `token` query parameter or via the `devdeck_token` HTTP cookie
 - The server MUST validate the token BEFORE spawning a PTY process
 - Invalid or missing tokens MUST result in WebSocket close code 4401 ("Unauthorized") with no PTY spawned
 - The frontend MUST detect close code 4401 and surface an "Unauthorized" error without reconnecting
@@ -31,11 +31,11 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - The server MUST sanitize the slug before passing it to `resolveProjectPath` or using it as a tmux session name
 - If `<resolvedCwd>/.devcontainer/.tmux-shared` exists, the server SHOULD spawn `tmux -S <socketPath> attach-session -t <sanitizedSlug>` instead of a login shell
 - If tmux attach fails (session not found or tmux not installed), the server MUST fall back to a regular shell in the project directory
-- If no slug is provided, the server MUST fall back to `os.homedir()` as CWD
+- If no slug is provided, the server MUST fall back to the configured default CWD (`DEVDECK_WORKSPACE_ROOT`, `options.cwd`, or `os.homedir()`)
 
 ### Interfaces
-- **WebSocket endpoint:** `/api/terminal?token=<bearer>&slug=<project-slug>` — accepts WebSocket upgrade requests with valid token; `slug` is optional and selects per-project CWD and tmux session
-- **Token handshake:** On upgrade, server extracts `token` from query string, validates via `crypto.timingSafeEqual`, rejects with close code 4401 if invalid
+- **WebSocket endpoint:** `/api/terminal?token=<bearer>&slug=<project-slug>` — accepts WebSocket upgrade requests with valid token (via query param or cookie); `slug` is optional and selects per-project CWD and tmux session
+- **Token handshake:** On upgrade, server extracts `token` from query string or `devdeck_token` cookie, validates via `crypto.timingSafeEqual`, rejects with close code 4401 if invalid
 - **Frontend hook:** `useTerminal(ref)` — manages xterm.js instance, WebSocket connection, token injection, and addon lifecycle
 - **Message format:** Raw binary data (ArrayBuffer) for terminal I/O; JSON for control messages (resize, ping)
 
