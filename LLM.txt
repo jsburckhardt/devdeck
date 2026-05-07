@@ -45,8 +45,20 @@ src/server/start-dev.mts                                       — Dev startup s
 src/server/terminal-server.mts                                 — WebSocket terminal server with token auth, login shell, $HOME cwd
 src/hooks/use-terminal.ts                                      — React hook for terminal WebSocket connection with 4401 handling
 src/components/terminal-panel.tsx                              — Terminal panel UI with auth error state
+src/components/diff-view.tsx                                   — Diff view component: renders unified diff with colored lines and dual line numbers
+src/lib/diff-parser.ts                                         — Unified diff parser utility: converts git diff output to structured DiffHunk[] data
+src/app/api/files/diff/route.ts                                — GET /api/files/diff endpoint: runs git diff server-side for a project file
 project/architecture/ADR/ADR-0003-project-registry-persistence.md — Project registry persistence decision
 project/architecture/ADR/ADR-0004-token-authentication.md      — Token-based authentication decision
 project/architecture/core-components/CORE-COMPONENT-0007-shell-layout.md — Shell layout core-component
 e2e/terminal.spec.ts                                           — Playwright E2E tests for terminal with token auth
 playwright.config.ts                                           — Playwright configuration (ports, token env)
+src/components/diff-view.tsx                                   — Diff view component for inline unified diff rendering
+src/components/file-viewer.tsx                                 — File viewer with markdown preview, raw toggle, diff tabs, edit mode
+src/lib/diff-parser.ts                                         — Unified diff parser utility (parseDiff)
+src/lib/file-utils.ts                                          — Language detection and binary file identification
+src/lib/types.ts                                               — Shared TypeScript types (FileContent, DiffHunk, DiffLine, etc.)
+src/lib/workspace-context.tsx                                  — Workspace state provider (project, file tree, selection)
+src/app/api/files/content/route.ts                             — GET/PUT /api/files/content — read and write file content
+src/app/api/files/diff/route.ts                                — GET /api/files/diff — git diff for a single file
+src/app/api/files/route.ts                                     — GET /api/files — file tree with git status

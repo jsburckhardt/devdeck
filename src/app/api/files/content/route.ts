@@ -39,6 +39,7 @@ export async function GET(request: NextRequest) {
         isBinary: true,
         path: filePath,
         name: filename,
+        mtime: stat.mtimeMs,
       };
       return NextResponse.json(result, { headers: CACHE_HEADERS });
     }
@@ -51,6 +52,7 @@ export async function GET(request: NextRequest) {
         isBinary: false,
         path: filePath,
         name: filename,
+        mtime: stat.mtimeMs,
       };
       return NextResponse.json(result, { headers: CACHE_HEADERS });
     }
@@ -63,11 +65,79 @@ export async function GET(request: NextRequest) {
       isBinary: false,
       path: filePath,
       name: filename,
+      mtime: stat.mtimeMs,
     };
     return NextResponse.json(result, { headers: CACHE_HEADERS });
   } catch (error) {
     return NextResponse.json(
       { error: "Failed to read file", details: String(error) },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  let body: { slug?: string; path?: string; content?: string; mtime?: number };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const { slug, path: filePath, content, mtime } = body;
+
+  if (!slug || !filePath || content === undefined || content === null) {
+    return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+  }
+
+  const root = await resolveProjectPath(slug);
+  const fullPath = path.resolve(root, filePath);
+
+  const relative = path.relative(root, fullPath);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    return NextResponse.json({ error: "Invalid path" }, { status: 403 });
+  }
+
+  const filename = path.basename(fullPath);
+  if (isBinaryFile(filename)) {
+    return NextResponse.json({ error: "Cannot edit binary files" }, { status: 403 });
+  }
+
+  const contentStr = String(content);
+  if (Buffer.byteLength(contentStr, "utf-8") > MAX_FILE_SIZE) {
+    return NextResponse.json({ error: "Content too large" }, { status: 413 });
+  }
+
+  try {
+    const stat = await fs.stat(fullPath);
+
+    // Optimistic concurrency: reject if file was modified since load
+    if (mtime !== undefined && Math.abs(stat.mtimeMs - mtime) > 1000) {
+      return NextResponse.json(
+        { error: "File was modified externally", code: "CONFLICT" },
+        { status: 409 },
+      );
+    }
+
+    // Atomic write: temp file + rename
+    const tmpPath = fullPath + ".tmp." + Date.now();
+    await fs.writeFile(tmpPath, contentStr, "utf-8");
+    await fs.rename(tmpPath, fullPath);
+
+    const newStat = await fs.stat(fullPath);
+    const result: FileContent = {
+      content: contentStr,
+      language: getLanguageFromFilename(filename),
+      size: newStat.size,
+      isBinary: false,
+      path: filePath,
+      name: filename,
+      mtime: newStat.mtimeMs,
+    };
+    return NextResponse.json(result);
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Failed to write file", details: String(error) },
       { status: 500 },
     );
   }

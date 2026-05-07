@@ -39,4 +39,19 @@ export interface FileContent {
   isBinary: boolean;
   path: string;
   name: string;
+  mtime?: number;
+}
+
+export interface DiffLine {
+  type: "added" | "removed" | "context";
+  content: string;
+  oldLineNumber?: number;
+  newLineNumber?: number;
+}
+
+export interface DiffHunk {
+  header: string;
+  lines: DiffLine[];
+  oldStart: number;
+  newStart: number;
 }
