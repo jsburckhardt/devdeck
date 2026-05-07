@@ -41,6 +41,54 @@ vi.mock("node-pty", () => ({
   }),
 }));
 
+// --- Mocks for slug/tmux support ---
+let mockResolvedPath = "/workspaces/test-project";
+let resolvePathShouldThrow = false;
+
+vi.mock("../lib/registry.js", () => ({
+  resolveProjectPath: vi.fn(async () => {
+    if (resolvePathShouldThrow) throw new Error("Registry lookup failed");
+    return mockResolvedPath;
+  }),
+}));
+
+let fsStatResults: Record<string, { isDirectory: boolean; isSocket: boolean }> = {};
+
+vi.mock("fs/promises", () => ({
+  default: {
+    stat: vi.fn(async (p: string) => {
+      const result = fsStatResults[p];
+      if (!result) {
+        const err = new Error(
+          `ENOENT: no such file or directory, stat '${p}'`,
+        ) as NodeJS.ErrnoException;
+        err.code = "ENOENT";
+        throw err;
+      }
+      return {
+        isDirectory: () => result.isDirectory,
+        isSocket: () => result.isSocket,
+      };
+    }),
+  },
+}));
+
+let tmuxHasSessionResult = false;
+
+vi.mock("child_process", async () => {
+  const actual = await vi.importActual<typeof import("child_process")>("child_process");
+  return {
+    ...actual,
+    execFile: vi.fn((_cmd: string, _args: string[], cb: (err: Error | null) => void) => {
+      if (tmuxHasSessionResult) {
+        cb(null);
+      } else {
+        cb(new Error("session not found"));
+      }
+    }),
+  };
+});
+
 // --- Helpers ---
 const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
 
@@ -66,6 +114,14 @@ function connectClient(port: number, token?: string): Promise<WebSocket> {
       ? `ws://127.0.0.1:${port}?token=${encodeURIComponent(token)}`
       : `ws://127.0.0.1:${port}`;
     const client = new WebSocket(url);
+    client.on("open", () => resolve(client));
+    client.on("error", reject);
+  });
+}
+
+function connectClientWithSlug(port: number, slug: string): Promise<WebSocket> {
+  return new Promise((resolve, reject) => {
+    const client = new WebSocket(`ws://127.0.0.1:${port}?slug=${encodeURIComponent(slug)}`);
     client.on("open", () => resolve(client));
     client.on("error", reject);
   });
@@ -100,6 +156,11 @@ describe("terminal-server", () => {
     spawnShouldThrow = false;
     clients.length = 0;
     delete process.env.DEVDECK_TOKEN;
+    // Reset slug/tmux mock state
+    mockResolvedPath = "/workspaces/test-project";
+    resolvePathShouldThrow = false;
+    fsStatResults = {};
+    tmuxHasSessionResult = false;
   });
 
   afterEach(async () => {
@@ -361,5 +422,171 @@ describe("terminal-server", () => {
       { cwd: string },
     ];
     expect(lastCall[2].cwd).toBe("/tmp");
+  });
+
+  // --- Slug and tmux tests ---
+
+  it("T16: slug in URL resolves project CWD", async () => {
+    mockResolvedPath = "/workspaces/my-project";
+    fsStatResults["/workspaces/my-project"] = { isDirectory: true, isSocket: false };
+
+    const srv = await createServer();
+    handle = srv.handle;
+
+    const client = await connectClientWithSlug(srv.port, "my-project");
+    clients.push(client);
+    await tick();
+
+    const nodePty = await import("node-pty");
+    const spawnFn = nodePty.spawn as ReturnType<typeof vi.fn>;
+    const lastCall = spawnFn.mock.calls[spawnFn.mock.calls.length - 1] as [
+      string,
+      string[],
+      { cwd: string },
+    ];
+    expect(lastCall[2].cwd).toBe("/workspaces/my-project");
+
+    const registry = await import("../lib/registry.js");
+    expect(registry.resolveProjectPath).toHaveBeenCalledWith("my-project");
+  });
+
+  it("T17: tmux shared session detected and spawned", async () => {
+    mockResolvedPath = "/workspaces/tmux-proj";
+    fsStatResults["/workspaces/tmux-proj"] = { isDirectory: true, isSocket: false };
+    fsStatResults["/workspaces/tmux-proj/.devcontainer/.tmux-shared"] = {
+      isDirectory: false,
+      isSocket: true,
+    };
+    tmuxHasSessionResult = true;
+
+    const srv = await createServer();
+    handle = srv.handle;
+
+    const client = await connectClientWithSlug(srv.port, "tmux-proj");
+    clients.push(client);
+    await tick();
+
+    const nodePty = await import("node-pty");
+    const spawnFn = nodePty.spawn as ReturnType<typeof vi.fn>;
+    const lastCall = spawnFn.mock.calls[spawnFn.mock.calls.length - 1] as [
+      string,
+      string[],
+      { cwd: string },
+    ];
+    expect(lastCall[0]).toBe("tmux");
+    expect(lastCall[1]).toContain("-S");
+    expect(lastCall[1]).toContain("/workspaces/tmux-proj/.devcontainer/.tmux-shared");
+    expect(lastCall[1]).toContain("attach-session");
+    expect(lastCall[1]).toContain("-t");
+    expect(lastCall[1]).toContain("tmux-proj");
+    expect(lastCall[2].cwd).toBe("/workspaces/tmux-proj");
+  });
+
+  it("T18: no slug falls back to homedir", async () => {
+    const srv = await createServer();
+    handle = srv.handle;
+
+    const registry = await import("../lib/registry.js");
+    const resolveProjectPathFn = registry.resolveProjectPath as ReturnType<typeof vi.fn>;
+    const callsBefore = resolveProjectPathFn.mock.calls.length;
+
+    const client = await connectClient(srv.port);
+    clients.push(client);
+    await tick();
+
+    const nodePty = await import("node-pty");
+    const spawnFn = nodePty.spawn as ReturnType<typeof vi.fn>;
+    const lastCall = spawnFn.mock.calls[spawnFn.mock.calls.length - 1] as [
+      string,
+      string[],
+      { cwd: string },
+    ];
+    const { homedir } = await import("os");
+    expect(lastCall[2].cwd).toBe(homedir());
+
+    // No new calls to resolveProjectPath since this connection had no slug
+    expect(resolveProjectPathFn.mock.calls.length).toBe(callsBefore);
+  });
+
+  it("T19: resolved path not existing falls back to default CWD", async () => {
+    mockResolvedPath = "/workspaces/missing-project";
+    // No fsStatResults entry → fs.stat will throw ENOENT
+
+    const srv = await createServer();
+    handle = srv.handle;
+
+    const client = await connectClientWithSlug(srv.port, "missing-project");
+    clients.push(client);
+    await tick();
+
+    const nodePty = await import("node-pty");
+    const spawnFn = nodePty.spawn as ReturnType<typeof vi.fn>;
+    const lastCall = spawnFn.mock.calls[spawnFn.mock.calls.length - 1] as [
+      string,
+      string[],
+      { cwd: string },
+    ];
+    const { homedir } = await import("os");
+    expect(lastCall[2].cwd).toBe(homedir());
+    expect(client.readyState).toBe(WebSocket.OPEN);
+  });
+
+  it("T20: tmux session not found falls back to regular shell", async () => {
+    mockResolvedPath = "/workspaces/no-session";
+    fsStatResults["/workspaces/no-session"] = { isDirectory: true, isSocket: false };
+    fsStatResults["/workspaces/no-session/.devcontainer/.tmux-shared"] = {
+      isDirectory: false,
+      isSocket: true,
+    };
+    tmuxHasSessionResult = false; // tmux has-session returns failure
+
+    const srv = await createServer();
+    handle = srv.handle;
+
+    const client = await connectClientWithSlug(srv.port, "no-session");
+    clients.push(client);
+    await tick();
+
+    const nodePty = await import("node-pty");
+    const spawnFn = nodePty.spawn as ReturnType<typeof vi.fn>;
+    const lastCall = spawnFn.mock.calls[spawnFn.mock.calls.length - 1] as [
+      string,
+      string[],
+      { cwd: string },
+    ];
+    // Should fall back to shell, not tmux
+    expect(lastCall[0]).not.toBe("tmux");
+    expect(lastCall[2].cwd).toBe("/workspaces/no-session");
+  });
+
+  it("T21: tmux session name is sanitized", async () => {
+    const dirtySlug = "my project!@#$%^&*()";
+    mockResolvedPath = "/workspaces/myproject";
+    fsStatResults["/workspaces/myproject"] = { isDirectory: true, isSocket: false };
+    fsStatResults["/workspaces/myproject/.devcontainer/.tmux-shared"] = {
+      isDirectory: false,
+      isSocket: true,
+    };
+    tmuxHasSessionResult = true;
+
+    const srv = await createServer();
+    handle = srv.handle;
+
+    const client = await connectClientWithSlug(srv.port, dirtySlug);
+    clients.push(client);
+    await tick();
+
+    const nodePty = await import("node-pty");
+    const spawnFn = nodePty.spawn as ReturnType<typeof vi.fn>;
+    const lastCall = spawnFn.mock.calls[spawnFn.mock.calls.length - 1] as [
+      string,
+      string[],
+      { cwd: string },
+    ];
+    expect(lastCall[0]).toBe("tmux");
+    // The session name should only contain [a-zA-Z0-9_-]
+    const sessionNameArg = lastCall[1][lastCall[1].indexOf("-t") + 1];
+    expect(sessionNameArg).toBe("myproject");
+    expect(sessionNameArg).toMatch(/^[a-zA-Z0-9_-]+$/);
   });
 });
