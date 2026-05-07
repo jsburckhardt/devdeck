@@ -57,6 +57,8 @@
     "HOST_PROJECT_PATH": "${localWorkspaceFolder}"
   },
   "mounts": [
-    "source=${env:HOME}${env:USERPROFILE}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
+    "source=${env:HOME}${env:USERPROFILE}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached",
+    // path to load my local projects from ~/repos/github/jsburckhardt into the container at /projects/jsburckhardt
+    "source=${env:HOME}${env:USERPROFILE}/repos/github/jsburckhardt,target=/projects/jsburckhardt,type=bind,consistency=cached"
   ]
 }

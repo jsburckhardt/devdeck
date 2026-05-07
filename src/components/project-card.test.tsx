@@ -26,23 +26,29 @@ describe("ProjectCard", () => {
     expect(screen.getByText("A test project description")).toBeInTheDocument();
   });
 
-  it("calls onEdit when edit button clicked (T21)", async () => {
+  it("calls onEdit when edit button clicked via dropdown (T21)", async () => {
     const onEdit = vi.fn();
     const user = userEvent.setup();
     render(<ProjectCard project={baseProject} onEdit={onEdit} />);
 
-    const editButton = screen.getByTestId("edit-button");
+    const menuButton = screen.getByTestId("card-menu-button");
+    await user.click(menuButton);
+
+    const editButton = await screen.findByTestId("edit-button");
     await user.click(editButton);
 
     expect(onEdit).toHaveBeenCalledWith(baseProject);
   });
 
-  it("calls onRemove when remove button clicked (T21)", async () => {
+  it("calls onRemove when remove button clicked via dropdown (T21)", async () => {
     const onRemove = vi.fn();
     const user = userEvent.setup();
     render(<ProjectCard project={baseProject} onRemove={onRemove} />);
 
-    const removeButton = screen.getByTestId("remove-button");
+    const menuButton = screen.getByTestId("card-menu-button");
+    await user.click(menuButton);
+
+    const removeButton = await screen.findByTestId("remove-button");
     await user.click(removeButton);
 
     expect(onRemove).toHaveBeenCalledWith(baseProject);

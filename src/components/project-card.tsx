@@ -1,7 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Code, Folder, Clock, PencilSimple, Trash, Warning } from "@phosphor-icons/react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import {
+  Folder,
+  Clock,
+  DotsThreeVertical,
+  PencilSimple,
+  Trash,
+  Warning,
+} from "@phosphor-icons/react";
 import type { Project } from "@/lib/types";
 
 interface ProjectCardProps {
@@ -48,6 +56,7 @@ export function ProjectCard({ project, onEdit, onRemove }: ProjectCardProps) {
     : null;
 
   const isUnavailable = project.available === false;
+  const hasActions = onEdit || onRemove;
 
   return (
     <div
@@ -85,38 +94,49 @@ export function ProjectCard({ project, onEdit, onRemove }: ProjectCardProps) {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1">
-          {onEdit && (
-            <button
-              data-testid="edit-button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onEdit(project);
-              }}
-              className="rounded p-1 text-muted-foreground/60 transition-colors hover:text-foreground"
-              aria-label="Edit project"
-            >
-              <PencilSimple size={16} />
-            </button>
-          )}
-          {onRemove && (
-            <button
-              data-testid="remove-button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemove(project);
-              }}
-              className="rounded p-1 text-muted-foreground/60 transition-colors hover:text-destructive"
-              aria-label="Remove project"
-            >
-              <Trash size={16} />
-            </button>
-          )}
-          <Code
-            size={16}
-            className="text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
-          />
-        </div>
+        {hasActions && (
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button
+                data-testid="card-menu-button"
+                onClick={(e) => e.stopPropagation()}
+                className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                aria-label="Project options"
+              >
+                <DotsThreeVertical size={18} weight="bold" />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                align="end"
+                sideOffset={4}
+                className="z-50 min-w-[160px] overflow-hidden rounded-lg border border-border bg-card p-1 shadow-lg"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {onEdit && (
+                  <DropdownMenu.Item
+                    data-testid="edit-button"
+                    onSelect={() => onEdit(project)}
+                    className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground outline-none transition-colors hover:bg-muted focus:bg-muted"
+                  >
+                    <PencilSimple size={16} />
+                    Update Project
+                  </DropdownMenu.Item>
+                )}
+                {onRemove && (
+                  <DropdownMenu.Item
+                    data-testid="remove-button"
+                    onSelect={() => onRemove(project)}
+                    className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-destructive outline-none transition-colors hover:bg-destructive/10 focus:bg-destructive/10"
+                  >
+                    <Trash size={16} />
+                    Delete Project
+                  </DropdownMenu.Item>
+                )}
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+        )}
       </div>
 
       <p className="text-sm leading-relaxed text-muted-foreground line-clamp-2">
