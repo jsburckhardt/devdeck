@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
-import { resolveProjectPath } from "@/app/api/projects/route";
+import { resolveProjectPath } from "@/lib/registry";
 import { getLanguageFromFilename, isBinaryFile } from "@/lib/file-utils";
 import type { FileContent } from "@/lib/types";
 
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing 'slug' or 'path' parameter" }, { status: 400 });
   }
 
-  const root = resolveProjectPath(slug);
+  const root = await resolveProjectPath(slug);
   const fullPath = path.resolve(root, filePath);
 
   // Prevent path traversal — resolved path must remain under root
