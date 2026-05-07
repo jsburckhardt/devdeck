@@ -68,3 +68,8 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 39 | Prohibit PTY spawn before token validation succeeds | CORE-COMPONENT-0003 | 2025-07-16 |
 | 40 | Prohibit reconnection attempts on WebSocket close code 4401 | CORE-COMPONENT-0005 | 2025-07-16 |
 | 41 | Return 401 with `AUTH_REQUIRED` code for unauthenticated HTTP requests | CORE-COMPONENT-0005 | 2025-07-16 |
+| 42 | Pass project slug as `slug` query parameter on WebSocket upgrade URL | CORE-COMPONENT-0003 | 2025-07-17 |
+| 43 | Resolve per-connection PTY CWD server-side via `resolveProjectPath(slug)`; never expose path to client | CORE-COMPONENT-0003 | 2025-07-17 |
+| 44 | Detect `.devcontainer/.tmux-shared` to decide between tmux attach and fresh shell spawn | CORE-COMPONENT-0003 | 2025-07-17 |
+| 45 | Sanitize tmux session names using `[^a-zA-Z0-9_-]` replacement before passing to tmux CLI | CORE-COMPONENT-0003 | 2025-07-17 |
+| 46 | Fall back to regular shell if tmux attach fails or tmux is not installed | CORE-COMPONENT-0003 | 2025-07-17 |

@@ -26,9 +26,15 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - The server MUST validate the token BEFORE spawning a PTY process
 - Invalid or missing tokens MUST result in WebSocket close code 4401 ("Unauthorized") with no PTY spawned
 - The frontend MUST detect close code 4401 and surface an "Unauthorized" error without reconnecting
+- The client MAY pass `slug=<project-slug>` as a query parameter on the WebSocket upgrade URL to request a project-specific terminal session
+- The server MUST resolve the CWD server-side using `resolveProjectPath(slug)` — the filesystem path MUST NOT be exposed to the client in any WebSocket message
+- The server MUST sanitize the slug before passing it to `resolveProjectPath` or using it as a tmux session name
+- If `<resolvedCwd>/.devcontainer/.tmux-shared` exists, the server SHOULD spawn `tmux -S <socketPath> attach-session -t <sanitizedSlug>` instead of a login shell
+- If tmux attach fails (session not found or tmux not installed), the server MUST fall back to a regular shell in the project directory
+- If no slug is provided, the server MUST fall back to `os.homedir()` as CWD
 
 ### Interfaces
-- **WebSocket endpoint:** `/api/terminal?token=<bearer>` — accepts WebSocket upgrade requests with valid token
+- **WebSocket endpoint:** `/api/terminal?token=<bearer>&slug=<project-slug>` — accepts WebSocket upgrade requests with valid token; `slug` is optional and selects per-project CWD and tmux session
 - **Token handshake:** On upgrade, server extracts `token` from query string, validates via `crypto.timingSafeEqual`, rejects with close code 4401 if invalid
 - **Frontend hook:** `useTerminal(ref)` — manages xterm.js instance, WebSocket connection, token injection, and addon lifecycle
 - **Message format:** Raw binary data (ArrayBuffer) for terminal I/O; JSON for control messages (resize, ping)
