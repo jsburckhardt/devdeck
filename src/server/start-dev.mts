@@ -6,7 +6,7 @@ const token = process.env.DEVDECK_TOKEN?.trim() || randomUUID();
 const env = { ...process.env, DEVDECK_TOKEN: token };
 
 const port = process.env.PORT ?? "8070";
-const host = process.env.HOSTNAME ?? "0.0.0.0";
+const host = process.env.DEVDECK_HOST ?? "0.0.0.0";
 
 console.log("");
 console.log(`🔑 Access token: ${token}`);
