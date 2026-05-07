@@ -7,6 +7,7 @@ This file is the single registry of all architectural decisions and core-compone
 | ID | Title | Status | Date |
 |----|-------|--------|------|
 | ADR-0002 | Next.js + xterm.js + node-pty Tech Stack | Accepted | 2026-05-06 |
+| ADR-0003 | Project Registry & Persistence Strategy | Accepted | 2025-07-15 |
 
 ## Core-Components
 
@@ -50,3 +51,10 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 23 | Use `src/server/terminal-server.mts` as the WebSocket server file path | CORE-COMPONENT-0003 | 2026-05-06 |
 | 24 | Require server to send PTY output as binary WebSocket frames via `Buffer.from(data, 'utf8')` | CORE-COMPONENT-0003 | 2026-05-06 |
 | 25 | Require frontend to set `ws.binaryType = "arraybuffer"` for binary terminal I/O | CORE-COMPONENT-0003 | 2026-05-06 |
+| 26 | Use a JSON file (`registry.json`) for project registry persistence | ADR-0003 | 2025-07-15 |
+| 27 | Store registry at `$DEVDECK_DATA_DIR/registry.json`, default `~/.config/devdeck/` | ADR-0003 | 2025-07-15 |
+| 28 | Use write-to-temp + `fs.rename` for atomic registry writes | ADR-0003 | 2025-07-15 |
+| 29 | Move `resolveProjectPath` to `src/lib/registry.ts` as an async function | ADR-0003 | 2025-07-15 |
+| 30 | Merge auto-discovered and registry projects in `GET /api/projects`, hiding entries with `hidden: true` | ADR-0003 | 2025-07-15 |
+| 31 | Reject manual project adds with duplicate slugs via `409 Conflict` | ADR-0003 | 2025-07-15 |
+| 32 | Prohibit slug changes after project creation | ADR-0003 | 2025-07-15 |
