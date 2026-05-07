@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { resolveProjectPath } from "@/app/api/projects/route";
+import { resolveProjectPath } from "@/lib/registry";
 import type { FileNode } from "@/lib/types";
 
 const execFileAsync = promisify(execFile);
@@ -134,7 +134,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing 'slug' parameter" }, { status: 400 });
   }
 
-  const root = resolveProjectPath(slug);
+  const root = await resolveProjectPath(slug);
 
   try {
     await fs.access(root);
