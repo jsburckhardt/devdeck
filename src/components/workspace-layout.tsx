@@ -173,7 +173,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
             <Separator className="w-1 bg-border transition-colors hover:bg-primary/40" />
             <Panel defaultSize={showFileViewer ? remainingSize * 0.4 : remainingSize} minSize={15}>
               <ErrorBoundary>
-                <TerminalPanel />
+                <TerminalPanel slug={project.slug} />
               </ErrorBoundary>
             </Panel>
           </>
