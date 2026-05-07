@@ -4,6 +4,23 @@ export interface Project {
   description: string;
   language?: string;
   lastModified?: string;
+  path: string;
+  source: "auto" | "manual";
+  available?: boolean;
+}
+
+export interface ProjectRegistryEntry {
+  slug: string;
+  path: string;
+  source: "auto" | "manual";
+  hidden?: boolean;
+  name?: string;
+  description?: string;
+}
+
+export interface ProjectRegistry {
+  version: 1;
+  projects: ProjectRegistryEntry[];
 }
 
 export interface FileNode {
