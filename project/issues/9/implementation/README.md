@@ -52,13 +52,16 @@ Implemented full manual project tracking functionality allowing users to add, ed
 - All dialogs use `sonner` toast for feedback
 - Loading and error states handled
 
-### Task 7: Update `ProjectCard` with edit and remove actions
+### Task 7: Update `ProjectCard` with dropdown menu
 - **Status:** Complete
 - **Files Changed:** `src/components/project-card.tsx`, `src/components/project-card.test.tsx` (new)
 - **Tests Passed:** 5
-- Added `onEdit`/`onRemove` callback props with hover-visible icon buttons
+- Replaced separate edit/remove icon buttons with a single ⋮ three-dot menu button
+- Menu opens a Radix dropdown with "Update Project" and "Delete Project" items
+- `onEdit`/`onRemove` callback props trigger via dropdown `onSelect`
 - Unavailable projects show warning icon and muted styling
 - Manual projects show "manual" badge
+- Installed `@radix-ui/react-dropdown-menu` for accessible dropdown primitives
 
 ### Task 8: Update landing page
 - **Status:** Complete
@@ -84,3 +87,4 @@ Implemented full manual project tracking functionality allowing users to add, ed
 ## New Dependencies
 
 - `@radix-ui/react-dialog` — accessible modal dialog primitives
+- `@radix-ui/react-dropdown-menu` — accessible dropdown menu for project card actions
