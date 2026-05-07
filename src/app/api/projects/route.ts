@@ -1,44 +1,14 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
 import type { Project } from "@/lib/types";
+import { loadRegistry, saveRegistry, detectLanguage, readPackageJson } from "@/lib/registry";
 
 const PROJECTS_DIR = process.env.DEVDECK_PROJECTS_DIR ?? "/workspaces";
 
-export function resolveProjectPath(slug: string): string {
-  const sanitized = slug.replace(/[^a-zA-Z0-9_-]/g, "");
-  return path.resolve(PROJECTS_DIR, sanitized);
-}
-
-async function detectLanguage(projectPath: string): Promise<string> {
-  try {
-    const files = await fs.readdir(projectPath);
-    if (files.includes("package.json")) return "TypeScript";
-    if (files.includes("Cargo.toml")) return "Rust";
-    if (files.includes("go.mod")) return "Go";
-    if (files.includes("requirements.txt") || files.includes("pyproject.toml")) return "Python";
-    if (files.includes("Gemfile")) return "Ruby";
-    if (files.includes("pom.xml") || files.includes("build.gradle")) return "Java";
-    return "Unknown";
-  } catch {
-    return "Unknown";
-  }
-}
-
-async function readPackageJson(
-  projectPath: string,
-): Promise<{ name?: string; description?: string }> {
-  try {
-    const content = await fs.readFile(path.join(projectPath, "package.json"), "utf-8");
-    const pkg = JSON.parse(content);
-    return { name: pkg.name, description: pkg.description };
-  } catch {
-    return {};
-  }
-}
-
 export async function GET() {
   try {
+    const registry = await loadRegistry();
     const entries = await fs.readdir(PROJECTS_DIR, { withFileTypes: true });
     const projects: Project[] = [];
 
@@ -47,6 +17,10 @@ export async function GET() {
       if (entry.name.startsWith(".")) continue;
 
       const projectPath = path.join(PROJECTS_DIR, entry.name);
+
+      // Check if hidden in registry
+      const regEntry = registry.projects.find((p) => p.slug === entry.name);
+      if (regEntry?.hidden) continue;
 
       try {
         const stat = await fs.stat(projectPath);
@@ -66,14 +40,55 @@ export async function GET() {
 
         projects.push({
           slug: entry.name,
-          name: pkg.name ?? entry.name,
-          description: pkg.description ?? `A ${language} project`,
+          name: regEntry?.name ?? pkg.name ?? entry.name,
+          description: regEntry?.description ?? pkg.description ?? `A ${language} project`,
           language,
           lastModified: stat.mtime.toISOString(),
+          path: projectPath,
+          source: "auto",
         });
       } catch {
         continue;
       }
+    }
+
+    // Add manual registry entries
+    for (const regEntry of registry.projects) {
+      if (regEntry.source !== "manual") continue;
+      if (regEntry.hidden) continue;
+
+      let available = true;
+      try {
+        await fs.access(regEntry.path);
+      } catch {
+        available = false;
+      }
+
+      let language = "Unknown";
+      let pkg: { name?: string; description?: string } = {};
+      let lastModified: string | undefined;
+
+      if (available) {
+        try {
+          language = await detectLanguage(regEntry.path);
+          pkg = await readPackageJson(regEntry.path);
+          const stat = await fs.stat(regEntry.path);
+          lastModified = stat.mtime.toISOString();
+        } catch {
+          // ignore metadata errors
+        }
+      }
+
+      projects.push({
+        slug: regEntry.slug,
+        name: regEntry.name ?? pkg.name ?? regEntry.slug,
+        description: regEntry.description ?? pkg.description ?? `A ${language} project`,
+        language,
+        lastModified,
+        path: regEntry.path,
+        source: "manual",
+        available,
+      });
     }
 
     projects.sort((a, b) => {
@@ -88,6 +103,101 @@ export async function GET() {
   } catch (error) {
     return NextResponse.json(
       { error: "Failed to list projects", details: String(error) },
+      { status: 500 },
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const projectPath = body.path;
+
+    if (!projectPath || typeof projectPath !== "string" || projectPath.trim() === "") {
+      return NextResponse.json({ error: "Missing or empty 'path' field" }, { status: 400 });
+    }
+
+    // Validate path exists and is a directory
+    try {
+      const stat = await fs.stat(projectPath);
+      if (!stat.isDirectory()) {
+        return NextResponse.json({ error: "Path is not a directory" }, { status: 400 });
+      }
+    } catch {
+      return NextResponse.json({ error: "Path does not exist" }, { status: 400 });
+    }
+
+    // Derive slug from basename, sanitized
+    const slug = path.basename(projectPath).replace(/[^a-zA-Z0-9_-]/g, "");
+    if (!slug) {
+      return NextResponse.json({ error: "Cannot derive a valid slug from path" }, { status: 400 });
+    }
+
+    // Check for slug collision
+    const registry = await loadRegistry();
+    const existingEntry = registry.projects.find((p) => p.slug === slug);
+    if (existingEntry) {
+      return NextResponse.json(
+        { error: `Project with slug '${slug}' already exists` },
+        { status: 409 },
+      );
+    }
+
+    // Check auto-discovered projects for collision
+    try {
+      const entries = await fs.readdir(PROJECTS_DIR, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory() && entry.name === slug) {
+          return NextResponse.json(
+            { error: `Project with slug '${slug}' already exists` },
+            { status: 409 },
+          );
+        }
+      }
+    } catch {
+      // If we can't read PROJECTS_DIR, skip collision check for auto-discovered
+    }
+
+    // Auto-populate metadata
+    const pkg = await readPackageJson(projectPath);
+    const language = await detectLanguage(projectPath);
+
+    const name = body.name ?? pkg.name ?? slug;
+    const description = body.description ?? pkg.description ?? `A ${language} project`;
+
+    let lastModified: string | undefined;
+    try {
+      const stat = await fs.stat(projectPath);
+      lastModified = stat.mtime.toISOString();
+    } catch {
+      // ignore
+    }
+
+    // Save to registry
+    registry.projects.push({
+      slug,
+      path: projectPath,
+      source: "manual",
+      name: body.name ?? undefined,
+      description: body.description ?? undefined,
+    });
+    await saveRegistry(registry);
+
+    const project: Project = {
+      slug,
+      name,
+      description,
+      language,
+      lastModified,
+      path: projectPath,
+      source: "manual",
+      available: true,
+    };
+
+    return NextResponse.json(project, { status: 201 });
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Failed to add project", details: String(error) },
       { status: 500 },
     );
   }
