@@ -93,7 +93,7 @@ export function ProjectCard({ project, onEdit, onRemove }: ProjectCardProps) {
                 e.stopPropagation();
                 onEdit(project);
               }}
-              className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+              className="rounded p-1 text-muted-foreground/60 transition-colors hover:text-foreground"
               aria-label="Edit project"
             >
               <PencilSimple size={16} />
@@ -106,7 +106,7 @@ export function ProjectCard({ project, onEdit, onRemove }: ProjectCardProps) {
                 e.stopPropagation();
                 onRemove(project);
               }}
-              className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+              className="rounded p-1 text-muted-foreground/60 transition-colors hover:text-destructive"
               aria-label="Remove project"
             >
               <Trash size={16} />
