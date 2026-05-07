@@ -53,7 +53,7 @@ vi.stubGlobal(
   },
 );
 
-// Mock WebSocket
+// Mock WebSocket with CloseEvent support
 let wsInstances: MockWS[] = [];
 
 class MockWS {
@@ -63,7 +63,7 @@ class MockWS {
   readyState = MockWS.OPEN;
   binaryType = "";
   onopen: (() => void) | null = null;
-  onclose: (() => void) | null = null;
+  onclose: ((event: { code: number; reason: string }) => void) | null = null;
   onmessage: ((e: { data: unknown }) => void) | null = null;
   onerror: (() => void) | null = null;
   send = vi.fn();
@@ -72,6 +72,11 @@ class MockWS {
   });
   constructor(public url: string) {
     wsInstances.push(this);
+  }
+  /** Simulate a close event with optional code */
+  _triggerClose(code = 1000, reason = "") {
+    this.readyState = MockWS.CLOSED;
+    this.onclose?.({ code, reason });
   }
 }
 vi.stubGlobal("WebSocket", MockWS);
@@ -213,9 +218,9 @@ describe("useTerminal", () => {
       });
       expect(result.current.status).toBe("connected");
 
-      // Unexpected close
+      // Unexpected close (normal code, not 4401)
       await act(async () => {
-        ws1.onclose?.();
+        ws1._triggerClose(1006, "");
       });
       expect(result.current.status).toBe("reconnecting");
       expect(result.current.reconnectAttempt).toBe(1);
@@ -247,7 +252,7 @@ describe("useTerminal", () => {
 
       // Close unexpectedly (attempt 1)
       await act(async () => {
-        ws.onclose?.();
+        ws._triggerClose(1006, "");
       });
       expect(result.current.status).toBe("reconnecting");
       expect(result.current.reconnectAttempt).toBe(1);
@@ -258,7 +263,7 @@ describe("useTerminal", () => {
       });
       ws = getLatestWs();
       await act(async () => {
-        ws.onclose?.(); // Fails immediately (attempt 2)
+        ws._triggerClose(1006, "");
       });
       expect(result.current.status).toBe("reconnecting");
       expect(result.current.reconnectAttempt).toBe(2);
@@ -269,7 +274,7 @@ describe("useTerminal", () => {
       });
       ws = getLatestWs();
       await act(async () => {
-        ws.onclose?.(); // Fails immediately (attempt 3)
+        ws._triggerClose(1006, "");
       });
       expect(result.current.status).toBe("reconnecting");
       expect(result.current.reconnectAttempt).toBe(3);
@@ -280,7 +285,7 @@ describe("useTerminal", () => {
       });
       ws = getLatestWs();
       await act(async () => {
-        ws.onclose?.(); // Fails immediately (attempt 4 > MAX)
+        ws._triggerClose(1006, "");
       });
 
       expect(result.current.status).toBe("failed");
@@ -306,7 +311,7 @@ describe("useTerminal", () => {
 
       // Drive to failed: close without opening reconnect attempts
       await act(async () => {
-        ws.onclose?.();
+        ws._triggerClose(1006, "");
       });
 
       for (let i = 0; i < 3; i++) {
@@ -316,7 +321,7 @@ describe("useTerminal", () => {
         });
         ws = getLatestWs();
         await act(async () => {
-          ws.onclose?.();
+          ws._triggerClose(1006, "");
         });
       }
 
@@ -350,8 +355,6 @@ describe("useTerminal", () => {
 
     expect(fakeTerminal.dispose).toHaveBeenCalled();
     expect(ws.close).toHaveBeenCalled();
-    // Note: ResizeObserver is only set up when containerRef has a DOM element,
-    // which doesn't happen in renderHook tests (no actual DOM attachment)
   });
 
   it("T18: intentional close does not reconnect", async () => {
@@ -377,6 +380,42 @@ describe("useTerminal", () => {
         await vi.advanceTimersByTimeAsync(30000);
       });
 
+      expect(wsInstances.length).toBe(countBefore);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("T19: 4401 close code sets unauthorized error without reconnect", async () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(50);
+      });
+
+      const ws = getLatestWs();
+      expect(ws).toBeDefined();
+
+      await act(async () => {
+        ws.onopen?.();
+      });
+      expect(result.current.status).toBe("connected");
+
+      // Close with 4401 (unauthorized)
+      const countBefore = wsInstances.length;
+      await act(async () => {
+        ws._triggerClose(4401, "Unauthorized");
+      });
+
+      expect(result.current.status).toBe("failed");
+      expect(result.current.error).toContain("Unauthorized");
+
+      // Should NOT attempt reconnection
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10000);
+      });
       expect(wsInstances.length).toBe(countBefore);
     } finally {
       vi.useRealTimers();

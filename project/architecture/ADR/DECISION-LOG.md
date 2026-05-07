@@ -8,15 +8,16 @@ This file is the single registry of all architectural decisions and core-compone
 |----|-------|--------|------|
 | ADR-0002 | Next.js + xterm.js + node-pty Tech Stack | Accepted | 2026-05-06 |
 | ADR-0003 | Project Registry & Persistence Strategy | Accepted | 2025-07-15 |
+| ADR-0004 | Token-Based Authentication | Accepted | 2025-07-16 |
 
 ## Core-Components
 
 | ID | Title | Status | Date |
 |----|-------|--------|------|
 | CORE-COMPONENT-0002 | Commit Standards | Adopted | 2026-05-05 |
-| CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2026-05-06 |
+| CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2025-07-16 |
 | CORE-COMPONENT-0004 | Theming | Adopted | 2026-05-06 |
-| CORE-COMPONENT-0005 | Error Handling | Adopted | 2026-05-06 |
+| CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2025-07-16 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
 | CORE-COMPONENT-0007 | Shell Layout | Adopted | 2026-05-07 |
 
@@ -58,3 +59,12 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 30 | Merge auto-discovered and registry projects in `GET /api/projects`, hiding entries with `hidden: true` | ADR-0003 | 2025-07-15 |
 | 31 | Reject manual project adds with duplicate slugs via `409 Conflict` | ADR-0003 | 2025-07-15 |
 | 32 | Prohibit slug changes after project creation | ADR-0003 | 2025-07-15 |
+| 33 | Use single-tenant bearer token (`DEVDECK_TOKEN` or auto-generated UUID) for authentication | ADR-0004 | 2025-07-16 |
+| 34 | Validate token on WebSocket upgrade before spawning PTY process | ADR-0004 | 2025-07-16 |
+| 35 | Use `crypto.timingSafeEqual` for all token comparisons | ADR-0004 | 2025-07-16 |
+| 36 | Reject unauthenticated WebSocket connections with close code 4401 | ADR-0004 | 2025-07-16 |
+| 37 | Protect HTTP routes via Next.js middleware with cookie-based session after initial token URL | ADR-0004 | 2025-07-16 |
+| 38 | Require `token` query parameter on WebSocket upgrade requests | CORE-COMPONENT-0003 | 2025-07-16 |
+| 39 | Prohibit PTY spawn before token validation succeeds | CORE-COMPONENT-0003 | 2025-07-16 |
+| 40 | Prohibit reconnection attempts on WebSocket close code 4401 | CORE-COMPONENT-0005 | 2025-07-16 |
+| 41 | Return 401 with `AUTH_REQUIRED` code for unauthenticated HTTP requests | CORE-COMPONENT-0005 | 2025-07-16 |

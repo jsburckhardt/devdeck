@@ -24,6 +24,7 @@ export interface UseTerminalReturn {
 }
 
 const MAX_RECONNECT_ATTEMPTS = 3;
+const WS_CLOSE_UNAUTHORIZED = 4401;
 
 const CATPPUCCIN_THEME = {
   background: "#1e1e2e",
@@ -162,7 +163,7 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
         wsRef.current = null;
       }
 
-      // Connect WebSocket
+      // Connect WebSocket — cookie is sent automatically by the browser
       const ws = new WebSocket(wsUrl);
       ws.binaryType = "arraybuffer";
       wsRef.current = ws;
@@ -197,8 +198,16 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
         }
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event: CloseEvent) => {
         if (gen !== generationRef.current) return;
+
+        // Unauthorized — do not reconnect
+        if (event.code === WS_CLOSE_UNAUTHORIZED) {
+          setStatus("failed");
+          setError("Unauthorized — please reload with a valid token");
+          return;
+        }
+
         if (intentionalCloseRef.current) {
           setStatus("disconnected");
           return;

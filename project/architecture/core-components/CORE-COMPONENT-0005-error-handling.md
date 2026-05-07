@@ -25,6 +25,9 @@ Define consistent error handling patterns across the application, covering WebSo
 - API errors MUST return structured JSON: `{ error: string, code: string }`
 - User-facing errors MUST use toast notifications (sonner) for non-blocking feedback
 - All errors MUST be logged to the browser console with contextual information
+- WebSocket close code 4401 MUST be treated as an authentication error; the client MUST NOT attempt reconnection
+- Authentication failures on HTTP routes MUST return 401 status with `{ error: string, code: "AUTH_REQUIRED" }`
+- The terminal panel MUST display a distinct "Unauthorized" overlay when close code 4401 is received
 
 ### Interfaces
 - **ErrorBoundary:** React component wrapping each major panel (file explorer, terminal, content viewer)
@@ -81,3 +84,4 @@ return Response.json({ error: 'PTY spawn failed', code: 'PTY_ERROR' }, { status:
 ## Related ADRs
 
 - [ADR-0002-tech-stack](../ADR/ADR-0002-tech-stack.md)
+- [ADR-0004-token-authentication](../ADR/ADR-0004-token-authentication.md)

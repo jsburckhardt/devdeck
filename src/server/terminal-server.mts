@@ -1,13 +1,19 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { spawn, type IPty } from "node-pty";
+import { timingSafeEqual } from "crypto";
+import { homedir } from "os";
+import type { IncomingMessage } from "http";
 
 const MAX_CONTROL_MESSAGE_BYTES = 1024;
+
+const LOGIN_SHELL_SUPPORTED = new Set(["bash", "zsh", "fish", "sh"]);
 
 export interface TerminalServerOptions {
   port?: number;
   host?: string;
   shell?: string;
   cwd?: string;
+  token?: string;
 }
 
 export interface TerminalServerHandle {
@@ -15,20 +21,65 @@ export interface TerminalServerHandle {
   cleanup: () => void;
 }
 
+function validateToken(provided: string | null, expected: string | null): boolean {
+  if (!expected) return true;
+  if (!provided) return false;
+  const a = Buffer.from(provided, "utf8");
+  const b = Buffer.from(expected, "utf8");
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
+function parseCookieToken(cookieHeader: string | undefined): string | null {
+  if (!cookieHeader) return null;
+  const match = cookieHeader.match(/(?:^|;\s*)devdeck_token=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function extractToken(req: IncomingMessage): string | null {
+  // Try query parameter first
+  try {
+    const url = new URL(req.url ?? "", `http://${req.headers.host ?? "localhost"}`);
+    const queryToken = url.searchParams.get("token");
+    if (queryToken) return queryToken;
+  } catch {
+    // malformed URL
+  }
+
+  // Fall back to cookie
+  return parseCookieToken(req.headers.cookie);
+}
+
+function getShellArgs(shell: string): string[] {
+  const basename = shell.split("/").pop() ?? "";
+  return LOGIN_SHELL_SUPPORTED.has(basename) ? ["-l"] : [];
+}
+
 export function createTerminalServer(options?: TerminalServerOptions): TerminalServerHandle {
   const port = options?.port ?? Number(process.env.TERMINAL_PORT ?? 3100);
   const host = options?.host ?? process.env.TERMINAL_HOST ?? "127.0.0.1";
   const shell = options?.shell ?? process.env.SHELL ?? "/bin/bash";
-  const cwd = options?.cwd ?? process.env.DEVDECK_WORKSPACE_ROOT ?? process.cwd();
+  const cwd = options?.cwd ?? process.env.DEVDECK_WORKSPACE_ROOT ?? homedir();
+  const token = options?.token ?? process.env.DEVDECK_TOKEN ?? null;
+  const effectiveToken = token && token.trim() !== "" ? token : null;
 
   const sanitizedEnv = Object.fromEntries(
     Object.entries(process.env).filter((e): e is [string, string] => typeof e[1] === "string"),
   );
 
+  const shellArgs = getShellArgs(shell);
   const wss = new WebSocketServer({ port, host });
   const activePtys = new Set<IPty>();
 
-  wss.on("connection", (ws: WebSocket) => {
+  wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
+    // Validate token BEFORE spawning PTY
+    const providedToken = extractToken(req);
+    if (!validateToken(providedToken, effectiveToken)) {
+      console.log("Rejected unauthenticated WebSocket connection");
+      ws.close(4401, "Unauthorized");
+      return;
+    }
+
     console.log("Client connected");
     let pty: IPty | null = null;
     let cleaned = false;
@@ -49,7 +100,7 @@ export function createTerminalServer(options?: TerminalServerOptions): TerminalS
     }
 
     try {
-      pty = spawn(shell, [], {
+      pty = spawn(shell, shellArgs, {
         name: "xterm-256color",
         cols: 80,
         rows: 24,
