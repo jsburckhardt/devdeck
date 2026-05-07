@@ -1,11 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Code, Folder, Clock } from "@phosphor-icons/react";
+import { Code, Folder, Clock, PencilSimple, Trash, Warning } from "@phosphor-icons/react";
 import type { Project } from "@/lib/types";
 
 interface ProjectCardProps {
   project: Project;
+  onEdit?: (project: Project) => void;
+  onRemove?: (project: Project) => void;
 }
 
 function languageColor(language?: string): string {
@@ -29,10 +31,11 @@ function languageColor(language?: string): string {
   }
 }
 
-export function ProjectCard({ project }: ProjectCardProps) {
+export function ProjectCard({ project, onEdit, onRemove }: ProjectCardProps) {
   const router = useRouter();
 
   const handleClick = () => {
+    if (project.available === false) return;
     router.push(`/project/${project.slug}`);
   };
 
@@ -44,21 +47,76 @@ export function ProjectCard({ project }: ProjectCardProps) {
       })
     : null;
 
+  const isUnavailable = project.available === false;
+
   return (
-    <button
+    <div
       data-testid="project-card"
+      role="button"
+      tabIndex={0}
       onClick={handleClick}
-      className="group relative flex flex-col gap-3 rounded-lg border border-border bg-card p-6 text-left transition-all duration-200 hover:scale-[1.02] hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 active:scale-[0.98]"
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          handleClick();
+        }
+      }}
+      className={`group relative flex cursor-pointer flex-col gap-3 rounded-lg border border-border bg-card p-6 text-left transition-all duration-200 hover:scale-[1.02] hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 active:scale-[0.98] ${isUnavailable ? "cursor-not-allowed opacity-50" : ""}`}
     >
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">
-          <Folder size={20} weight="duotone" className="text-primary" />
+          {isUnavailable ? (
+            <Warning
+              size={20}
+              weight="duotone"
+              className="text-destructive"
+              data-testid="unavailable-indicator"
+            />
+          ) : (
+            <Folder size={20} weight="duotone" className="text-primary" />
+          )}
           <h3 className="font-mono text-sm font-semibold text-card-foreground">{project.name}</h3>
+          {project.source === "manual" && (
+            <span
+              className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+              data-testid="manual-badge"
+            >
+              manual
+            </span>
+          )}
         </div>
-        <Code
-          size={16}
-          className="text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
-        />
+        <div className="flex items-center gap-1">
+          {onEdit && (
+            <button
+              data-testid="edit-button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit(project);
+              }}
+              className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+              aria-label="Edit project"
+            >
+              <PencilSimple size={16} />
+            </button>
+          )}
+          {onRemove && (
+            <button
+              data-testid="remove-button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove(project);
+              }}
+              className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+              aria-label="Remove project"
+            >
+              <Trash size={16} />
+            </button>
+          )}
+          <Code
+            size={16}
+            className="text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+          />
+        </div>
       </div>
 
       <p className="text-sm leading-relaxed text-muted-foreground line-clamp-2">
@@ -81,6 +139,6 @@ export function ProjectCard({ project }: ProjectCardProps) {
           </div>
         )}
       </div>
-    </button>
+    </div>
   );
 }
