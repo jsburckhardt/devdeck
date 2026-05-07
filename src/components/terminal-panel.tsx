@@ -1,7 +1,7 @@
 "use client";
 
 import { useTerminal } from "@/hooks/use-terminal";
-import { WarningCircle, Spinner, ArrowClockwise } from "@phosphor-icons/react";
+import { WarningCircle, Spinner, ArrowClockwise, LockSimple } from "@phosphor-icons/react";
 
 export function TerminalPanel() {
   const {
@@ -13,6 +13,8 @@ export function TerminalPanel() {
     maxReconnectAttempts,
     retry,
   } = useTerminal();
+
+  const isUnauthorized = error?.toLowerCase().includes("unauthorized");
 
   return (
     <div data-testid="terminal-panel" className="flex h-full flex-col bg-[#1e1e2e]">
@@ -38,7 +40,9 @@ export function TerminalPanel() {
                 : status === "connecting"
                   ? "Connecting..."
                   : status === "failed"
-                    ? "Failed"
+                    ? isUnauthorized
+                      ? "Unauthorized"
+                      : "Failed"
                     : "Disconnected"}
           </span>
         </div>
@@ -59,7 +63,13 @@ export function TerminalPanel() {
             </span>
           </StatusOverlay>
         )}
-        {status === "failed" && (
+        {status === "failed" && isUnauthorized && (
+          <StatusOverlay>
+            <LockSimple size={20} />
+            <span>Unauthorized — please reload with a valid token</span>
+          </StatusOverlay>
+        )}
+        {status === "failed" && !isUnauthorized && (
           <StatusOverlay>
             <WarningCircle size={20} />
             <span>{error || "Connection lost"}</span>

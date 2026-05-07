@@ -5,9 +5,17 @@
 default:
     @just --list
 
-# Start the development server with Turbopack
+# Start the development server (Next.js + terminal server with token auth)
 dev:
+    npx tsx src/server/start-dev.mts
+
+# Start only the Next.js dev server (no terminal)
+dev-next:
     npm run dev
+
+# Start only the terminal WebSocket server
+dev-terminal:
+    npm run terminal
 
 # Build the production application
 build:

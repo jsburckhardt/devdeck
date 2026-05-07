@@ -44,9 +44,11 @@ vi.mock("node-pty", () => ({
 // --- Helpers ---
 const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
 
-async function createServer(): Promise<{ handle: TerminalServerHandle; port: number }> {
+async function createServer(
+  opts?: Partial<import("./terminal-server.mts").TerminalServerOptions>,
+): Promise<{ handle: TerminalServerHandle; port: number }> {
   const { createTerminalServer } = await import("./terminal-server.mts");
-  const handle = createTerminalServer({ port: 0 });
+  const handle = createTerminalServer({ port: 0, ...opts });
   const port = await new Promise<number>((resolve) => {
     const addr = handle.wss.address();
     if (addr && typeof addr === "object") return resolve(addr.port);
@@ -58,17 +60,32 @@ async function createServer(): Promise<{ handle: TerminalServerHandle; port: num
   return { handle, port };
 }
 
-function connectClient(port: number): Promise<WebSocket> {
+function connectClient(port: number, token?: string): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
-    const client = new WebSocket(`ws://127.0.0.1:${port}`);
+    const url = token
+      ? `ws://127.0.0.1:${port}?token=${encodeURIComponent(token)}`
+      : `ws://127.0.0.1:${port}`;
+    const client = new WebSocket(url);
     client.on("open", () => resolve(client));
     client.on("error", reject);
   });
 }
 
-function waitForClose(client: WebSocket): Promise<void> {
+function connectClientWithCookie(port: number, token: string): Promise<WebSocket> {
+  return new Promise((resolve, reject) => {
+    const client = new WebSocket(`ws://127.0.0.1:${port}`, {
+      headers: { cookie: `devdeck_token=${token}` },
+    });
+    client.on("open", () => resolve(client));
+    client.on("error", reject);
+  });
+}
+
+function waitForClose(client: WebSocket): Promise<{ code: number; reason: string }> {
   return new Promise((resolve) => {
-    client.once("close", () => resolve());
+    client.once("close", (code: number, reason: Buffer) => {
+      resolve({ code, reason: reason.toString() });
+    });
   });
 }
 
@@ -76,11 +93,13 @@ function waitForClose(client: WebSocket): Promise<void> {
 describe("terminal-server", () => {
   let handle: TerminalServerHandle | null = null;
   const clients: WebSocket[] = [];
+  const savedToken = process.env.DEVDECK_TOKEN;
 
   beforeEach(() => {
     fakePty = createFakePty();
     spawnShouldThrow = false;
     clients.length = 0;
+    delete process.env.DEVDECK_TOKEN;
   });
 
   afterEach(async () => {
@@ -93,6 +112,11 @@ describe("terminal-server", () => {
       handle.cleanup();
       await tick(50);
       handle = null;
+    }
+    if (savedToken !== undefined) {
+      process.env.DEVDECK_TOKEN = savedToken;
+    } else {
+      delete process.env.DEVDECK_TOKEN;
     }
   });
 
@@ -113,10 +137,14 @@ describe("terminal-server", () => {
       string[],
       { cwd: string; env: Record<string, string> },
     ];
-    const [shell, , opts] = lastCall;
+    const [shell, args, opts] = lastCall;
 
     expect(shell).toBe(process.env.SHELL ?? "/bin/bash");
-    expect(opts.cwd).toBe(process.env.DEVDECK_WORKSPACE_ROOT ?? process.cwd());
+    // Default cwd should be homedir (not process.cwd())
+    const { homedir } = await import("os");
+    expect(opts.cwd).toBe(homedir());
+    // Login shell flag
+    expect(args).toContain("-l");
 
     for (const val of Object.values(opts.env)) {
       expect(typeof val).toBe("string");
@@ -192,9 +220,10 @@ describe("terminal-server", () => {
 
     const closePromise = waitForClose(client);
     fakePty._emitExit(0, 0);
-    await closePromise;
+    const { code } = await closePromise;
 
     expect(client.readyState).toBe(WebSocket.CLOSED);
+    expect(code).toBe(1011);
   });
 
   it("T7: WebSocket close kills PTY (idempotent)", async () => {
@@ -240,11 +269,97 @@ describe("terminal-server", () => {
     clients.push(client);
     await tick();
 
-    // null becomes NaN via Number(null) = 0, then clamped to max(1,0) = 1
-    // Actually Number(null) = 0, which IS finite, so max(1, min(500, 0)) = 1
     client.send(JSON.stringify({ type: "resize", cols: null, rows: null }));
     await tick();
 
     expect(fakePty.resize).toHaveBeenCalledWith(1, 1);
+  });
+
+  // --- Authentication tests ---
+
+  it("T10: rejects unauthenticated WebSocket when token is configured", async () => {
+    const nodePty = await import("node-pty");
+    const spawnFn = nodePty.spawn as ReturnType<typeof vi.fn>;
+    const callsBefore = spawnFn.mock.calls.length;
+
+    const srv = await createServer({ token: "test-secret-token" });
+    handle = srv.handle;
+
+    const closePromise = new Promise<number>((resolve) => {
+      const client = new WebSocket(`ws://127.0.0.1:${srv.port}`);
+      clients.push(client);
+      client.on("close", (code: number) => resolve(code));
+    });
+
+    const code = await closePromise;
+    expect(code).toBe(4401);
+
+    // PTY should NOT have been spawned for this connection
+    expect(spawnFn.mock.calls.length).toBe(callsBefore);
+  });
+
+  it("T11: rejects WebSocket with wrong token", async () => {
+    const srv = await createServer({ token: "correct-token" });
+    handle = srv.handle;
+
+    const closePromise = new Promise<number>((resolve) => {
+      const client = new WebSocket(`ws://127.0.0.1:${srv.port}?token=wrong-token`);
+      clients.push(client);
+      client.on("close", (code: number) => resolve(code));
+    });
+
+    const code = await closePromise;
+    expect(code).toBe(4401);
+  });
+
+  it("T12: accepts WebSocket with valid query token", async () => {
+    const srv = await createServer({ token: "valid-token-123" });
+    handle = srv.handle;
+
+    const client = await connectClient(srv.port, "valid-token-123");
+    clients.push(client);
+    await tick();
+
+    expect(client.readyState).toBe(WebSocket.OPEN);
+  });
+
+  it("T13: accepts WebSocket with valid cookie token", async () => {
+    const srv = await createServer({ token: "cookie-token-456" });
+    handle = srv.handle;
+
+    const client = await connectClientWithCookie(srv.port, "cookie-token-456");
+    clients.push(client);
+    await tick();
+
+    expect(client.readyState).toBe(WebSocket.OPEN);
+  });
+
+  it("T14: no auth required when token is not configured", async () => {
+    const srv = await createServer({ token: "" });
+    handle = srv.handle;
+
+    const client = await connectClient(srv.port);
+    clients.push(client);
+    await tick();
+
+    expect(client.readyState).toBe(WebSocket.OPEN);
+  });
+
+  it("T15: custom cwd is respected", async () => {
+    const srv = await createServer({ cwd: "/tmp" });
+    handle = srv.handle;
+
+    const client = await connectClient(srv.port);
+    clients.push(client);
+    await tick();
+
+    const nodePty = await import("node-pty");
+    const spawnFn = nodePty.spawn as ReturnType<typeof vi.fn>;
+    const lastCall = spawnFn.mock.calls[spawnFn.mock.calls.length - 1] as [
+      string,
+      string[],
+      { cwd: string },
+    ];
+    expect(lastCall[2].cwd).toBe("/tmp");
   });
 });

@@ -2,7 +2,7 @@
 
 ## Status
 
-Adopted
+Adopted (updated)
 
 ## Purpose
 
@@ -22,10 +22,15 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - The backend MUST clean up PTY processes when the WebSocket connection closes
 - Terminal resize events MUST be propagated from xterm.js to node-pty
 - The WebSocket endpoint MUST be served from the Next.js backend (API route or custom server)
+- The WebSocket upgrade request MUST include a valid bearer token as a `token` query parameter
+- The server MUST validate the token BEFORE spawning a PTY process
+- Invalid or missing tokens MUST result in WebSocket close code 4401 ("Unauthorized") with no PTY spawned
+- The frontend MUST detect close code 4401 and surface an "Unauthorized" error without reconnecting
 
 ### Interfaces
-- **WebSocket endpoint:** `/api/terminal` — accepts WebSocket upgrade requests
-- **Frontend hook:** `useTerminal(ref)` — manages xterm.js instance, WebSocket connection, and addon lifecycle
+- **WebSocket endpoint:** `/api/terminal?token=<bearer>` — accepts WebSocket upgrade requests with valid token
+- **Token handshake:** On upgrade, server extracts `token` from query string, validates via `crypto.timingSafeEqual`, rejects with close code 4401 if invalid
+- **Frontend hook:** `useTerminal(ref)` — manages xterm.js instance, WebSocket connection, token injection, and addon lifecycle
 - **Message format:** Raw binary data (ArrayBuffer) for terminal I/O; JSON for control messages (resize, ping)
 
 ### Expectations
@@ -41,17 +46,26 @@ Raw WebSocket with binary data provides the lowest latency for terminal I/O. xte
 ## Usage Examples
 
 ```typescript
-// Frontend: useTerminal hook
+// Frontend: useTerminal hook (with token)
 const terminalRef = useRef<HTMLDivElement>(null);
 const { terminal, isConnected } = useTerminal(terminalRef);
 
-// Backend: WebSocket handler
+// Backend: WebSocket handler (with token validation)
 import { WebSocketServer } from 'ws';
 import * as pty from 'node-pty';
+import { validateToken } from '../lib/auth';
 
-const shell = pty.spawn('bash', [], { cols: 80, rows: 24 });
-ws.on('message', (data) => shell.write(data));
-shell.onData((data) => ws.send(data));
+wss.on('connection', (ws, req) => {
+  const url = new URL(req.url!, `http://${req.headers.host}`);
+  const token = url.searchParams.get('token');
+  if (!token || !validateToken(token)) {
+    ws.close(4401, 'Unauthorized');
+    return;
+  }
+  const shell = pty.spawn('bash', ['-l'], { cols: 80, rows: 24, cwd: os.homedir() });
+  ws.on('message', (data) => shell.write(data));
+  shell.onData((data) => ws.send(data));
+});
 ```
 
 ## Integration Guidelines
@@ -76,3 +90,4 @@ shell.onData((data) => ws.send(data));
 ## Related ADRs
 
 - [ADR-0002-tech-stack](../ADR/ADR-0002-tech-stack.md)
+- [ADR-0004-token-authentication](../ADR/ADR-0004-token-authentication.md)

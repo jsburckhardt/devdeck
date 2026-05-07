@@ -39,3 +39,14 @@ project/issues/README.md                                       — Issues index 
 src/app/layout.tsx                                             — Next.js root layout
 src/app/page.tsx                                               — Next.js home page
 src/app/globals.css                                            — Global styles and CSS custom properties
+src/middleware.ts                                              — Next.js middleware for token-based HTTP auth
+src/lib/auth.ts                                                — Token generation, validation (timingSafeEqual), cookie parsing
+src/server/start-dev.mts                                       — Dev startup script: generates token, starts Next.js + terminal server
+src/server/terminal-server.mts                                 — WebSocket terminal server with token auth, login shell, $HOME cwd
+src/hooks/use-terminal.ts                                      — React hook for terminal WebSocket connection with 4401 handling
+src/components/terminal-panel.tsx                              — Terminal panel UI with auth error state
+project/architecture/ADR/ADR-0003-project-registry-persistence.md — Project registry persistence decision
+project/architecture/ADR/ADR-0004-token-authentication.md      — Token-based authentication decision
+project/architecture/core-components/CORE-COMPONENT-0007-shell-layout.md — Shell layout core-component
+e2e/terminal.spec.ts                                           — Playwright E2E tests for terminal with token auth
+playwright.config.ts                                           — Playwright configuration (ports, token env)
