@@ -1,8 +1,12 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { spawn, type IPty } from "node-pty";
+import { execFile } from "child_process";
 import { timingSafeEqual } from "crypto";
 import { homedir } from "os";
+import fs from "fs/promises";
+import path from "path";
 import type { IncomingMessage } from "http";
+import { resolveProjectPath } from "../lib/registry.js";
 
 const MAX_CONTROL_MESSAGE_BYTES = 1024;
 
@@ -55,6 +59,209 @@ function getShellArgs(shell: string): string[] {
   return LOGIN_SHELL_SUPPORTED.has(basename) ? ["-l"] : [];
 }
 
+function extractSlug(req: IncomingMessage): string | null {
+  try {
+    const url = new URL(req.url ?? "", `http://${req.headers.host ?? "localhost"}`);
+    return url.searchParams.get("slug");
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeSessionName(slug: string): string {
+  return slug.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
+}
+
+function tmuxHasSession(socketPath: string, sessionName: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    execFile("tmux", ["-S", socketPath, "has-session", "-t", sessionName], (err) => {
+      resolve(!err);
+    });
+  });
+}
+
+interface TerminalSpawnConfig {
+  command: string;
+  args: string[];
+  cwd: string;
+  mode: "shell" | "tmux";
+}
+
+async function resolveTerminalSetup(
+  slug: string | null,
+  defaultCwd: string,
+  shell: string,
+  shellArgs: string[],
+): Promise<TerminalSpawnConfig> {
+  if (!slug) {
+    return { command: shell, args: shellArgs, cwd: defaultCwd, mode: "shell" };
+  }
+
+  let resolvedCwd: string;
+  try {
+    const resolvedPath = await resolveProjectPath(slug);
+    const stat = await fs.stat(resolvedPath);
+    if (!stat.isDirectory()) throw new Error("Not a directory");
+    resolvedCwd = resolvedPath;
+  } catch {
+    console.log(`Slug "${slug}" resolved path invalid, falling back to default CWD`);
+    return { command: shell, args: shellArgs, cwd: defaultCwd, mode: "shell" };
+  }
+
+  // Check for tmux shared session
+  const tmuxSocketPath = path.join(resolvedCwd, ".devcontainer", ".tmux-shared");
+  try {
+    const socketStat = await fs.stat(tmuxSocketPath);
+    if (socketStat.isSocket()) {
+      const sessionName = sanitizeSessionName(slug);
+      if (sessionName && (await tmuxHasSession(tmuxSocketPath, sessionName))) {
+        return {
+          command: "tmux",
+          args: ["-S", tmuxSocketPath, "attach-session", "-t", sessionName],
+          cwd: resolvedCwd,
+          mode: "tmux",
+        };
+      }
+    }
+  } catch {
+    // No tmux socket — fall through to regular shell
+  }
+
+  return { command: shell, args: shellArgs, cwd: resolvedCwd, mode: "shell" };
+}
+
+async function handleConnection(
+  ws: WebSocket,
+  slug: string | null,
+  defaultCwd: string,
+  shell: string,
+  shellArgs: string[],
+  env: Record<string, string>,
+  activePtys: Set<IPty>,
+): Promise<void> {
+  console.log("Client connected");
+
+  const setup = await resolveTerminalSetup(slug, defaultCwd, shell, shellArgs);
+
+  // Client may have disconnected during async setup
+  if (ws.readyState !== WebSocket.OPEN) return;
+
+  // Remove TMUX env var when attaching to tmux to avoid nested session issues
+  const ptyEnv = setup.mode === "tmux" ? { ...env, TMUX: undefined } : env;
+  const cleanPtyEnv = Object.fromEntries(
+    Object.entries(ptyEnv).filter((e): e is [string, string] => typeof e[1] === "string"),
+  );
+
+  let pty: IPty | null = null;
+  let cleaned = false;
+
+  function cleanupPty(reason: string) {
+    if (cleaned) return;
+    cleaned = true;
+    if (pty) {
+      console.log(`Cleaning up PTY (pid: ${pty.pid}, reason: ${reason})`);
+      activePtys.delete(pty);
+      try {
+        pty.kill();
+      } catch {
+        // already dead
+      }
+      pty = null;
+    }
+  }
+
+  try {
+    pty = spawn(setup.command, setup.args, {
+      name: "xterm-256color",
+      cols: 80,
+      rows: 24,
+      cwd: setup.cwd,
+      env: cleanPtyEnv,
+    });
+
+    activePtys.add(pty);
+    console.log(
+      `PTY spawned (pid: ${pty.pid}, command: ${setup.command}, cwd: ${setup.cwd}, mode: ${setup.mode})`,
+    );
+
+    pty.onData((data: string) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(Buffer.from(data, "utf8"));
+        } catch {
+          // send failed
+        }
+      }
+    });
+
+    pty.onExit(({ exitCode }) => {
+      console.log(`PTY exited (code: ${exitCode})`);
+      cleanupPty("pty-exit");
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close(1011, "PTY exited");
+      }
+    });
+
+    ws.on("message", (data: Buffer, isBinary: boolean) => {
+      if (!pty) return;
+
+      if (isBinary) {
+        try {
+          pty.write(data.toString("utf8"));
+        } catch {
+          // write failed
+        }
+        return;
+      }
+
+      // Text frame — control message
+      const text = data.toString("utf8");
+      if (Buffer.byteLength(text, "utf8") > MAX_CONTROL_MESSAGE_BYTES) {
+        return;
+      }
+
+      let msg: { type?: string; cols?: number; rows?: number };
+      try {
+        msg = JSON.parse(text) as { type?: string; cols?: number; rows?: number };
+      } catch {
+        return;
+      }
+
+      if (msg.type === "resize") {
+        const rawCols = Number(msg.cols);
+        const rawRows = Number(msg.rows);
+        const cols = Number.isFinite(rawCols) ? Math.max(1, Math.min(500, Math.round(rawCols))) : 1;
+        const rows = Number.isFinite(rawRows) ? Math.max(1, Math.min(200, Math.round(rawRows))) : 1;
+        try {
+          pty.resize(cols, rows);
+        } catch {
+          // resize failed
+        }
+      }
+    });
+
+    ws.on("close", () => {
+      console.log("Client disconnected");
+      cleanupPty("ws-close");
+    });
+
+    ws.on("error", (err: Error) => {
+      console.error("WebSocket error:", err.message);
+      cleanupPty("ws-error");
+    });
+  } catch (err) {
+    console.error("Failed to spawn shell:", err);
+    if (ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({ type: "error", message: String(err) }));
+      } catch {
+        // send failed
+      }
+      ws.close();
+    }
+  }
+}
+
 export function createTerminalServer(options?: TerminalServerOptions): TerminalServerHandle {
   const port = options?.port ?? Number(process.env.TERMINAL_PORT ?? 3100);
   const host = options?.host ?? process.env.TERMINAL_HOST ?? "127.0.0.1";
@@ -80,117 +287,14 @@ export function createTerminalServer(options?: TerminalServerOptions): TerminalS
       return;
     }
 
-    console.log("Client connected");
-    let pty: IPty | null = null;
-    let cleaned = false;
+    const slug = extractSlug(req);
 
-    function cleanupPty(reason: string) {
-      if (cleaned) return;
-      cleaned = true;
-      if (pty) {
-        console.log(`Cleaning up PTY (pid: ${pty.pid}, reason: ${reason})`);
-        activePtys.delete(pty);
-        try {
-          pty.kill();
-        } catch {
-          // already dead
-        }
-        pty = null;
-      }
-    }
-
-    try {
-      pty = spawn(shell, shellArgs, {
-        name: "xterm-256color",
-        cols: 80,
-        rows: 24,
-        cwd,
-        env: sanitizedEnv,
-      });
-
-      activePtys.add(pty);
-      console.log(`PTY spawned (pid: ${pty.pid}, shell: ${shell}, cwd: ${cwd})`);
-
-      pty.onData((data: string) => {
-        if (ws.readyState === WebSocket.OPEN) {
-          try {
-            ws.send(Buffer.from(data, "utf8"));
-          } catch {
-            // send failed
-          }
-        }
-      });
-
-      pty.onExit(({ exitCode }) => {
-        console.log(`PTY exited (code: ${exitCode})`);
-        cleanupPty("pty-exit");
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.close(1011, "PTY exited");
-        }
-      });
-
-      ws.on("message", (data: Buffer, isBinary: boolean) => {
-        if (!pty) return;
-
-        if (isBinary) {
-          try {
-            pty.write(data.toString("utf8"));
-          } catch {
-            // write failed
-          }
-          return;
-        }
-
-        // Text frame — control message
-        const text = data.toString("utf8");
-        if (Buffer.byteLength(text, "utf8") > MAX_CONTROL_MESSAGE_BYTES) {
-          return;
-        }
-
-        let msg: { type?: string; cols?: number; rows?: number };
-        try {
-          msg = JSON.parse(text) as { type?: string; cols?: number; rows?: number };
-        } catch {
-          return;
-        }
-
-        if (msg.type === "resize") {
-          const rawCols = Number(msg.cols);
-          const rawRows = Number(msg.rows);
-          const cols = Number.isFinite(rawCols)
-            ? Math.max(1, Math.min(500, Math.round(rawCols)))
-            : 1;
-          const rows = Number.isFinite(rawRows)
-            ? Math.max(1, Math.min(200, Math.round(rawRows)))
-            : 1;
-          try {
-            pty.resize(cols, rows);
-          } catch {
-            // resize failed
-          }
-        }
-      });
-
-      ws.on("close", () => {
-        console.log("Client disconnected");
-        cleanupPty("ws-close");
-      });
-
-      ws.on("error", (err: Error) => {
-        console.error("WebSocket error:", err.message);
-        cleanupPty("ws-error");
-      });
-    } catch (err) {
-      console.error("Failed to spawn shell:", err);
-      if (ws.readyState === WebSocket.OPEN) {
-        try {
-          ws.send(JSON.stringify({ type: "error", message: String(err) }));
-        } catch {
-          // send failed
-        }
-        ws.close();
-      }
-    }
+    void handleConnection(ws, slug, cwd, shell, shellArgs, sanitizedEnv, activePtys).catch(
+      (err) => {
+        console.error("Terminal connection setup failed:", err);
+        if (ws.readyState === WebSocket.OPEN) ws.close(1011, "Terminal setup failed");
+      },
+    );
   });
 
   function cleanup() {
