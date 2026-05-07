@@ -56,7 +56,10 @@ export function RemoveProjectDialog({
             <Dialog.Title className="text-lg font-semibold text-foreground">
               Remove Project
             </Dialog.Title>
-            <Dialog.Close className="rounded p-1 text-muted-foreground hover:text-foreground">
+            <Dialog.Close
+              className="rounded p-1 text-muted-foreground hover:text-foreground"
+              aria-label="Close"
+            >
               <X size={20} />
             </Dialog.Close>
           </div>

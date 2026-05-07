@@ -49,11 +49,10 @@ describe("loadRegistry", () => {
     expect(result.projects[1].source).toBe("auto");
   });
 
-  it("handles corrupt JSON gracefully (T3)", async () => {
+  it("throws on corrupt JSON (T3)", async () => {
     mockFs.readFile.mockResolvedValue("not valid json{");
 
-    const result = await loadRegistry();
-    expect(result).toEqual({ version: 1, projects: [] });
+    await expect(loadRegistry()).rejects.toThrow("Failed to load registry");
   });
 });
 

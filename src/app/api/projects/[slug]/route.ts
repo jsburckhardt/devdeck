@@ -19,9 +19,22 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const entry = registry.projects[entryIndex];
 
     // Update fields (slug is immutable)
-    if (body.name !== undefined) entry.name = body.name;
-    if (body.description !== undefined) entry.description = body.description;
+    if (body.name !== undefined) {
+      if (typeof body.name !== "string") {
+        return NextResponse.json({ error: "'name' must be a string" }, { status: 400 });
+      }
+      entry.name = body.name.trim() || undefined;
+    }
+    if (body.description !== undefined) {
+      if (typeof body.description !== "string") {
+        return NextResponse.json({ error: "'description' must be a string" }, { status: 400 });
+      }
+      entry.description = body.description.trim() || undefined;
+    }
     if (body.path !== undefined) {
+      if (typeof body.path !== "string" || !body.path.trim()) {
+        return NextResponse.json({ error: "'path' must be a non-empty string" }, { status: 400 });
+      }
       // Validate new path
       try {
         const stat = await fs.stat(body.path);

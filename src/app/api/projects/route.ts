@@ -117,9 +117,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing or empty 'path' field" }, { status: 400 });
     }
 
+    // Validate optional string fields
+    if (body.name !== undefined && typeof body.name !== "string") {
+      return NextResponse.json({ error: "'name' must be a string" }, { status: 400 });
+    }
+    if (body.description !== undefined && typeof body.description !== "string") {
+      return NextResponse.json({ error: "'description' must be a string" }, { status: 400 });
+    }
+
+    const normalizedPath = path.resolve(projectPath.trim());
+
     // Validate path exists and is a directory
     try {
-      const stat = await fs.stat(projectPath);
+      const stat = await fs.stat(normalizedPath);
       if (!stat.isDirectory()) {
         return NextResponse.json({ error: "Path is not a directory" }, { status: 400 });
       }
@@ -128,7 +138,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Derive slug from basename, sanitized
-    const slug = path.basename(projectPath).replace(/[^a-zA-Z0-9_-]/g, "");
+    const slug = path.basename(normalizedPath).replace(/[^a-zA-Z0-9_-]/g, "");
     if (!slug) {
       return NextResponse.json({ error: "Cannot derive a valid slug from path" }, { status: 400 });
     }
@@ -139,6 +149,17 @@ export async function POST(request: NextRequest) {
     if (existingEntry) {
       return NextResponse.json(
         { error: `Project with slug '${slug}' already exists` },
+        { status: 409 },
+      );
+    }
+
+    // Check for duplicate path in registry
+    const duplicatePath = registry.projects.find(
+      (p) => path.resolve(p.path) === normalizedPath && !p.hidden,
+    );
+    if (duplicatePath) {
+      return NextResponse.json(
+        { error: `A project at this path already exists (slug: '${duplicatePath.slug}')` },
         { status: 409 },
       );
     }
@@ -159,15 +180,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Auto-populate metadata
-    const pkg = await readPackageJson(projectPath);
-    const language = await detectLanguage(projectPath);
+    const pkg = await readPackageJson(normalizedPath);
+    const language = await detectLanguage(normalizedPath);
 
-    const name = body.name ?? pkg.name ?? slug;
-    const description = body.description ?? pkg.description ?? `A ${language} project`;
+    const name = body.name?.trim() || pkg.name || slug;
+    const description = body.description?.trim() || pkg.description || `A ${language} project`;
 
     let lastModified: string | undefined;
     try {
-      const stat = await fs.stat(projectPath);
+      const stat = await fs.stat(normalizedPath);
       lastModified = stat.mtime.toISOString();
     } catch {
       // ignore
@@ -176,10 +197,10 @@ export async function POST(request: NextRequest) {
     // Save to registry
     registry.projects.push({
       slug,
-      path: projectPath,
+      path: normalizedPath,
       source: "manual",
-      name: body.name ?? undefined,
-      description: body.description ?? undefined,
+      name: body.name?.trim() || undefined,
+      description: body.description?.trim() || undefined,
     });
     await saveRegistry(registry);
 
@@ -189,7 +210,7 @@ export async function POST(request: NextRequest) {
       description,
       language,
       lastModified,
-      path: projectPath,
+      path: normalizedPath,
       source: "manual",
       available: true,
     };

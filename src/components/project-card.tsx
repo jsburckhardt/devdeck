@@ -62,7 +62,8 @@ export function ProjectCard({ project, onEdit, onRemove }: ProjectCardProps) {
     <div
       data-testid="project-card"
       role="button"
-      tabIndex={0}
+      aria-disabled={isUnavailable || undefined}
+      tabIndex={isUnavailable ? -1 : 0}
       onClick={handleClick}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {

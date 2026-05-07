@@ -21,8 +21,8 @@ export async function loadRegistry(): Promise<ProjectRegistry> {
     if (err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOENT") {
       return { version: 1, projects: [] };
     }
-    // Corrupt JSON or other read errors: return empty registry
-    return { version: 1, projects: [] };
+    // Permission errors, corrupt JSON, etc. — surface the error
+    throw new Error(`Failed to load registry: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
