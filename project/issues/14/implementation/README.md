@@ -4,83 +4,58 @@
 
 ### Summary
 
-All 10 tasks from the task breakdown have been implemented. The file viewer now supports:
-- Enhanced markdown preview with hljs syntax highlighting in fenced code blocks and GFM table styling
-- Raw/Preview toggle for markdown files
-- Inline diff viewing with Changes/File tabs for modified files
-- Edit mode with textarea, Save/Discard buttons, dirty state tracking, and optimistic concurrency via mtime
+All tasks from the task breakdown have been implemented across three commits plus two fix commits addressing Copilot PR review feedback:
 
-### Tasks Completed
+1. **Enhanced markdown preview** — hljs syntax highlighting in fenced code blocks, custom VS Code-style CSS for headings/lists/tables/code blocks, Raw/Preview toggle
+2. **Inline diff view** — DiffView component, diff parser utility, GET /api/files/diff endpoint with untracked/staged file support, Changes/File tabs
+3. **File editing** — PUT /api/files/content with atomic writes and strict mtime conflict detection, edit mode with Save/Discard and dirty tracking
 
-#### Task 1: Extend Types
-- **Files:** `src/lib/types.ts`
-- Added `DiffLine`, `DiffHunk` types and `mtime?: number` to `FileContent`
+### Key Implementation Decisions
 
-#### Task 2: Enhanced Markdown Preview
-- **Files:** `src/components/file-viewer.tsx`
-- Custom `marked` renderer using `hljs.highlight()` for fenced code blocks
-- GFM table styling with prose Tailwind classes
-- Raw/Preview toggle button with `aria-pressed` attribute
+- **Custom markdown CSS instead of `@tailwindcss/typography`**: The Tailwind v4 prose classes were non-functional (typography plugin not installed and incompatible). Replaced with a comprehensive `.markdown-preview` stylesheet in `globals.css` that mirrors VS Code's markdown preview styling.
+- **`mtime` is required on `FileContent`**: Changed from optional to required after PR review — all GET/PUT handlers always provide it, and the editor relies on it for conflict detection.
+- **Strict mtime comparison**: Uses `Math.floor` equality instead of 1000ms tolerance for conflict detection.
+- **Git status-aware diff endpoint**: Detects untracked files (`git diff --no-index`), staged files (`git diff --cached`), and modified files (`git diff`) to produce correct diffs for all statuses.
+- **Trailing newline handling**: Diff parser trims trailing newline before splitting to avoid bogus empty context lines.
 
-#### Task 3: Diff Parser Utility
-- **Files:** `src/lib/diff-parser.ts`
-- Pure function `parseDiff(diffText: string): DiffHunk[]`
-- Handles multi-hunk diffs, new files, deleted files, "no newline at end" markers
+### Files Created
 
-#### Task 4: Diff API Endpoint
-- **Files:** `src/app/api/files/diff/route.ts`
-- `GET /api/files/diff?slug=...&path=...`
-- Path traversal protection, git diff execution, error handling
+| File | Purpose |
+|------|---------|
+| `src/lib/diff-parser.ts` | Unified diff parser utility |
+| `src/lib/diff-parser.test.ts` | 9 unit tests |
+| `src/components/diff-view.tsx` | DiffView component (named export) |
+| `src/app/api/files/diff/route.ts` | GET /api/files/diff endpoint |
+| `src/app/api/files/diff/route.test.ts` | 7 API tests |
+| `src/app/api/files/content/route.test.ts` | 9 API tests (GET + PUT) |
+| `src/components/file-viewer.test.tsx` | 17 component tests |
 
-#### Task 5: DiffView Component
-- **Files:** `src/components/diff-view.tsx`
-- Named export `DiffView` component with semantic `<ins>`/`<del>` elements
-- Dual line numbers, colored backgrounds, monospace font
-- Empty diff shows "No changes" message
+### Files Modified
 
-#### Task 6: Changes/File Tabs
-- **Files:** `src/components/file-viewer.tsx`
-- Tab bar visible when file has git status "modified" or "added"
-- `findFileStatus()` utility to look up status from file tree
-- Diff fetching with loading state
-
-#### Task 7: PUT File Content Endpoint
-- **Files:** `src/app/api/files/content/route.ts`
-- PUT handler with validation, path traversal protection, binary file rejection
-- Size limit (1MB), optimistic concurrency (mtime), atomic write (temp + rename)
-- GET handler updated to include `mtime` in response
-
-#### Task 8: Edit Mode
-- **Files:** `src/components/file-viewer.tsx`
-- Edit button (PencilSimple icon), textarea with `aria-label="File editor"`
-- Save/Discard buttons with proper aria-labels
-- Dirty indicator dot, confirmation on discard when dirty
-- Toast notifications via Sonner for success/error/conflict
-
-#### Task 9: Tests
-- **Files:**
-  - `src/lib/diff-parser.test.ts` — 9 unit tests
-  - `src/app/api/files/diff/route.test.ts` — 5 API tests
-  - `src/app/api/files/content/route.test.ts` — 9 API tests
-  - `src/components/file-viewer.test.tsx` — 17 component tests
-- Total: 40 new tests, all passing
-
-#### Task 10: Update Documentation
-- **Files:** `LLM.txt`
-- Added entries for new components and API endpoints
+| File | Changes |
+|------|---------|
+| `src/components/file-viewer.tsx` | Markdown enhancement, diff tabs, edit mode |
+| `src/app/api/files/content/route.ts` | Added PUT handler, mtime on GET |
+| `src/lib/types.ts` | Added DiffLine, DiffHunk, mtime (required) |
+| `src/app/globals.css` | VS Code-style `.markdown-preview` CSS |
+| `LLM.txt` | Documented new files |
 
 ### Verification Results
 
 ```
-npm run lint        ✅ Pass (0 errors)
+npm run lint        ✅ Pass (0 errors, 0 warnings)
 npm run format:check ✅ Pass
 npm run build       ✅ Pass
-npm run test        ✅ Pass (139 tests, 17 files)
+npm run test        ✅ Pass (141 tests, 17 files)
 ```
 
-### Architecture Notes
+### PR Review Fixes (Copilot feedback)
 
-- Used `useState` instead of `useRef` for `originalContent` to avoid `react-hooks/refs` lint error when accessing ref during render
-- Added `eslint-disable` comments for `react-hooks/set-state-in-effect` in effect bodies that reset state on dependency changes (standard React pattern)
-- AnimatePresence with keyed motion.div requires `waitFor` in tests due to async transition animations in jsdom
-- DiffView uses named export (not default) for tree-shaking compatibility
+All 7 review comments from Copilot addressed:
+1. Diff parser trailing newline → `trimEnd()` before split
+2. Untracked/staged file diffs → git status detection
+3. Mtime tolerance → strict `Math.floor` comparison
+4. `mtime` optional → required
+5. LLM.txt duplicates → deduplicated
+6. Plan doc file names → updated to match implementation
+7. Markdown CSS → replaced broken prose classes with custom stylesheet
