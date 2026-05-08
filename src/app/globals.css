@@ -122,13 +122,199 @@ body {
   color: oklch(0.7 0.15 150);
 }
 
-/* Prose overrides for markdown */
-.prose {
-  --tw-prose-body: var(--foreground);
-  --tw-prose-headings: var(--foreground);
-  --tw-prose-links: var(--primary);
-  --tw-prose-code: var(--foreground);
-  --tw-prose-pre-bg: var(--secondary);
-  --tw-prose-pre-code: var(--foreground);
-  --tw-prose-borders: var(--border);
+/* Markdown preview styles — VS Code-inspired */
+.markdown-preview {
+  color: var(--foreground);
+  font-size: 14px;
+  line-height: 1.6;
+  word-wrap: break-word;
+}
+
+.markdown-preview h1,
+.markdown-preview h2,
+.markdown-preview h3,
+.markdown-preview h4,
+.markdown-preview h5,
+.markdown-preview h6 {
+  color: var(--foreground);
+  font-weight: 600;
+  line-height: 1.25;
+  margin-top: 24px;
+  margin-bottom: 16px;
+}
+
+.markdown-preview h1 {
+  font-size: 2em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--border);
+}
+
+.markdown-preview h2 {
+  font-size: 1.5em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--border);
+}
+
+.markdown-preview h3 {
+  font-size: 1.25em;
+}
+
+.markdown-preview h4 {
+  font-size: 1em;
+}
+
+.markdown-preview h5 {
+  font-size: 0.875em;
+}
+
+.markdown-preview h6 {
+  font-size: 0.85em;
+  color: var(--muted-foreground);
+}
+
+.markdown-preview p {
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+.markdown-preview a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.markdown-preview a:hover {
+  text-decoration: underline;
+}
+
+.markdown-preview strong {
+  font-weight: 600;
+}
+
+.markdown-preview ul,
+.markdown-preview ol {
+  padding-left: 2em;
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+.markdown-preview ul {
+  list-style-type: disc;
+}
+
+.markdown-preview ol {
+  list-style-type: decimal;
+}
+
+.markdown-preview li {
+  margin-top: 0.25em;
+}
+
+.markdown-preview li + li {
+  margin-top: 0.25em;
+}
+
+.markdown-preview li > ul,
+.markdown-preview li > ol {
+  margin-top: 0.25em;
+  margin-bottom: 0;
+}
+
+.markdown-preview blockquote {
+  margin: 0 0 16px 0;
+  padding: 0 1em;
+  color: var(--muted-foreground);
+  border-left: 0.25em solid var(--border);
+}
+
+.markdown-preview blockquote > :first-child {
+  margin-top: 0;
+}
+
+.markdown-preview blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-preview hr {
+  height: 0.25em;
+  padding: 0;
+  margin: 24px 0;
+  background-color: var(--border);
+  border: 0;
+}
+
+.markdown-preview code {
+  font-family: var(--font-mono), monospace;
+  font-size: 85%;
+  padding: 0.2em 0.4em;
+  margin: 0;
+  background-color: var(--secondary);
+  border-radius: 6px;
+}
+
+.markdown-preview pre {
+  padding: 16px;
+  overflow: auto;
+  font-size: 85%;
+  line-height: 1.45;
+  background-color: var(--secondary);
+  border-radius: 6px;
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+.markdown-preview pre code {
+  display: block;
+  padding: 0;
+  margin: 0;
+  overflow: visible;
+  line-height: inherit;
+  word-wrap: normal;
+  background-color: transparent;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+.markdown-preview img {
+  max-width: 100%;
+  box-sizing: border-box;
+  border-radius: 4px;
+}
+
+.markdown-preview table {
+  border-spacing: 0;
+  border-collapse: collapse;
+  margin-top: 0;
+  margin-bottom: 16px;
+  width: auto;
+  overflow: auto;
+  display: block;
+}
+
+.markdown-preview table th {
+  font-weight: 600;
+  padding: 6px 13px;
+  border: 1px solid var(--border);
+  background-color: var(--secondary);
+}
+
+.markdown-preview table td {
+  padding: 6px 13px;
+  border: 1px solid var(--border);
+}
+
+.markdown-preview table tr:nth-child(2n) {
+  background-color: color-mix(in oklch, var(--secondary) 50%, transparent);
+}
+
+.markdown-preview input[type="checkbox"] {
+  margin-right: 0.5em;
+  vertical-align: middle;
+}
+
+.markdown-preview > :first-child {
+  margin-top: 0 !important;
+}
+
+.markdown-preview > :last-child {
+  margin-bottom: 0 !important;
 }

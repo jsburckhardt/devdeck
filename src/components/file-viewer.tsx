@@ -108,10 +108,7 @@ function MarkdownView({ content }: { content: string }) {
 
   return (
     <div className="overflow-auto p-6">
-      <article
-        className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-mono prose-headings:font-bold prose-code:rounded prose-code:bg-secondary prose-code:px-1.5 prose-code:py-0.5 prose-code:font-mono prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-pre:bg-secondary prose-pre:p-4 prose-table:border-collapse prose-th:border prose-th:border-border prose-th:bg-muted/50 prose-th:px-3 prose-th:py-2 prose-td:border prose-td:border-border prose-td:px-3 prose-td:py-2 prose-tr:even:bg-muted/20"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+      <article className="markdown-preview max-w-4xl" dangerouslySetInnerHTML={{ __html: html }} />
     </div>
   );
 }
