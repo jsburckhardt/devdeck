@@ -42,7 +42,6 @@ vi.mock("node-pty", () => ({
 }));
 
 // --- Mocks for slug/tmux support ---
-let mockResolvedPath = "/workspaces/test-project";
 let resolvePathShouldThrow = false;
 
 // mockRegistryJson controls what resolveProjectPath (inlined in terminal-server)
@@ -165,7 +164,6 @@ describe("terminal-server", () => {
     delete process.env.DEVDECK_TOKEN;
     delete process.env.DEVDECK_WORKSPACE_ROOT;
     // Reset slug/tmux mock state
-    mockResolvedPath = "/workspaces/test-project";
     resolvePathShouldThrow = false;
     mockRegistryJson = null;
     fsStatResults = {};

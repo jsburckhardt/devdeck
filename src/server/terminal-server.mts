@@ -91,8 +91,12 @@ function extractSlug(req: IncomingMessage): string | null {
   }
 }
 
-function sanitizeSessionName(slug: string): string {
-  return slug.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
+function sanitizeSlug(slug: string): string {
+  return slug.replace(/[^a-zA-Z0-9_-]/g, "");
+}
+
+function tmuxSessionName(slug: string): string {
+  return sanitizeSlug(slug).slice(0, 64);
 }
 
 function tmuxHasSession(socketPath: string, sessionName: string): Promise<boolean> {
@@ -120,7 +124,7 @@ async function resolveTerminalSetup(
     return { command: shell, args: shellArgs, cwd: defaultCwd, mode: "shell" };
   }
 
-  const sanitizedSlug = sanitizeSessionName(slug);
+  const sanitizedSlug = sanitizeSlug(slug);
   if (!sanitizedSlug) {
     console.log(`Slug "${slug}" invalid after sanitization, falling back to default CWD`);
     return { command: shell, args: shellArgs, cwd: defaultCwd, mode: "shell" };
@@ -142,10 +146,11 @@ async function resolveTerminalSetup(
   try {
     const socketStat = await fs.stat(tmuxSocketPath);
     if (socketStat.isSocket()) {
-      if (await tmuxHasSession(tmuxSocketPath, sanitizedSlug)) {
+      const sessionName = tmuxSessionName(slug);
+      if (sessionName && (await tmuxHasSession(tmuxSocketPath, sessionName))) {
         return {
           command: "tmux",
-          args: ["-S", tmuxSocketPath, "attach-session", "-t", sanitizedSlug],
+          args: ["-S", tmuxSocketPath, "attach-session", "-t", sessionName],
           cwd: resolvedCwd,
           mode: "tmux",
         };
@@ -237,7 +242,9 @@ async function handleConnection(
           }
         }
       }
-      pendingMessages.push({ data, isBinary });
+      if (pendingMessages.length < 100) {
+        pendingMessages.push({ data, isBinary });
+      }
       return;
     }
 
@@ -291,8 +298,8 @@ async function handleConnection(
         try {
           const fallbackPty = spawn(shell, shellArgs, {
             name: "xterm-256color",
-            cols: 80,
-            rows: 24,
+            cols: initialCols,
+            rows: initialRows,
             cwd: setup.cwd,
             env,
           });
