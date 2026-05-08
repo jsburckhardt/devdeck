@@ -55,9 +55,10 @@ Raw WebSocket with binary data provides the lowest latency for terminal I/O. xte
 ## Usage Examples
 
 ```typescript
-// Frontend: useTerminal hook (with token)
-const terminalRef = useRef<HTMLDivElement>(null);
-const { terminal, isConnected } = useTerminal(terminalRef);
+// Frontend: useTerminal hook
+const { containerRef, status, isConnected, error, retry } = useTerminal({
+  wsUrl: "ws://localhost:3100/api/terminal",
+});
 
 // Backend: WebSocket handler (with token validation and initial dimensions)
 import { WebSocketServer } from 'ws';

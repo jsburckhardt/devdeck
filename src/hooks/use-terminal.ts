@@ -125,13 +125,17 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
 
       term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
         if (event.type === "keydown" && (event.ctrlKey || event.metaKey) && event.key === "v") {
-          navigator.clipboard
-            .readText()
-            .then((text) => {
-              if (text) term.paste(text);
-            })
-            .catch(() => {});
-          return false;
+          if (window.isSecureContext && navigator.clipboard?.readText) {
+            navigator.clipboard
+              .readText()
+              .then((text) => {
+                if (text) term.paste(text);
+              })
+              .catch(() => {});
+            return false;
+          }
+          // Fall back to default browser paste in non-secure contexts
+          return true;
         }
         return true;
       });
@@ -199,11 +203,12 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
       }
 
       // Build WebSocket URL with current terminal dimensions
-      const separator = baseWsUrl.includes("?") ? "&" : "?";
-      const wsUrl = `${baseWsUrl}${separator}cols=${term.cols}&rows=${term.rows}`;
+      const wsUrlObj = new URL(baseWsUrl, window.location.href);
+      wsUrlObj.searchParams.set("cols", String(term.cols));
+      wsUrlObj.searchParams.set("rows", String(term.rows));
 
       // Connect WebSocket — cookie is sent automatically by the browser
-      const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(wsUrlObj.toString());
       ws.binaryType = "arraybuffer";
       wsRef.current = ws;
 

@@ -2,7 +2,7 @@
 
 ## Task 1: Add ClipboardAddon and Ctrl+V paste handler
 
-- **Status:** TODO
+- **Status:** DONE
 - **Complexity:** Medium
 - **Dependencies:** None
 - **Related ADRs:** ADR-0002
@@ -27,7 +27,7 @@ Install `@xterm/addon-clipboard` as a dependency. In `src/hooks/use-terminal.ts`
 
 ## Task 2: Enable screenReaderMode for accessibility input
 
-- **Status:** TODO
+- **Status:** DONE
 - **Complexity:** Low
 - **Dependencies:** None
 - **Related ADRs:** ADR-0002
@@ -48,7 +48,7 @@ Add `screenReaderMode: true` to the Terminal constructor options object in `src/
 
 ## Task 3: Fix PTY dimension race condition
 
-- **Status:** TODO
+- **Status:** DONE
 - **Complexity:** Medium
 - **Dependencies:** None
 - **Related ADRs:** ADR-0002
@@ -82,7 +82,7 @@ Fix the dimension race condition that causes tab completion duplication. Two cha
 
 ## Task 4: Add unit tests for all three fixes
 
-- **Status:** TODO
+- **Status:** DONE
 - **Complexity:** Medium
 - **Dependencies:** Task 1, Task 2, Task 3
 - **Related ADRs:** ADR-0002
