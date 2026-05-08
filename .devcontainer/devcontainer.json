@@ -53,7 +53,8 @@
     "memory": "4gb"
   },
   "remoteEnv": {
-    "HOST_PROJECT_PATH": "${localWorkspaceFolder}"
+    "HOST_PROJECT_PATH": "${localWorkspaceFolder}",
+    "GIT_PAGER": ""
   },
   "mounts": [
     "source=${env:HOME}${env:USERPROFILE}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached",
