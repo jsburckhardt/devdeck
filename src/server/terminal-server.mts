@@ -158,6 +158,42 @@ async function resolveTerminalSetup(
   return { command: shell, args: shellArgs, cwd: resolvedCwd, mode: "shell" };
 }
 
+function handleMessage(pty: IPty, data: Buffer, isBinary: boolean): void {
+  if (isBinary) {
+    try {
+      pty.write(data.toString("utf8"));
+    } catch {
+      // write failed
+    }
+    return;
+  }
+
+  // Text frame — control message
+  const text = data.toString("utf8");
+  if (Buffer.byteLength(text, "utf8") > MAX_CONTROL_MESSAGE_BYTES) {
+    return;
+  }
+
+  let msg: { type?: string; cols?: number; rows?: number };
+  try {
+    msg = JSON.parse(text) as { type?: string; cols?: number; rows?: number };
+  } catch {
+    return;
+  }
+
+  if (msg.type === "resize") {
+    const rawCols = Number(msg.cols);
+    const rawRows = Number(msg.rows);
+    const cols = Number.isFinite(rawCols) ? Math.max(1, Math.min(500, Math.round(rawCols))) : 1;
+    const rows = Number.isFinite(rawRows) ? Math.max(1, Math.min(200, Math.round(rawRows))) : 1;
+    try {
+      pty.resize(cols, rows);
+    } catch {
+      // resize failed
+    }
+  }
+}
+
 async function handleConnection(
   ws: WebSocket,
   slug: string | null,
@@ -169,6 +205,45 @@ async function handleConnection(
 ): Promise<void> {
   console.log("Client connected");
 
+  // Queue messages that arrive during async setup
+  const pendingMessages: { data: Buffer; isBinary: boolean }[] = [];
+  let pty: IPty | null = null;
+  let cleaned = false;
+  let initialCols = 80;
+  let initialRows = 24;
+
+  // Register message handler immediately to capture early resize/input
+  ws.on("message", (data: Buffer, isBinary: boolean) => {
+    if (!pty) {
+      // PTY not yet spawned — queue or capture resize
+      if (!isBinary) {
+        const text = data.toString("utf8");
+        if (Buffer.byteLength(text, "utf8") <= MAX_CONTROL_MESSAGE_BYTES) {
+          try {
+            const msg = JSON.parse(text) as { type?: string; cols?: number; rows?: number };
+            if (msg.type === "resize") {
+              const rawCols = Number(msg.cols);
+              const rawRows = Number(msg.rows);
+              initialCols = Number.isFinite(rawCols)
+                ? Math.max(1, Math.min(500, Math.round(rawCols)))
+                : 80;
+              initialRows = Number.isFinite(rawRows)
+                ? Math.max(1, Math.min(200, Math.round(rawRows)))
+                : 24;
+              return;
+            }
+          } catch {
+            // not JSON
+          }
+        }
+      }
+      pendingMessages.push({ data, isBinary });
+      return;
+    }
+
+    handleMessage(pty, data, isBinary);
+  });
+
   const setup = await resolveTerminalSetup(slug, defaultCwd, shell, shellArgs);
 
   // Client may have disconnected during async setup
@@ -179,9 +254,6 @@ async function handleConnection(
   const cleanPtyEnv = Object.fromEntries(
     Object.entries(ptyEnv).filter((e): e is [string, string] => typeof e[1] === "string"),
   );
-
-  let pty: IPty | null = null;
-  let cleaned = false;
 
   function cleanupPty(reason: string) {
     if (cleaned) return;
@@ -248,56 +320,24 @@ async function handleConnection(
   try {
     pty = spawn(setup.command, setup.args, {
       name: "xterm-256color",
-      cols: 80,
-      rows: 24,
+      cols: initialCols,
+      rows: initialRows,
       cwd: setup.cwd,
       env: cleanPtyEnv,
     });
 
     activePtys.add(pty);
     console.log(
-      `PTY spawned (pid: ${pty.pid}, command: ${setup.command}, cwd: ${setup.cwd}, mode: ${setup.mode})`,
+      `PTY spawned (pid: ${pty.pid}, command: ${setup.command}, cwd: ${setup.cwd}, mode: ${setup.mode}, cols: ${initialCols}, rows: ${initialRows})`,
     );
 
     wirePty(pty, setup.mode === "tmux");
 
-    ws.on("message", (data: Buffer, isBinary: boolean) => {
-      if (!pty) return;
-
-      if (isBinary) {
-        try {
-          pty.write(data.toString("utf8"));
-        } catch {
-          // write failed
-        }
-        return;
-      }
-
-      // Text frame — control message
-      const text = data.toString("utf8");
-      if (Buffer.byteLength(text, "utf8") > MAX_CONTROL_MESSAGE_BYTES) {
-        return;
-      }
-
-      let msg: { type?: string; cols?: number; rows?: number };
-      try {
-        msg = JSON.parse(text) as { type?: string; cols?: number; rows?: number };
-      } catch {
-        return;
-      }
-
-      if (msg.type === "resize") {
-        const rawCols = Number(msg.cols);
-        const rawRows = Number(msg.rows);
-        const cols = Number.isFinite(rawCols) ? Math.max(1, Math.min(500, Math.round(rawCols))) : 1;
-        const rows = Number.isFinite(rawRows) ? Math.max(1, Math.min(200, Math.round(rawRows))) : 1;
-        try {
-          pty.resize(cols, rows);
-        } catch {
-          // resize failed
-        }
-      }
-    });
+    // Flush any messages that arrived during async setup
+    for (const pending of pendingMessages) {
+      handleMessage(pty, pending.data, pending.isBinary);
+    }
+    pendingMessages.length = 0;
 
     ws.on("close", () => {
       console.log("Client disconnected");
