@@ -91,6 +91,19 @@ function extractSlug(req: IncomingMessage): string | null {
   }
 }
 
+function extractDimensions(req: IncomingMessage): { cols: number; rows: number } {
+  try {
+    const url = new URL(req.url ?? "", `http://${req.headers.host ?? "localhost"}`);
+    const rawCols = Number(url.searchParams.get("cols"));
+    const rawRows = Number(url.searchParams.get("rows"));
+    const cols = Number.isFinite(rawCols) ? Math.max(1, Math.min(500, Math.round(rawCols))) : 80;
+    const rows = Number.isFinite(rawRows) ? Math.max(1, Math.min(200, Math.round(rawRows))) : 24;
+    return { cols, rows };
+  } catch {
+    return { cols: 80, rows: 24 };
+  }
+}
+
 function sanitizeSlug(slug: string): string {
   return slug.replace(/[^a-zA-Z0-9_-]/g, "");
 }
@@ -207,6 +220,7 @@ async function handleConnection(
   shellArgs: string[],
   env: Record<string, string>,
   activePtys: Set<IPty>,
+  urlDimensions?: { cols: number; rows: number },
 ): Promise<void> {
   console.log("Client connected");
 
@@ -214,8 +228,8 @@ async function handleConnection(
   const pendingMessages: { data: Buffer; isBinary: boolean }[] = [];
   let pty: IPty | null = null;
   let cleaned = false;
-  let initialCols = 80;
-  let initialRows = 24;
+  let initialCols = urlDimensions?.cols ?? 80;
+  let initialRows = urlDimensions?.rows ?? 24;
 
   // Register message handler immediately to capture early resize/input
   ws.on("message", (data: Buffer, isBinary: boolean) => {
@@ -394,13 +408,21 @@ export function createTerminalServer(options?: TerminalServerOptions): TerminalS
     }
 
     const slug = extractSlug(req);
+    const dimensions = extractDimensions(req);
 
-    void handleConnection(ws, slug, cwd, shell, shellArgs, sanitizedEnv, activePtys).catch(
-      (err) => {
-        console.error("Terminal connection setup failed:", err);
-        if (ws.readyState === WebSocket.OPEN) ws.close(1011, "Terminal setup failed");
-      },
-    );
+    void handleConnection(
+      ws,
+      slug,
+      cwd,
+      shell,
+      shellArgs,
+      sanitizedEnv,
+      activePtys,
+      dimensions,
+    ).catch((err) => {
+      console.error("Terminal connection setup failed:", err);
+      if (ws.readyState === WebSocket.OPEN) ws.close(1011, "Terminal setup failed");
+    });
   });
 
   function cleanup() {
