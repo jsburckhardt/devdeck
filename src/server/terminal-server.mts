@@ -6,11 +6,34 @@ import { homedir } from "os";
 import fs from "fs/promises";
 import path from "path";
 import type { IncomingMessage } from "http";
-import { resolveProjectPath } from "../lib/registry.js";
 
 const MAX_CONTROL_MESSAGE_BYTES = 1024;
 
 const LOGIN_SHELL_SUPPORTED = new Set(["bash", "zsh", "fish", "sh"]);
+
+const PROJECTS_DIR = process.env.DEVDECK_PROJECTS_DIR ?? "/workspaces";
+
+// Inlined from src/lib/registry.ts to avoid @/ path alias incompatibility
+// with standalone .mts ESM execution (tsx doesn't resolve tsconfig paths for .mts)
+interface RegistryEntry {
+  slug: string;
+  path: string;
+}
+
+async function resolveProjectPath(slug: string): Promise<string> {
+  const dataDir = process.env.DEVDECK_DATA_DIR ?? path.join(homedir(), ".config", "devdeck");
+  const registryPath = path.join(dataDir, "registry.json");
+  try {
+    const content = await fs.readFile(registryPath, "utf-8");
+    const registry = JSON.parse(content) as { projects: RegistryEntry[] };
+    const entry = registry.projects.find((p) => p.slug === slug);
+    if (entry) return entry.path;
+  } catch {
+    // Registry missing or unreadable — fall through to default
+  }
+  const sanitized = slug.replace(/[^a-zA-Z0-9_-]/g, "");
+  return path.resolve(PROJECTS_DIR, sanitized);
+}
 
 export interface TerminalServerOptions {
   port?: number;

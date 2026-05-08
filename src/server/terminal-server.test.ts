@@ -45,17 +45,23 @@ vi.mock("node-pty", () => ({
 let mockResolvedPath = "/workspaces/test-project";
 let resolvePathShouldThrow = false;
 
-vi.mock("../lib/registry.js", () => ({
-  resolveProjectPath: vi.fn(async () => {
-    if (resolvePathShouldThrow) throw new Error("Registry lookup failed");
-    return mockResolvedPath;
-  }),
-}));
+// mockRegistryJson controls what resolveProjectPath (inlined in terminal-server)
+// reads from the registry file. Set to null to simulate missing registry.
+let mockRegistryJson: { projects: { slug: string; path: string }[] } | null = null;
 
 let fsStatResults: Record<string, { isDirectory: boolean; isSocket: boolean }> = {};
 
 vi.mock("fs/promises", () => ({
   default: {
+    readFile: vi.fn(async (_p: string) => {
+      if (resolvePathShouldThrow) throw new Error("Registry lookup failed");
+      if (!mockRegistryJson) {
+        const err = new Error("ENOENT") as NodeJS.ErrnoException;
+        err.code = "ENOENT";
+        throw err;
+      }
+      return JSON.stringify(mockRegistryJson);
+    }),
     stat: vi.fn(async (p: string) => {
       const result = fsStatResults[p];
       if (!result) {
@@ -161,6 +167,7 @@ describe("terminal-server", () => {
     // Reset slug/tmux mock state
     mockResolvedPath = "/workspaces/test-project";
     resolvePathShouldThrow = false;
+    mockRegistryJson = null;
     fsStatResults = {};
     tmuxHasSessionResult = false;
   });
@@ -434,7 +441,7 @@ describe("terminal-server", () => {
   // --- Slug and tmux tests ---
 
   it("T16: slug in URL resolves project CWD", async () => {
-    mockResolvedPath = "/workspaces/my-project";
+    // No registry entry — resolveProjectPath falls back to /workspaces/my-project
     fsStatResults["/workspaces/my-project"] = { isDirectory: true, isSocket: false };
 
     const srv = await createServer();
@@ -452,13 +459,9 @@ describe("terminal-server", () => {
       { cwd: string },
     ];
     expect(lastCall[2].cwd).toBe("/workspaces/my-project");
-
-    const registry = await import("../lib/registry.js");
-    expect(registry.resolveProjectPath).toHaveBeenCalledWith("my-project");
   });
 
   it("T17: tmux shared session detected and spawned", async () => {
-    mockResolvedPath = "/workspaces/tmux-proj";
     fsStatResults["/workspaces/tmux-proj"] = { isDirectory: true, isSocket: false };
     fsStatResults["/workspaces/tmux-proj/.devcontainer/.tmux-shared"] = {
       isDirectory: false,
@@ -493,10 +496,6 @@ describe("terminal-server", () => {
     const srv = await createServer();
     handle = srv.handle;
 
-    const registry = await import("../lib/registry.js");
-    const resolveProjectPathFn = registry.resolveProjectPath as ReturnType<typeof vi.fn>;
-    const callsBefore = resolveProjectPathFn.mock.calls.length;
-
     const client = await connectClient(srv.port);
     clients.push(client);
     await tick();
@@ -510,14 +509,10 @@ describe("terminal-server", () => {
     ];
     const { homedir } = await import("os");
     expect(lastCall[2].cwd).toBe(homedir());
-
-    // No new calls to resolveProjectPath since this connection had no slug
-    expect(resolveProjectPathFn.mock.calls.length).toBe(callsBefore);
   });
 
   it("T19: resolved path not existing falls back to default CWD", async () => {
-    mockResolvedPath = "/workspaces/missing-project";
-    // No fsStatResults entry → fs.stat will throw ENOENT
+    // No fsStatResults entry for /workspaces/missing-project → fs.stat will throw ENOENT
 
     const srv = await createServer();
     handle = srv.handle;
@@ -539,7 +534,6 @@ describe("terminal-server", () => {
   });
 
   it("T20: tmux session not found falls back to regular shell", async () => {
-    mockResolvedPath = "/workspaces/no-session";
     fsStatResults["/workspaces/no-session"] = { isDirectory: true, isSocket: false };
     fsStatResults["/workspaces/no-session/.devcontainer/.tmux-shared"] = {
       isDirectory: false,
@@ -568,7 +562,7 @@ describe("terminal-server", () => {
 
   it("T21: tmux session name is sanitized", async () => {
     const dirtySlug = "my project!@#$%^&*()";
-    mockResolvedPath = "/workspaces/myproject";
+    // After sanitization: "myproject" → resolveProjectPath fallback: /workspaces/myproject
     fsStatResults["/workspaces/myproject"] = { isDirectory: true, isSocket: false };
     fsStatResults["/workspaces/myproject/.devcontainer/.tmux-shared"] = {
       isDirectory: false,
@@ -598,7 +592,6 @@ describe("terminal-server", () => {
   });
 
   it("T22: tmux PTY exit with non-zero code falls back to regular shell", async () => {
-    mockResolvedPath = "/workspaces/tmux-fail";
     fsStatResults["/workspaces/tmux-fail"] = { isDirectory: true, isSocket: false };
     fsStatResults["/workspaces/tmux-fail/.devcontainer/.tmux-shared"] = {
       isDirectory: false,
