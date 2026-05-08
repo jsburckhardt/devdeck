@@ -3,8 +3,6 @@
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Spinner } from "@phosphor-icons/react";
 import { use, useEffect, useState } from "react";
-import { WorkspaceProvider } from "@/lib/workspace-context";
-import { WorkspaceLayout } from "@/components/workspace-layout";
 import { Header } from "@/components/header";
 import { useOpenProjects } from "@/lib/open-projects-context";
 import type { Project } from "@/lib/types";
@@ -12,18 +10,20 @@ import type { Project } from "@/lib/types";
 export default function ProjectPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const router = useRouter();
-  const { openProject } = useOpenProjects();
-  const [project, setProject] = useState<Project | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { openProject, openProjects } = useOpenProjects();
+  const isAlreadyOpen = openProjects.some((p) => p.slug === slug);
+  const [loading, setLoading] = useState(!isAlreadyOpen);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (isAlreadyOpen) return;
+
     fetch("/api/projects")
       .then((res) => res.json())
       .then((projects: Project[]) => {
         const found = projects.find((p) => p.slug === slug);
         if (found) {
-          setProject(found);
+          openProject(found);
         } else {
           setError("Project not found");
         }
@@ -33,13 +33,12 @@ export default function ProjectPage({ params }: { params: Promise<{ slug: string
         setError(err.message);
         setLoading(false);
       });
-  }, [slug]);
+  }, [slug, isAlreadyOpen, openProject]);
 
-  useEffect(() => {
-    if (project) {
-      openProject(project);
-    }
-  }, [project, openProject]);
+  // Layout renders the workspace for open projects — page returns nothing
+  if (isAlreadyOpen) {
+    return null;
+  }
 
   if (loading) {
     return (
@@ -52,12 +51,12 @@ export default function ProjectPage({ params }: { params: Promise<{ slug: string
     );
   }
 
-  if (error || !project) {
+  if (error) {
     return (
       <>
         <Header backAction={() => router.push("/")} title={slug} />
         <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
-          <p className="text-sm">{error ?? "Project not found"}</p>
+          <p className="text-sm">{error}</p>
           <button
             onClick={() => router.push("/")}
             className="flex items-center gap-1.5 rounded-md bg-secondary px-3 py-1.5 text-xs text-secondary-foreground hover:bg-accent"
@@ -70,14 +69,5 @@ export default function ProjectPage({ params }: { params: Promise<{ slug: string
     );
   }
 
-  return (
-    <>
-      <Header backAction={() => router.push("/")} title={project.name} />
-      <WorkspaceProvider slug={slug}>
-        <div className="min-h-0 flex-1">
-          <WorkspaceLayout project={project} />
-        </div>
-      </WorkspaceProvider>
-    </>
-  );
+  return null;
 }
