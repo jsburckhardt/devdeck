@@ -11,32 +11,12 @@ import {
   Warning,
 } from "@phosphor-icons/react";
 import type { Project } from "@/lib/types";
+import { languageColor } from "@/lib/utils";
 
 interface ProjectCardProps {
   project: Project;
   onEdit?: (project: Project) => void;
   onRemove?: (project: Project) => void;
-}
-
-function languageColor(language?: string): string {
-  switch (language) {
-    case "TypeScript":
-      return "bg-blue-500";
-    case "JavaScript":
-      return "bg-yellow-500";
-    case "Python":
-      return "bg-green-500";
-    case "Rust":
-      return "bg-orange-500";
-    case "Go":
-      return "bg-cyan-500";
-    case "Ruby":
-      return "bg-red-500";
-    case "Java":
-      return "bg-amber-700";
-    default:
-      return "bg-muted-foreground";
-  }
 }
 
 export function ProjectCard({ project, onEdit, onRemove }: ProjectCardProps) {
