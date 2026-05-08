@@ -35,6 +35,7 @@ You MUST NOT modify application source code; only documentation, AGENTS.md, and 
 You MUST check whether new or modified ADRs or core-components exist in the changeset and update DECISION-LOG.md accordingly.
 You MUST check whether new or modified agent definitions exist in the changeset and update AGENTS.md accordingly.
 You MUST verify the branch is clean with no uncommitted changes after all commits.
+You MUST verify that all acceptance criteria from the GitHub issue are satisfied before pushing the branch; fetch the issue body, parse its checklist items, cross-reference each against the implementation, and block the push if any criterion is unmet.
 You MUST NOT force-push or use --no-verify.
 You MUST push the feature branch to the remote origin.
 You MUST use the GitHub CLI (gh pr create) to create a pull request.
@@ -134,6 +135,8 @@ ADR_CHANGES: []
 CC_CHANGES: []
 AGENT_CHANGES: false
 GH_AUTHENTICATED: false
+ACCEPTANCE_CRITERIA: []
+ACCEPTANCE_VERIFIED: false
 </runtime>
 
 <triggers>
@@ -159,6 +162,9 @@ IF AGENT_CHANGES is true:
   RUN `update-agents-md`
 RUN `update-docs`
 RUN `verify-clean`
+RUN `verify-acceptance-criteria`
+IF ACCEPTANCE_VERIFIED is false:
+  RETURN: format="VERIFY_ERROR", issue_number=ISSUE_NUMBER, stage="Acceptance Criteria", error_message="Not all acceptance criteria are satisfied", details=ACCEPTANCE_CRITERIA, fix="Complete all acceptance criteria listed in the issue before shipping"
 RUN `push-branch`
 RUN `create-pr`
 SET ADR_CC_LIST := <MERGED_LIST> (from "Agent Inference" using ADR_CHANGES, CC_CHANGES)
@@ -266,6 +272,15 @@ USE `execute/runInTerminal` where: command="git status --porcelain"
 CAPTURE STATUS_OUTPUT from `execute/runInTerminal`
 IF STATUS_OUTPUT is not empty:
   RETURN: format="VERIFY_ERROR", issue_number=ISSUE_NUMBER, stage="Verify Clean", error_message="Uncommitted changes remain", details=STATUS_OUTPUT, fix="Stage and commit remaining changes"
+</process>
+
+<process id="verify-acceptance-criteria" name="Fetch the GitHub issue and verify all acceptance criteria are satisfied">
+USE `execute/runInTerminal` where: command="gh issue view <ISSUE_NUMBER> --json body --jq .body"
+CAPTURE ISSUE_BODY from `execute/runInTerminal`
+SET ACCEPTANCE_CRITERIA := <CRITERIA_LIST> (from "Agent Inference" using ISSUE_BODY; extract all checklist items under Acceptance Criteria headings as a list of {criterion, section} objects)
+SET CRITERIA_RESULTS := <RESULTS> (from "Agent Inference" using ACCEPTANCE_CRITERIA, CHANGED_FILES, VERIFICATION_RESULTS; for each criterion assess whether the implementation evidence satisfies it and produce a list of {criterion, section, satisfied, evidence} objects)
+SET ACCEPTANCE_VERIFIED := <ALL_SATISFIED> (from "Agent Inference" using CRITERIA_RESULTS; true only if every criterion is satisfied)
+SET ACCEPTANCE_CRITERIA := CRITERIA_RESULTS (from "Agent Inference")
 </process>
 
 <process id="push-branch" name="Push the feature branch to remote origin">
