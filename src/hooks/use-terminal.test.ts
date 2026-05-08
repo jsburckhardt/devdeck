@@ -421,4 +421,18 @@ describe("useTerminal", () => {
       vi.useRealTimers();
     }
   });
+
+  it("T20: slug option appends slug to WS URL", async () => {
+    renderHook(() => useTerminal({ slug: "my-proj" }));
+
+    const ws = await waitForWs();
+    expect(ws.url).toContain("slug=my-proj");
+  });
+
+  it("T21: no slug means no slug param in URL", async () => {
+    renderHook(() => useTerminal());
+
+    const ws = await waitForWs();
+    expect(ws.url).not.toContain("slug=");
+  });
 });

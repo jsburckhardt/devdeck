@@ -3,7 +3,11 @@
 import { useTerminal } from "@/hooks/use-terminal";
 import { WarningCircle, Spinner, ArrowClockwise, LockSimple } from "@phosphor-icons/react";
 
-export function TerminalPanel() {
+interface TerminalPanelProps {
+  slug?: string;
+}
+
+export function TerminalPanel({ slug }: TerminalPanelProps) {
   const {
     containerRef,
     status,
@@ -12,7 +16,7 @@ export function TerminalPanel() {
     reconnectAttempt,
     maxReconnectAttempts,
     retry,
-  } = useTerminal();
+  } = useTerminal({ slug });
 
   const isUnauthorized = error?.toLowerCase().includes("unauthorized");
 

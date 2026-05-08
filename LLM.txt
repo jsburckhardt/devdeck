@@ -47,9 +47,9 @@ src/lib/file-utils.ts                                          — Language dete
 src/lib/diff-parser.ts                                         — Unified diff parser utility (parseDiff)
 src/lib/workspace-context.tsx                                  — Workspace state provider (project, file tree, selection)
 src/server/start-dev.mts                                       — Dev startup script: generates token, starts Next.js + terminal server
-src/server/terminal-server.mts                                 — WebSocket terminal server with token auth, login shell, $HOME cwd
-src/hooks/use-terminal.ts                                      — React hook for terminal WebSocket connection with 4401 handling
-src/components/terminal-panel.tsx                              — Terminal panel UI with auth error state
+src/server/terminal-server.mts                                 — WebSocket terminal server with token auth, per-project CWD via slug, optional tmux session attachment
+src/hooks/use-terminal.ts                                      — React hook for terminal WebSocket connection with slug param and 4401 handling
+src/components/terminal-panel.tsx                              — Terminal panel UI with slug prop forwarding and auth error state
 src/components/diff-view.tsx                                   — Diff view component: renders unified diff with colored lines and dual line numbers
 src/components/file-viewer.tsx                                 — File viewer with markdown preview, raw toggle, diff tabs, edit mode
 src/app/api/files/route.ts                                     — GET /api/files — file tree with git status

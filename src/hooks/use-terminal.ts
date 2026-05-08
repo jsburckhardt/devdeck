@@ -11,6 +11,7 @@ export type TerminalStatus =
 
 export interface UseTerminalOptions {
   wsUrl?: string;
+  slug?: string;
 }
 
 export interface UseTerminalReturn {
@@ -49,10 +50,12 @@ const CATPPUCCIN_THEME = {
   brightWhite: "#a6adc8",
 };
 
-function buildWsUrl(): string {
+function buildWsUrl(slug?: string): string {
   if (typeof window === "undefined") return "ws://localhost:8001/api/terminal";
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${window.location.host}/api/terminal`;
+  const base = `${proto}//${window.location.host}/api/terminal`;
+  if (slug) return `${base}?slug=${encodeURIComponent(slug)}`;
+  return base;
 }
 
 export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
@@ -61,7 +64,7 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
   const [error, setError] = useState<string | null>(null);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
 
-  const wsUrl = options?.wsUrl ?? buildWsUrl();
+  const wsUrl = options?.wsUrl ?? buildWsUrl(options?.slug);
 
   const generationRef = useRef(0);
   const intentionalCloseRef = useRef(false);
