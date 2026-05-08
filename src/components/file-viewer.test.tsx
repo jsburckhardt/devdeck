@@ -18,6 +18,24 @@ vi.mock("@/components/diff-view", () => ({
   DiffView: ({ diff }: { diff: string }) => <div data-testid="diff-view">{diff}</div>,
 }));
 
+vi.mock("@/components/theme-provider", () => ({
+  useTheme: vi.fn(() => ({
+    theme: "dark" as const,
+    setTheme: vi.fn(),
+    toggleTheme: vi.fn(),
+  })),
+}));
+
+const mockMermaidRender = vi.fn();
+const mockMermaidInitialize = vi.fn();
+
+vi.mock("mermaid", () => ({
+  default: {
+    initialize: (...args: unknown[]) => mockMermaidInitialize(...args),
+    render: (...args: unknown[]) => mockMermaidRender(...args),
+  },
+}));
+
 vi.mock("framer-motion", () => ({
   motion: {
     div: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => {
@@ -34,9 +52,11 @@ vi.mock("framer-motion", () => ({
 
 import { toast } from "sonner";
 import { useWorkspace } from "@/lib/workspace-context";
+import { useTheme } from "@/components/theme-provider";
 import FileViewer from "./file-viewer";
 
 const mockUseWorkspace = vi.mocked(useWorkspace);
+const mockUseTheme = vi.mocked(useTheme);
 
 function setupWorkspace(overrides: Record<string, unknown> = {}) {
   const defaults = {
@@ -638,6 +658,218 @@ describe("FileViewer", () => {
       expect(screen.getByLabelText("File editor")).toBeInTheDocument();
 
       confirmSpy.mockRestore();
+    });
+  });
+
+  describe("4d. Mermaid Rendering", () => {
+    const mermaidMd = "# Hello\n\n```mermaid\ngraph TD\n  A --> B\n```";
+    const mermaidFileData = {
+      content: mermaidMd,
+      language: "markdown",
+      size: mermaidMd.length,
+      isBinary: false,
+      path: "README.md",
+      name: "README.md",
+      mtime: 1000,
+    };
+
+    beforeEach(() => {
+      mockMermaidRender.mockReset();
+      mockMermaidInitialize.mockReset();
+      mockMermaidRender.mockResolvedValue({
+        svg: '<svg data-testid="mermaid-svg">diagram</svg>',
+      });
+    });
+
+    it("mermaid placeholder survives sanitization", async () => {
+      // Prevent mermaid from replacing innerHTML so we can check the placeholder
+      mockMermaidRender.mockImplementation(() => new Promise(() => {}));
+      setupWorkspace({ selectedFile: "README.md" });
+      mockFetchResponse(mermaidFileData);
+
+      render(<FileViewer />);
+      await waitFor(() => {
+        expect(screen.getByRole("article")).toBeInTheDocument();
+      });
+
+      const article = screen.getByRole("article");
+      const mermaidBlock = article.querySelector("[data-mermaid-source]");
+      expect(mermaidBlock).not.toBeNull();
+      expect(mermaidBlock?.classList.contains("mermaid-block")).toBe(true);
+      // data-mermaid-source is base64-encoded; decode to verify content
+      const encoded = mermaidBlock?.getAttribute("data-mermaid-source") ?? "";
+      const decoded = decodeURIComponent(escape(atob(encoded)));
+      expect(decoded).toContain("graph TD");
+    });
+
+    it("mermaid renders SVG diagram", async () => {
+      setupWorkspace({ selectedFile: "README.md" });
+      mockFetchResponse(mermaidFileData);
+
+      render(<FileViewer />);
+      await waitFor(() => {
+        const article = screen.getByRole("article");
+        const svg = article.querySelector("svg");
+        return expect(svg).not.toBeNull();
+      });
+
+      expect(mockMermaidInitialize).toHaveBeenCalledWith(
+        expect.objectContaining({
+          startOnLoad: false,
+          securityLevel: "strict",
+          theme: "dark",
+        }),
+      );
+      expect(mockMermaidRender).toHaveBeenCalled();
+    });
+
+    it("invalid mermaid syntax shows inline error", async () => {
+      const invalidMd = "# Test\n\n```mermaid\ninvalid!!!syntax\n```";
+      setupWorkspace({ selectedFile: "README.md" });
+      mockFetchResponse({
+        ...mermaidFileData,
+        content: invalidMd,
+        size: invalidMd.length,
+      });
+
+      mockMermaidRender.mockRejectedValue(new Error("Parse error"));
+
+      render(<FileViewer />);
+      await waitFor(() => {
+        const article = screen.getByRole("article");
+        const errorEl = article.querySelector(".mermaid-error");
+        return expect(errorEl).not.toBeNull();
+      });
+
+      const article = screen.getByRole("article");
+      const errorEl = article.querySelector(".mermaid-error");
+      expect(errorEl?.textContent).toContain("Parse error");
+      expect(errorEl?.querySelector("pre")).not.toBeNull();
+    });
+
+    it("theme mapping — dark theme uses mermaid dark theme", async () => {
+      mockUseTheme.mockReturnValue({
+        theme: "dark",
+        setTheme: vi.fn(),
+        toggleTheme: vi.fn(),
+      });
+      setupWorkspace({ selectedFile: "README.md" });
+      mockFetchResponse(mermaidFileData);
+
+      render(<FileViewer />);
+      await waitFor(() => {
+        expect(mockMermaidInitialize).toHaveBeenCalled();
+      });
+
+      expect(mockMermaidInitialize).toHaveBeenCalledWith(
+        expect.objectContaining({ theme: "dark" }),
+      );
+    });
+
+    it("theme mapping — light theme uses mermaid default theme", async () => {
+      mockUseTheme.mockReturnValue({
+        theme: "light",
+        setTheme: vi.fn(),
+        toggleTheme: vi.fn(),
+      });
+      setupWorkspace({ selectedFile: "README.md" });
+      mockFetchResponse(mermaidFileData);
+
+      render(<FileViewer />);
+      await waitFor(() => {
+        expect(mockMermaidInitialize).toHaveBeenCalled();
+      });
+
+      expect(mockMermaidInitialize).toHaveBeenCalledWith(
+        expect.objectContaining({ theme: "default" }),
+      );
+    });
+
+    it("raw mode shows mermaid source as text", async () => {
+      setupWorkspace({ selectedFile: "README.md" });
+      mockFetchResponse(mermaidFileData);
+
+      render(<FileViewer />);
+      const user = userEvent.setup();
+
+      await waitFor(() => {
+        expect(screen.getByRole("article")).toBeInTheDocument();
+      });
+
+      const rawButton = screen.getByRole("button", { name: /show raw source/i });
+      await user.click(rawButton);
+
+      expect(screen.queryByRole("article")).not.toBeInTheDocument();
+      // No SVG diagrams in raw mode
+      expect(document.querySelector("svg[data-testid='mermaid-svg']")).toBeNull();
+    });
+
+    it("non-mermaid code blocks are unaffected", async () => {
+      const tsContent = "# Hello\n\n```typescript\nconst x = 1;\n```";
+      setupWorkspace({ selectedFile: "README.md" });
+      mockFetchResponse({
+        content: tsContent,
+        language: "markdown",
+        size: tsContent.length,
+        isBinary: false,
+        path: "README.md",
+        name: "README.md",
+        mtime: 1000,
+      });
+
+      render(<FileViewer />);
+      await waitFor(() => {
+        expect(screen.getByRole("article")).toBeInTheDocument();
+      });
+
+      const article = screen.getByRole("article");
+      expect(article.innerHTML).toContain("hljs");
+      expect(article.querySelector("[data-mermaid-source]")).toBeNull();
+    });
+
+    it("multiple mermaid blocks in one document", async () => {
+      const multiMd =
+        "# Test\n\n```mermaid\ngraph TD\n  A --> B\n```\n\n```mermaid\nsequenceDiagram\n  A->>B: Hi\n```";
+      setupWorkspace({ selectedFile: "README.md" });
+      mockFetchResponse({
+        ...mermaidFileData,
+        content: multiMd,
+        size: multiMd.length,
+      });
+
+      mockMermaidRender
+        .mockResolvedValueOnce({ svg: '<svg class="mermaid-1">diagram1</svg>' })
+        .mockResolvedValueOnce({ svg: '<svg class="mermaid-2">diagram2</svg>' });
+
+      render(<FileViewer />);
+      await waitFor(() => {
+        const article = screen.getByRole("article");
+        return expect(article.querySelectorAll("svg").length).toBe(2);
+      });
+
+      expect(mockMermaidRender).toHaveBeenCalledTimes(2);
+    });
+
+    it("no mermaid import when no mermaid blocks present", async () => {
+      const plainMd = "# Just a heading\n\nSome text";
+      setupWorkspace({ selectedFile: "README.md" });
+      mockFetchResponse({
+        content: plainMd,
+        language: "markdown",
+        size: plainMd.length,
+        isBinary: false,
+        path: "README.md",
+        name: "README.md",
+        mtime: 1000,
+      });
+
+      render(<FileViewer />);
+      await waitFor(() => {
+        expect(screen.getByRole("article")).toBeInTheDocument();
+      });
+
+      // mermaid.initialize should not have been called since there are no mermaid blocks
+      expect(mockMermaidInitialize).not.toHaveBeenCalled();
     });
   });
 });
