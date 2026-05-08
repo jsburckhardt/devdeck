@@ -3,16 +3,27 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 
 // --- Mocks ---
 
+let terminalConstructorOptions: Record<string, unknown> = {};
+const callOrder: string[] = [];
 const fakeTerminalHandlers: Record<string, (...args: unknown[]) => void> = {};
+const fakeFitAddon = {
+  fit: vi.fn(() => {
+    callOrder.push("fit");
+  }),
+  dispose: vi.fn(),
+};
 const fakeTerminal = {
   open: vi.fn(),
   write: vi.fn(),
+  paste: vi.fn(),
   dispose: vi.fn(),
   loadAddon: vi.fn(),
+  attachCustomKeyEventHandler: vi.fn(),
   onData: vi.fn((cb: (data: string) => void) => {
     fakeTerminalHandlers.data = cb;
   }),
   onResize: vi.fn((cb: (e: { cols: number; rows: number }) => void) => {
+    callOrder.push("onResize");
     fakeTerminalHandlers.resize = cb;
   }),
   cols: 80,
@@ -21,13 +32,14 @@ const fakeTerminal = {
 };
 
 vi.mock("@xterm/xterm", () => ({
-  Terminal: function MockTerminal() {
+  Terminal: function MockTerminal(opts: Record<string, unknown>) {
+    terminalConstructorOptions = opts;
     return fakeTerminal;
   },
 }));
 vi.mock("@xterm/addon-fit", () => ({
   FitAddon: function MockFitAddon() {
-    return { fit: vi.fn(), dispose: vi.fn() };
+    return fakeFitAddon;
   },
 }));
 vi.mock("@xterm/addon-web-links", () => ({
@@ -37,6 +49,11 @@ vi.mock("@xterm/addon-web-links", () => ({
 }));
 vi.mock("@xterm/addon-unicode11", () => ({
   Unicode11Addon: function MockUnicode11Addon() {
+    return { dispose: vi.fn() };
+  },
+}));
+vi.mock("@xterm/addon-clipboard", () => ({
+  ClipboardAddon: function MockClipboardAddon() {
     return { dispose: vi.fn() };
   },
 }));
@@ -98,13 +115,20 @@ describe("useTerminal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     wsInstances = [];
+    callOrder.length = 0;
+    terminalConstructorOptions = {};
     fakeTerminal.dispose.mockClear();
     fakeTerminal.open.mockClear();
     fakeTerminal.write.mockClear();
+    fakeTerminal.paste.mockClear();
     fakeTerminal.onData.mockClear();
     fakeTerminal.onResize.mockClear();
     fakeTerminal.loadAddon.mockClear();
+    fakeTerminal.attachCustomKeyEventHandler.mockClear();
+    fakeTerminal.cols = 80;
+    fakeTerminal.rows = 24;
     fakeTerminal.unicode.activeVersion = "6";
+    fakeFitAddon.fit.mockClear();
     Object.keys(fakeTerminalHandlers).forEach((k) => delete fakeTerminalHandlers[k]);
     mockRODisconnect.mockClear();
   });
@@ -434,5 +458,74 @@ describe("useTerminal", () => {
 
     const ws = await waitForWs();
     expect(ws.url).not.toContain("slug=");
+  });
+
+  it("T22: ClipboardAddon is loaded on the terminal", async () => {
+    renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+
+    await waitForWs();
+
+    // 4 addons: FitAddon, WebLinksAddon, Unicode11Addon, ClipboardAddon
+    expect(fakeTerminal.loadAddon).toHaveBeenCalledTimes(4);
+  });
+
+  it("T23: customKeyEventHandler is registered", async () => {
+    renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+
+    await waitForWs();
+
+    expect(fakeTerminal.attachCustomKeyEventHandler).toHaveBeenCalledTimes(1);
+    expect(typeof fakeTerminal.attachCustomKeyEventHandler.mock.calls[0][0]).toBe("function");
+  });
+
+  it("T24: Terminal constructor includes screenReaderMode: true", async () => {
+    renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+
+    await waitForWs();
+
+    expect(terminalConstructorOptions).toMatchObject({
+      screenReaderMode: true,
+      allowProposedApi: true,
+    });
+  });
+
+  it("T25: WebSocket URL contains cols and rows query params", async () => {
+    fakeTerminal.cols = 120;
+    fakeTerminal.rows = 40;
+
+    renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+
+    const ws = await waitForWs();
+
+    expect(ws.url).toContain("cols=120");
+    expect(ws.url).toContain("rows=40");
+  });
+
+  it("T26: onResize is registered before fitAddon.fit() is called", async () => {
+    const container = document.createElement("div");
+
+    const { result } = renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+
+    // Wait for first connection attempt to complete (containerRef was null)
+    await waitForWs();
+
+    // Set the container ref so that open/fit code paths execute on retry
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (result.current.containerRef as any).current = container;
+
+    // Clear order tracking and trigger a retry
+    callOrder.length = 0;
+
+    await act(async () => {
+      result.current.retry();
+    });
+
+    await waitForWs();
+
+    const onResizeIndex = callOrder.indexOf("onResize");
+    const fitIndex = callOrder.indexOf("fit");
+    expect(onResizeIndex).toBeGreaterThanOrEqual(0);
+    expect(fitIndex).toBeGreaterThanOrEqual(0);
+    expect(onResizeIndex).toBeLessThan(fitIndex);
   });
 });
