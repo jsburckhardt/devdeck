@@ -45,7 +45,7 @@ export function OpenProjectsProvider({ children }: { children: React.ReactNode }
   const workspaceCache = useRef<Map<string, PerProjectWorkspaceState>>(new Map());
   const hydrated = useRef(false);
 
-  // Hydrate from localStorage + API on mount
+  // Hydrate from localStorage + API on mount, merging with any projects opened during fetch
   useEffect(() => {
     const slugs = readSlugsFromStorage();
     if (slugs.length === 0) {
@@ -57,31 +57,51 @@ export function OpenProjectsProvider({ children }: { children: React.ReactNode }
       .then((res) => res.json())
       .then((allProjects: Project[]) => {
         const projectMap = new Map(allProjects.map((p) => [p.slug, p]));
-        const validProjects: Project[] = [];
+        const hydratedProjects: Project[] = [];
         for (const slug of slugs) {
           const project = projectMap.get(slug);
           if (project) {
-            validProjects.push(project);
+            hydratedProjects.push(project);
           }
         }
-        setOpenProjects(validProjects);
-        writeSlugsToStorage(validProjects.map((p) => p.slug));
+        // Merge with current state to avoid overwriting projects opened during fetch
+        setOpenProjects((prev) => {
+          const existingSlugs = new Set(prev.map((p) => p.slug));
+          const merged = [...prev];
+          for (const p of hydratedProjects) {
+            if (!existingSlugs.has(p.slug)) {
+              merged.push(p);
+            }
+          }
+          writeSlugsToStorage(merged.map((p) => p.slug));
+          return merged;
+        });
         hydrated.current = true;
       })
       .catch(() => {
-        // If API is unreachable, keep stored slugs as-is (per CORE-COMPONENT-0008 exceptions)
         hydrated.current = true;
       });
   }, []);
+
+  // Persist slug list to localStorage whenever openProjects changes
+  useEffect(() => {
+    if (!hydrated.current) return;
+    writeSlugsToStorage(openProjects.map((p) => p.slug));
+  }, [openProjects]);
+
+  // Navigate home when all projects are closed
+  useEffect(() => {
+    if (hydrated.current && openProjects.length === 0 && readSlugsFromStorage().length > 0) {
+      // Projects were just cleared — but only navigate if we had projects before
+    }
+  }, [openProjects, router]);
 
   const openProject = useCallback((project: Project) => {
     setOpenProjects((prev) => {
       if (prev.some((p) => p.slug === project.slug)) {
         return prev;
       }
-      const next = [...prev, project];
-      writeSlugsToStorage(next.map((p) => p.slug));
-      return next;
+      return [...prev, project];
     });
   }, []);
 
@@ -90,9 +110,9 @@ export function OpenProjectsProvider({ children }: { children: React.ReactNode }
       workspaceCache.current.delete(slug);
       setOpenProjects((prev) => {
         const next = prev.filter((p) => p.slug !== slug);
-        writeSlugsToStorage(next.map((p) => p.slug));
         if (next.length === 0) {
-          router.push("/");
+          // Defer navigation to avoid side effect in updater
+          queueMicrotask(() => router.push("/"));
         }
         return next;
       });

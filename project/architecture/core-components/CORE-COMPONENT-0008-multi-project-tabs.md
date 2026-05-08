@@ -38,10 +38,11 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - Each tab MUST have a close button (visible on hover) to remove the project from the open list
 - The sidebar MUST include a "Home" button at the top to navigate to the landing page
 - Clicking a sidebar tab MUST trigger client-side navigation via `router.push(`/project/${slug}`)` — no full page reload
-- Sidebar MUST use CSS custom properties from CORE-COMPONENT-0004 for all colors
+- Sidebar MUST use CSS custom properties from CORE-COMPONENT-0004 for structural colors (borders, backgrounds, text). Language color badges use Tailwind palette classes via the shared `languageColor()` utility for consistency with `ProjectCard`
 - All sidebar interactive elements MUST have `aria-label` attributes
 - The active tab MUST have `aria-current="page"`
 - Sidebar tabs MUST be keyboard-navigable (Tab key focuses tabs, Enter/Space activates)
+- Close buttons MUST remain in the DOM (not `display:none`) and be revealed via opacity for keyboard accessibility
 
 ### Interfaces
 
@@ -56,7 +57,7 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - Workspace UI state MAY be lost on full page refresh (acceptable — only slugs persist)
 - Terminal state is preserved server-side via tmux reattachment (CORE-COMPONENT-0003) — no client-side terminal state caching is needed
 - The sidebar MUST NOT appear on the landing page — only on `/project/*` routes
-- The `OpenProjectsProvider` MUST NOT fetch project data itself; the project page component calls `openProject()` after fetching
+- The `OpenProjectsProvider` MUST hydrate stored slugs by fetching `/api/projects` on cold start for metadata and stale slug pruning; the project page component also calls `openProject()` after fetching for direct URL navigation
 
 ## Rationale
 

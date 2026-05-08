@@ -216,7 +216,10 @@ describe("OpenProjectsProvider", () => {
       ctx!.closeProject("proj-a");
     });
 
-    expect(mockPush).toHaveBeenCalledWith("/");
+    // Navigation deferred via queueMicrotask
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/");
+    });
   });
 });
 

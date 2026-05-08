@@ -46,13 +46,13 @@ export function ProjectSidebar() {
               {project.name.charAt(0).toUpperCase()}
             </button>
 
-            {/* Close button - visible on hover */}
+            {/* Close button - accessible via keyboard and hover */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 closeProject(project.slug);
               }}
-              className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] text-destructive-foreground group-hover:flex"
+              className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] text-destructive-foreground opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
               aria-label={`Close project ${project.name}`}
             >
               <X size={10} weight="bold" />
