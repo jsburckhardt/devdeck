@@ -696,9 +696,11 @@ describe("FileViewer", () => {
       const mermaidBlock = article.querySelector("[data-mermaid-source]");
       expect(mermaidBlock).not.toBeNull();
       expect(mermaidBlock?.classList.contains("mermaid-block")).toBe(true);
-      // data-mermaid-source is base64-encoded; decode to verify content
+      // data-mermaid-source is base64-encoded; decode with TextDecoder to match implementation
       const encoded = mermaidBlock?.getAttribute("data-mermaid-source") ?? "";
-      const decoded = decodeURIComponent(escape(atob(encoded)));
+      const binString = atob(encoded);
+      const bytes = Uint8Array.from(binString, (c) => c.codePointAt(0)!);
+      const decoded = new TextDecoder().decode(bytes);
       expect(decoded).toContain("graph TD");
     });
 
