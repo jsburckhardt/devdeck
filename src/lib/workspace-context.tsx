@@ -1,7 +1,16 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { FileNode, Project } from "./types";
+import { useOpenProjects } from "./open-projects-context";
 
 interface WorkspaceState {
   project: Project | null;
@@ -25,20 +34,95 @@ interface WorkspaceContextValue extends WorkspaceState {
 
 const WorkspaceContext = createContext<WorkspaceContextValue | undefined>(undefined);
 
-export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
+interface WorkspaceProviderProps {
+  slug?: string;
+  children: React.ReactNode;
+}
+
+export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
+  const { saveWorkspaceState, restoreWorkspaceState } = useOpenProjects();
+
+  // Compute cached state once for lazy initializers
+  // Using useState to store the "restored" flag so it's part of React state, not a ref
+  const [, setRestoredFromCache] = useState(() => {
+    if (!slug) return false;
+    return !!restoreWorkspaceState(slug);
+  });
+
   const [project, setProjectState] = useState<Project | null>(null);
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
-  const [showFileViewer, setShowFileViewer] = useState(true);
-  const [showTerminal, setShowTerminal] = useState(true);
-  const [fileTree, setFileTreeState] = useState<FileNode[]>([]);
+  const [selectedFile, setSelectedFile] = useState<string | null>(() => {
+    if (!slug) return null;
+    const cached = restoreWorkspaceState(slug);
+    return cached?.selectedFile ?? null;
+  });
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => {
+    if (!slug) return new Set<string>();
+    const cached = restoreWorkspaceState(slug);
+    return cached ? new Set(cached.expandedFolders) : new Set<string>();
+  });
+  const [showFileViewer, setShowFileViewer] = useState(() => {
+    if (!slug) return true;
+    const cached = restoreWorkspaceState(slug);
+    return cached?.showFileViewer ?? true;
+  });
+  const [showTerminal, setShowTerminal] = useState(() => {
+    if (!slug) return true;
+    const cached = restoreWorkspaceState(slug);
+    return cached?.showTerminal ?? true;
+  });
+  const [fileTree, setFileTreeState] = useState<FileNode[]>(() => {
+    if (!slug) return [];
+    const cached = restoreWorkspaceState(slug);
+    return cached?.fileTree ?? [];
+  });
   const [fileTreeLoading, setFileTreeLoadingState] = useState(false);
+
+  // Use a single ref that holds the latest state for save-on-unmount
+  const stateRef = useRef({
+    selectedFile,
+    expandedFolders,
+    showFileViewer,
+    showTerminal,
+    fileTree,
+  });
+
+  useEffect(() => {
+    stateRef.current = {
+      selectedFile,
+      expandedFolders,
+      showFileViewer,
+      showTerminal,
+      fileTree,
+    };
+  }, [selectedFile, expandedFolders, showFileViewer, showTerminal, fileTree]);
+
+  // Save state on unmount
+  useEffect(() => {
+    if (!slug) return;
+    return () => {
+      const s = stateRef.current;
+      saveWorkspaceState(slug, {
+        selectedFile: s.selectedFile,
+        expandedFolders: Array.from(s.expandedFolders),
+        showFileViewer: s.showFileViewer,
+        showTerminal: s.showTerminal,
+        fileTree: s.fileTree,
+      });
+    };
+  }, [slug, saveWorkspaceState]);
 
   const setProject = useCallback((p: Project) => {
     setProjectState(p);
-    setSelectedFile(null);
-    setExpandedFolders(new Set());
-    setFileTreeState([]);
+    setRestoredFromCache((wasRestored) => {
+      // Only reset state if we didn't restore from cache
+      if (!wasRestored) {
+        setSelectedFile(null);
+        setExpandedFolders(new Set());
+        setFileTreeState([]);
+      }
+      // Clear the flag after first setProject call
+      return false;
+    });
   }, []);
 
   const selectFile = useCallback(

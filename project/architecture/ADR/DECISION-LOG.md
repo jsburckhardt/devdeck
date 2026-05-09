@@ -19,7 +19,8 @@ This file is the single registry of all architectural decisions and core-compone
 | CORE-COMPONENT-0004 | Theming | Adopted | 2026-05-06 |
 | CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2025-07-16 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
-| CORE-COMPONENT-0007 | Shell Layout | Adopted | 2026-05-07 |
+| CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-05-07 |
+| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted | 2025-07-18 |
 
 ## Decisions
 
@@ -73,3 +74,10 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 44 | Detect `.devcontainer/.tmux-shared` to decide between tmux attach and fresh shell spawn | CORE-COMPONENT-0003 | 2025-07-17 |
 | 45 | Sanitize tmux session names using `[^a-zA-Z0-9_-]` replacement before passing to tmux CLI | CORE-COMPONENT-0003 | 2025-07-17 |
 | 46 | Fall back to regular shell if tmux attach fails or tmux is not installed | CORE-COMPONENT-0003 | 2025-07-17 |
+| 47 | Render project sidebar as a fixed-width flex sibling outside the resizable panel Group | CORE-COMPONENT-0007 | 2025-07-18 |
+| 48 | Mount OpenProjectsProvider at root layout level to survive all client-side navigations | CORE-COMPONENT-0008 | 2025-07-18 |
+| 49 | Persist only the open project slug array to localStorage under key `devdeck-open-projects` | CORE-COMPONENT-0008 | 2025-07-18 |
+| 50 | Cache per-project workspace UI state in an in-memory Map keyed by slug | CORE-COMPONENT-0008 | 2025-07-18 |
+| 51 | Require WorkspaceProvider to save state on unmount and restore on mount via OpenProjectsProvider | CORE-COMPONENT-0008 | 2025-07-18 |
+| 52 | Prune stale slugs from localStorage by cross-referencing with /api/projects on cold start | CORE-COMPONENT-0008 | 2025-07-18 |
+| 53 | Use native title attribute for sidebar tooltips — prohibit adding @radix-ui/react-tooltip | CORE-COMPONENT-0008 | 2025-07-18 |

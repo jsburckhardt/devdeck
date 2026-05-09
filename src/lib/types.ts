@@ -55,3 +55,11 @@ export interface DiffHunk {
   oldStart: number;
   newStart: number;
 }
+
+export interface PerProjectWorkspaceState {
+  selectedFile: string | null;
+  expandedFolders: string[];
+  showFileViewer: boolean;
+  showTerminal: boolean;
+  fileTree: FileNode[];
+}

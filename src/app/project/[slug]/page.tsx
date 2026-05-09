@@ -6,11 +6,13 @@ import { use, useEffect, useState } from "react";
 import { WorkspaceProvider } from "@/lib/workspace-context";
 import { WorkspaceLayout } from "@/components/workspace-layout";
 import { Header } from "@/components/header";
+import { useOpenProjects } from "@/lib/open-projects-context";
 import type { Project } from "@/lib/types";
 
 export default function ProjectPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const router = useRouter();
+  const { openProject } = useOpenProjects();
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,20 +35,26 @@ export default function ProjectPage({ params }: { params: Promise<{ slug: string
       });
   }, [slug]);
 
+  useEffect(() => {
+    if (project) {
+      openProject(project);
+    }
+  }, [project, openProject]);
+
   if (loading) {
     return (
-      <div className="flex h-screen flex-col">
+      <>
         <Header backAction={() => router.push("/")} title={slug} />
         <div className="flex flex-1 items-center justify-center">
           <Spinner size={32} className="animate-spin text-muted-foreground" />
         </div>
-      </div>
+      </>
     );
   }
 
   if (error || !project) {
     return (
-      <div className="flex h-screen flex-col">
+      <>
         <Header backAction={() => router.push("/")} title={slug} />
         <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
           <p className="text-sm">{error ?? "Project not found"}</p>
@@ -58,18 +66,18 @@ export default function ProjectPage({ params }: { params: Promise<{ slug: string
             Back to projects
           </button>
         </div>
-      </div>
+      </>
     );
   }
 
   return (
-    <div className="flex h-screen flex-col">
+    <>
       <Header backAction={() => router.push("/")} title={project.name} />
-      <WorkspaceProvider>
+      <WorkspaceProvider slug={slug}>
         <div className="min-h-0 flex-1">
           <WorkspaceLayout project={project} />
         </div>
       </WorkspaceProvider>
-    </div>
+    </>
   );
 }
