@@ -12,16 +12,16 @@
 Install `@xterm/addon-clipboard` as a dependency. In `src/hooks/use-terminal.ts`, import `ClipboardAddon`, load it on the terminal instance alongside the other addons. Register a `customKeyEventHandler` on the terminal that intercepts Ctrl+V (and Cmd+V on macOS) keydown events, calls `navigator.clipboard.readText()`, and pipes the result into `term.paste()`. Return `false` from the handler to prevent xterm's default handling of Ctrl+V.
 
 ### Acceptance Criteria
-- [ ] `@xterm/addon-clipboard` is listed in `package.json` dependencies
-- [ ] `ClipboardAddon` is imported dynamically and loaded via `term.loadAddon()`
-- [ ] `customKeyEventHandler` intercepts Ctrl+V (keydown, `ctrlKey && key === 'v'`) and Cmd+V (`metaKey && key === 'v'`)
-- [ ] Handler calls `navigator.clipboard.readText()` and feeds result to `term.paste()`
-- [ ] Handler returns `false` for Ctrl+V/Cmd+V to suppress default xterm behavior
-- [ ] Handler returns `true` for all other key events
+- [x] `@xterm/addon-clipboard` is listed in `package.json` dependencies
+- [x] `ClipboardAddon` is imported dynamically and loaded via `term.loadAddon()`
+- [x] `customKeyEventHandler` intercepts Ctrl+V (keydown, `ctrlKey && key === 'v'`) and Cmd+V (`metaKey && key === 'v'`)
+- [x] Handler calls `navigator.clipboard.readText()` and feeds result to `term.paste()`
+- [x] Handler returns `false` for Ctrl+V/Cmd+V to suppress default xterm behavior
+- [x] Handler returns `true` for all other key events
 
 ### Test Coverage
-- [ ] T22: Verify `ClipboardAddon` is loaded via `term.loadAddon()`
-- [ ] T23: Verify `customKeyEventHandler` is registered on the terminal
+- [x] T22: Verify `ClipboardAddon` is loaded via `term.loadAddon()`
+- [x] T23: Verify `customKeyEventHandler` is registered on the terminal
 
 ---
 
@@ -37,12 +37,12 @@ Install `@xterm/addon-clipboard` as a dependency. In `src/hooks/use-terminal.ts`
 Add `screenReaderMode: true` to the Terminal constructor options object in `src/hooks/use-terminal.ts`. The prerequisite `allowProposedApi: true` is already set. This enables proper ARIA attributes on the hidden textarea, allowing Windows voice-to-text (Win+H) and IME input methods to work.
 
 ### Acceptance Criteria
-- [ ] Terminal constructor includes `screenReaderMode: true`
-- [ ] `allowProposedApi: true` remains set (already present)
-- [ ] No other Terminal options are changed
+- [x] Terminal constructor includes `screenReaderMode: true`
+- [x] `allowProposedApi: true` remains set (already present)
+- [x] No other Terminal options are changed
 
 ### Test Coverage
-- [ ] T24: Verify Terminal constructor is called with `screenReaderMode: true`
+- [x] T24: Verify Terminal constructor is called with `screenReaderMode: true`
 
 ---
 
@@ -66,17 +66,17 @@ Fix the dimension race condition that causes tab completion duplication. Two cha
 2. Use them as `initialCols`/`initialRows` defaults (with clamping) so the PTY spawns at the correct size
 
 ### Acceptance Criteria
-- [ ] `term.onResize()` is registered before `fitAddon.fit()` is called
-- [ ] WebSocket URL includes `cols=<N>&rows=<N>` query params derived from `term.cols`/`term.rows`
-- [ ] Server extracts `cols`/`rows` from upgrade URL in `extractSlug`-like function or inline
-- [ ] Server clamps cols to [1, 500] and rows to [1, 200], defaulting to 80×24
-- [ ] PTY spawns with URL-provided dimensions instead of hardcoded 80×24
-- [ ] Early resize messages from WS still override URL-provided dimensions (existing behavior preserved)
+- [x] `term.onResize()` is registered before `fitAddon.fit()` is called
+- [x] WebSocket URL includes `cols=<N>&rows=<N>` query params derived from `term.cols`/`term.rows`
+- [x] Server extracts `cols`/`rows` from upgrade URL in `extractSlug`-like function or inline
+- [x] Server clamps cols to [1, 500] and rows to [1, 200], defaulting to 80×24
+- [x] PTY spawns with URL-provided dimensions instead of hardcoded 80×24
+- [x] Early resize messages from WS still override URL-provided dimensions (existing behavior preserved)
 
 ### Test Coverage
-- [ ] T25: Verify WebSocket URL contains `cols` and `rows` query params
-- [ ] T26: Verify `term.onResize` is registered before `fitAddon.fit()` is called
-- [ ] T27: (Server) Verify `cols`/`rows` are read from upgrade URL and used for PTY spawn
+- [x] T25: Verify WebSocket URL contains `cols` and `rows` query params
+- [x] T26: Verify `term.onResize` is registered before `fitAddon.fit()` is called
+- [x] T27: (Server) Verify `cols`/`rows` are read from upgrade URL and used for PTY spawn
 
 ---
 
@@ -102,15 +102,15 @@ Mock additions needed:
 - Track call order of `onResize` vs `fitAddon.fit()`
 
 ### Acceptance Criteria
-- [ ] All tests T22–T27 pass
-- [ ] No existing tests (T10–T21) are broken
-- [ ] `@xterm/addon-clipboard` mock is added to the test file
-- [ ] Terminal constructor mock captures options for assertion
+- [x] All tests T22–T27 pass
+- [x] No existing tests (T10–T21) are broken
+- [x] `@xterm/addon-clipboard` mock is added to the test file
+- [x] Terminal constructor mock captures options for assertion
 
 ### Test Coverage
-- [ ] T22: ClipboardAddon loaded
-- [ ] T23: customKeyEventHandler registered
-- [ ] T24: screenReaderMode: true in constructor
-- [ ] T25: WebSocket URL contains cols/rows
-- [ ] T26: onResize registered before fitAddon.fit()
-- [ ] T27: Server reads cols/rows from URL params
+- [x] T22: ClipboardAddon loaded
+- [x] T23: customKeyEventHandler registered
+- [x] T24: screenReaderMode: true in constructor
+- [x] T25: WebSocket URL contains cols/rows
+- [x] T26: onResize registered before fitAddon.fit()
+- [x] T27: Server reads cols/rows from URL params
