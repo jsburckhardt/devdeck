@@ -50,12 +50,16 @@ const CATPPUCCIN_THEME = {
   brightWhite: "#a6adc8",
 };
 
-function buildWsUrl(slug?: string): string {
+function buildWsUrl(slug?: string, cols?: number, rows?: number): string {
   if (typeof window === "undefined") return "ws://localhost:8001/api/terminal";
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
   const base = `${proto}//${window.location.host}/api/terminal`;
-  if (slug) return `${base}?slug=${encodeURIComponent(slug)}`;
-  return base;
+  const params = new URLSearchParams();
+  if (slug) params.set("slug", slug);
+  if (cols != null) params.set("cols", String(cols));
+  if (rows != null) params.set("rows", String(rows));
+  const qs = params.toString();
+  return qs ? `${base}?${qs}` : base;
 }
 
 export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
@@ -64,7 +68,7 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
   const [error, setError] = useState<string | null>(null);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
 
-  const wsUrl = options?.wsUrl ?? buildWsUrl(options?.slug);
+  const baseWsUrl = options?.wsUrl ?? buildWsUrl(options?.slug);
 
   const generationRef = useRef(0);
   const intentionalCloseRef = useRef(false);
@@ -87,6 +91,7 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
       const { FitAddon } = await import("@xterm/addon-fit");
       const { WebLinksAddon } = await import("@xterm/addon-web-links");
       const { Unicode11Addon } = await import("@xterm/addon-unicode11");
+      const { ClipboardAddon } = await import("@xterm/addon-clipboard");
       await import("@xterm/xterm/css/xterm.css");
 
       if (gen !== generationRef.current) return;
@@ -104,22 +109,53 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
         lineHeight: 1.5,
         theme: CATPPUCCIN_THEME,
         allowProposedApi: true,
+        screenReaderMode: true,
       });
 
       const fitAddon = new FitAddon();
       const webLinksAddon = new WebLinksAddon();
       const unicode11Addon = new Unicode11Addon();
+      const clipboardAddon = new ClipboardAddon();
 
       term.loadAddon(fitAddon);
       term.loadAddon(webLinksAddon);
       term.loadAddon(unicode11Addon);
+      term.loadAddon(clipboardAddon);
       term.unicode.activeVersion = "11";
+
+      term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+        if (event.type === "keydown" && (event.ctrlKey || event.metaKey) && event.key === "v") {
+          if (window.isSecureContext && navigator.clipboard?.readText) {
+            navigator.clipboard
+              .readText()
+              .then((text) => {
+                if (text) term.paste(text);
+              })
+              .catch(() => {});
+            return false;
+          }
+          // Fall back to default browser paste in non-secure contexts
+          return true;
+        }
+        return true;
+      });
 
       termRef.current = term;
       fitAddonRef.current = fitAddon;
 
       if (containerRef.current) {
         term.open(containerRef.current);
+      }
+
+      // Register onResize BEFORE fitAddon.fit() so the handler captures
+      // the first resize event triggered by fit().
+      term.onResize(({ cols, rows }: { cols: number; rows: number }) => {
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: "resize", cols, rows }));
+        }
+      });
+
+      if (containerRef.current) {
         fitAddon.fit();
       }
 
@@ -166,8 +202,13 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
         wsRef.current = null;
       }
 
+      // Build WebSocket URL with current terminal dimensions
+      const wsUrlObj = new URL(baseWsUrl, window.location.href);
+      wsUrlObj.searchParams.set("cols", String(term.cols));
+      wsUrlObj.searchParams.set("rows", String(term.rows));
+
       // Connect WebSocket — cookie is sent automatically by the browser
-      const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(wsUrlObj.toString());
       ws.binaryType = "arraybuffer";
       wsRef.current = ws;
 
@@ -245,18 +286,12 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
           ws.send(encoder.encode(data));
         }
       });
-
-      term.onResize(({ cols, rows }: { cols: number; rows: number }) => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "resize", cols, rows }));
-        }
-      });
     } catch (err) {
       if (gen !== generationRef.current) return;
       setStatus("failed");
       setError(String(err));
     }
-  }, [wsUrl]);
+  }, [baseWsUrl]);
 
   useEffect(() => {
     connectRef.current = connect;

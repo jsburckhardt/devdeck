@@ -81,3 +81,6 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 51 | Require WorkspaceProvider to save state on unmount and restore on mount via OpenProjectsProvider | CORE-COMPONENT-0008 | 2025-07-18 |
 | 52 | Prune stale slugs from localStorage by cross-referencing with /api/projects on cold start | CORE-COMPONENT-0008 | 2025-07-18 |
 | 53 | Use native title attribute for sidebar tooltips — prohibit adding @radix-ui/react-tooltip | CORE-COMPONENT-0008 | 2025-07-18 |
+| 54 | Pass initial terminal dimensions as cols/rows query params on WebSocket upgrade URL | CORE-COMPONENT-0003 | 2025-07-18 |
+| 55 | Require ClipboardAddon for OSC 52 clipboard support in the terminal | CORE-COMPONENT-0003 | 2025-07-18 |
+| 56 | Require screenReaderMode: true in Terminal constructor for accessibility input | CORE-COMPONENT-0003 | 2025-07-18 |

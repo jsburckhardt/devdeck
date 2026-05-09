@@ -32,9 +32,12 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - If `<resolvedCwd>/.devcontainer/.tmux-shared` exists, the server SHOULD spawn `tmux -S <socketPath> attach-session -t <sanitizedSlug>` instead of a login shell
 - If tmux attach fails (session not found or tmux not installed), the server MUST fall back to a regular shell in the project directory
 - If no slug is provided, the server MUST fall back to the configured default CWD (`DEVDECK_WORKSPACE_ROOT`, `options.cwd`, or `os.homedir()`)
+- The client MUST pass initial terminal dimensions as `cols` and `rows` query parameters on the WebSocket upgrade URL so the server can spawn the PTY at the correct size before any resize message arrives
+- The frontend MUST load `@xterm/addon-clipboard` (ClipboardAddon) to support OSC 52 clipboard escape sequences from programs like tmux and vim
+- The frontend MUST set `screenReaderMode: true` in the Terminal constructor options to enable accessibility input methods (IME, voice-to-text)
 
 ### Interfaces
-- **WebSocket endpoint:** `/api/terminal?token=<bearer>&slug=<project-slug>` — accepts WebSocket upgrade requests with valid token (via query param or cookie); `slug` is optional and selects per-project CWD and tmux session
+- **WebSocket endpoint:** `/api/terminal?token=<bearer>&slug=<project-slug>&cols=<N>&rows=<N>` — accepts WebSocket upgrade requests with valid token (via query param or cookie); `slug` is optional and selects per-project CWD and tmux session; `cols`/`rows` are optional initial dimensions (clamped server-side, defaults to 80×24)
 - **Token handshake:** On upgrade, server extracts `token` from query string or `devdeck_token` cookie, validates via `crypto.timingSafeEqual`, rejects with close code 4401 if invalid
 - **Frontend hook:** `useTerminal(ref)` — manages xterm.js instance, WebSocket connection, token injection, and addon lifecycle
 - **Message format:** Raw binary data (ArrayBuffer) for terminal I/O; JSON for control messages (resize, ping)
@@ -52,11 +55,12 @@ Raw WebSocket with binary data provides the lowest latency for terminal I/O. xte
 ## Usage Examples
 
 ```typescript
-// Frontend: useTerminal hook (with token)
-const terminalRef = useRef<HTMLDivElement>(null);
-const { terminal, isConnected } = useTerminal(terminalRef);
+// Frontend: useTerminal hook
+const { containerRef, status, isConnected, error, retry } = useTerminal({
+  wsUrl: "ws://localhost:3100/api/terminal",
+});
 
-// Backend: WebSocket handler (with token validation)
+// Backend: WebSocket handler (with token validation and initial dimensions)
 import { WebSocketServer } from 'ws';
 import * as pty from 'node-pty';
 import { validateToken } from '../lib/auth';
@@ -68,7 +72,9 @@ wss.on('connection', (ws, req) => {
     ws.close(4401, 'Unauthorized');
     return;
   }
-  const shell = pty.spawn('bash', ['-l'], { cols: 80, rows: 24, cwd: os.homedir() });
+  const cols = Math.max(1, Math.min(500, Number(url.searchParams.get('cols')) || 80));
+  const rows = Math.max(1, Math.min(200, Number(url.searchParams.get('rows')) || 24));
+  const shell = pty.spawn('bash', ['-l'], { cols, rows, cwd: os.homedir() });
   ws.on('message', (data) => shell.write(data));
   shell.onData((data) => ws.send(data));
 });
@@ -78,7 +84,7 @@ wss.on('connection', (ws, req) => {
 
 - The WebSocket server setup should be in `src/server/terminal-server.mts` (`.mts` extension required for ESM interop with `tsx` runner)
 - The frontend hook should be in `src/hooks/use-terminal.ts`
-- xterm.js addons (fit, web-links, unicode11) should be loaded in the hook
+- xterm.js addons (fit, web-links, unicode11, clipboard) should be loaded in the hook
 - PTY shell selection should default to the user's `$SHELL` or fall back to `/bin/bash`
 - **Binary framing note:** `node-pty`'s `onData` emits `string`; the server must call `ws.send(Buffer.from(data, 'utf8'))` to produce a binary WebSocket frame. The frontend must set `ws.binaryType = "arraybuffer"` and check `event.data instanceof ArrayBuffer` in `onmessage`.
 
