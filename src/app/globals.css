@@ -318,3 +318,34 @@ body {
 .markdown-preview > :last-child {
   margin-bottom: 0 !important;
 }
+
+/* Mermaid diagram blocks */
+.markdown-preview .mermaid-block {
+  margin-top: 0;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.markdown-preview .mermaid-block svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.markdown-preview .mermaid-error {
+  border: 1px solid var(--destructive);
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 16px;
+  background-color: color-mix(in oklch, var(--destructive) 10%, transparent);
+}
+
+.markdown-preview .mermaid-error p {
+  color: var(--destructive);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.markdown-preview .mermaid-error pre {
+  font-size: 12px;
+  opacity: 0.8;
+}

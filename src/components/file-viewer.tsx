@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Spinner,
@@ -27,6 +27,7 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { toast } from "sonner";
 import { useWorkspace } from "@/lib/workspace-context";
+import { useTheme } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
 import { DiffView } from "@/components/diff-view";
 import type { FileContent, FileNode } from "@/lib/types";
@@ -42,9 +43,35 @@ hljs.registerLanguage("yaml", yaml);
 hljs.registerLanguage("python", python);
 hljs.registerLanguage("sql", sql);
 
+// Base64 encode/decode helpers using TextEncoder (avoids deprecated escape/unescape)
+function toBase64(str: string): string {
+  const bytes = new TextEncoder().encode(str);
+  const binString = Array.from(bytes, (b) => String.fromCodePoint(b)).join("");
+  return btoa(binString);
+}
+
+function fromBase64(base64: string): string {
+  const binString = atob(base64);
+  const bytes = Uint8Array.from(binString, (c) => c.codePointAt(0)!);
+  return new TextDecoder().decode(bytes);
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 // Configure marked renderer to use hljs for fenced code blocks
 const renderer = new marked.Renderer();
 renderer.code = function ({ text, lang }: { text: string; lang?: string }) {
+  if (lang === "mermaid") {
+    const encoded = toBase64(text);
+    const escaped = escapeHtml(text);
+    return `<div class="mermaid-block" data-mermaid-source="${encoded}"><pre><code class="language-mermaid">${escaped}</code></pre></div>`;
+  }
   const language = lang && hljs.getLanguage(lang) ? lang : undefined;
   const highlighted = language
     ? hljs.highlight(text, { language }).value
@@ -103,12 +130,76 @@ function CodeView({ content, language }: { content: string; language: string }) 
 }
 
 function MarkdownView({ content }: { content: string }) {
-  const rawHtml = marked.parse(content, { async: false }) as string;
-  const html = DOMPurify.sanitize(rawHtml);
+  const { theme } = useTheme();
+  const articleRef = useRef<HTMLElement>(null);
+  const rawHtml = useMemo(() => {
+    const parsed = marked.parse(content, { async: false }) as string;
+    return DOMPurify.sanitize(parsed);
+  }, [content]);
+
+  useEffect(() => {
+    const el = articleRef.current;
+    if (!el) return;
+
+    const mermaidBlocks = el.querySelectorAll<HTMLElement>("[data-mermaid-source]");
+    if (mermaidBlocks.length === 0) return;
+
+    let cancelled = false;
+
+    import("mermaid")
+      .then(async (mod) => {
+        if (cancelled) return;
+        const mermaid = mod.default;
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: "strict",
+          theme: theme === "dark" ? "dark" : "default",
+        });
+
+        for (let i = 0; i < mermaidBlocks.length; i++) {
+          if (cancelled) return;
+          const block = mermaidBlocks[i];
+          const encoded = block.getAttribute("data-mermaid-source") ?? "";
+          let source: string;
+          try {
+            source = fromBase64(encoded);
+          } catch {
+            // Malformed base64 — leave placeholder as-is
+            continue;
+          }
+          try {
+            const { svg } = await mermaid.render(`mermaid-diagram-${Date.now()}-${i}`, source);
+            if (!cancelled) {
+              block.innerHTML = DOMPurify.sanitize(svg, {
+                USE_PROFILES: { svg: true, svgFilters: true },
+              });
+            }
+          } catch (err) {
+            if (!cancelled) {
+              const message = err instanceof Error ? err.message : "Diagram render failed";
+              const escapedSource = escapeHtml(source);
+              const escapedMessage = escapeHtml(message);
+              block.innerHTML = `<div class="mermaid-error"><p>${escapedMessage}</p><pre><code>${escapedSource}</code></pre></div>`;
+            }
+          }
+        }
+      })
+      .catch(() => {
+        /* mermaid import failed — placeholders remain as fallback */
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [rawHtml, theme]);
 
   return (
     <div className="overflow-auto p-6">
-      <article className="markdown-preview max-w-4xl" dangerouslySetInnerHTML={{ __html: html }} />
+      <article
+        ref={articleRef}
+        className="markdown-preview max-w-4xl"
+        dangerouslySetInnerHTML={{ __html: rawHtml }}
+      />
     </div>
   );
 }

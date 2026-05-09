@@ -16,7 +16,7 @@ This file is the single registry of all architectural decisions and core-compone
 |----|-------|--------|------|
 | CORE-COMPONENT-0002 | Commit Standards | Adopted | 2026-05-05 |
 | CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2025-07-16 |
-| CORE-COMPONENT-0004 | Theming | Adopted | 2026-05-06 |
+| CORE-COMPONENT-0004 | Theming | Adopted (updated) | 2025-07-17 |
 | CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2025-07-16 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
 | CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-05-07 |
@@ -84,3 +84,5 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 54 | Pass initial terminal dimensions as cols/rows query params on WebSocket upgrade URL | CORE-COMPONENT-0003 | 2025-07-18 |
 | 55 | Require ClipboardAddon for OSC 52 clipboard support in the terminal | CORE-COMPONENT-0003 | 2025-07-18 |
 | 56 | Require screenReaderMode: true in Terminal constructor for accessibility input | CORE-COMPONENT-0003 | 2025-07-18 |
+| 57 | Require third-party rendering libraries to consume useTheme() and map app theme to their native theme tokens | CORE-COMPONENT-0004 | 2025-07-17 |
+| 58 | Map app theme dark to mermaid theme 'dark' and light to mermaid theme 'default' | CORE-COMPONENT-0004 | 2025-07-17 |

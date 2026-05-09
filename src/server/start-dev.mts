@@ -10,7 +10,8 @@ const host = process.env.DEVDECK_HOST ?? "0.0.0.0";
 
 console.log("");
 console.log(`🔑 Access token: ${token}`);
-console.log(`   Open: http://localhost:${port}?token=${token}`);
+console.log(`   Local:   http://localhost:${port}?token=${token}`);
+console.log(`   Network: http://192.168.1.185:${port}?token=${token}`);
 console.log("");
 
 const terminal: ChildProcess = spawn("npx", ["tsx", "src/server/terminal-server.mts"], {

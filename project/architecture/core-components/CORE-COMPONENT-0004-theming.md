@@ -2,7 +2,7 @@
 
 ## Status
 
-Adopted
+Adopted (updated)
 
 ## Purpose
 
@@ -25,6 +25,7 @@ Provide a consistent dark/light theme system across the entire application, incl
 - The terminal (xterm.js) MUST respect the current theme
 - All shadcn/ui components MUST use the theme CSS variables
 - Default theme MUST be dark (IDE convention)
+- Third-party rendering libraries with their own theme systems (e.g., mermaid) MUST consume `useTheme()` and map app theme values to their native theme tokens
 
 ### Interfaces
 - **CSS variables:** Standard shadcn/ui variable names (`--background`, `--foreground`, `--card`, `--accent`, etc.)
@@ -71,6 +72,7 @@ const { theme, toggleTheme } = useTheme();
 - Theme CSS variables should be defined in `src/app/globals.css`
 - Terminal theme should be derived in `src/hooks/use-terminal.ts` by reading CSS custom property values
 - Use `next-themes` or a custom provider for SSR-safe theme management
+- Third-party renderers: map `theme === 'dark'` to the library's dark theme token and `theme === 'light'` to the library's default/light theme token. For mermaid: `dark` → `'dark'`, `light` → `'default'`
 
 ## Exceptions
 
