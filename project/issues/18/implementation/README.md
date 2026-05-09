@@ -58,6 +58,18 @@ Added mermaid diagram rendering support to the markdown preview in the file view
 ### Base64 encoding for data attributes
 DOMPurify strips `data-*` attributes whose values contain `-->` patterns (HTML comment end delimiter). Since `-->` is extremely common in mermaid graph syntax (e.g., `A --> B`), the mermaid source is base64-encoded before storage in the `data-mermaid-source` attribute and decoded at render time. This ensures the placeholder survives sanitization regardless of mermaid content.
 
+### TextEncoder/TextDecoder for base64 (post-review fix)
+The initial implementation used `btoa(unescape(encodeURIComponent(text)))` and `decodeURIComponent(escape(atob(encoded)))` for base64 encode/decode. The Copilot PR reviewer flagged that `escape`/`unescape` are deprecated globals not guaranteed in all JS runtimes. Replaced with `TextEncoder`/`TextDecoder`-based `toBase64()`/`fromBase64()` helpers for safe Unicode handling.
+
+### SVG sanitization (post-review fix)
+Mermaid's `render()` returns SVG markup that was originally inserted via `innerHTML` without sanitization, bypassing DOMPurify. Fixed to sanitize SVG output with `DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true } })` before DOM insertion to prevent XSS from unexpected SVG content.
+
+### Error message escaping (post-review fix)
+Mermaid parse errors can include user-controlled content from diagram source. Error messages are now HTML-escaped via `escapeHtml()` before interpolation into `innerHTML` to prevent HTML injection.
+
+### Base64 decode error handling (post-review fix)
+The `fromBase64()` call is wrapped in a `try/catch` to gracefully handle malformed `data-mermaid-source` attributes (e.g., injected via raw HTML in markdown). On decode failure, the mermaid placeholder is left as-is rather than crashing the entire preview.
+
 ### Dynamic import
 Mermaid (~200KB) is only loaded when the markdown actually contains mermaid code blocks, avoiding unnecessary bundle size impact for non-mermaid markdown files.
 
