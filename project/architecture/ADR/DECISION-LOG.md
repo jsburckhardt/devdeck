@@ -20,7 +20,7 @@ This file is the single registry of all architectural decisions and core-compone
 | CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2025-07-16 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
 | CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-05-07 |
-| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted | 2025-07-18 |
+| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-05-12 |
 
 ## Decisions
 
@@ -86,3 +86,7 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 56 | Require screenReaderMode: true in Terminal constructor for accessibility input | CORE-COMPONENT-0003 | 2025-07-18 |
 | 57 | Require third-party rendering libraries to consume useTheme() and map app theme to their native theme tokens | CORE-COMPONENT-0004 | 2025-07-17 |
 | 58 | Map app theme dark to mermaid theme 'dark' and light to mermaid theme 'default' | CORE-COMPONENT-0004 | 2025-07-17 |
+| 59 | Expose `refreshFileTree()` and `fileTreeRefreshing` on WorkspaceContext for in-portal save → tree refresh wiring; use `cache: 'no-store'` | CORE-COMPONENT-0008 | 2026-05-12 |
+| 60 | Require `refreshFileTree` to no-op when no active project and to never mutate `fileTreeLoading` (silent refresh) | CORE-COMPONENT-0008 | 2026-05-12 |
+| 61 | Require `FileViewer` to call `refreshFileTree()` after a successful save only; prohibit calling it on failure paths | CORE-COMPONENT-0008 | 2026-05-12 |
+| 62 | Prohibit `ExplorerContent` (and future tree consumers) from reading `fileTreeRefreshing` to gate spinners | CORE-COMPONENT-0008 | 2026-05-12 |

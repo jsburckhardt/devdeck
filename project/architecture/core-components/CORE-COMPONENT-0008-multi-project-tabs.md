@@ -2,7 +2,7 @@
 
 ## Status
 
-Adopted
+Adopted (updated) — 2026-05-12
 
 ## Purpose
 
@@ -16,6 +16,7 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - Stale slug pruning on cold start
 - Save/restore lifecycle between `WorkspaceProvider` and `OpenProjectsProvider`
 - Sidebar rendering, interaction, and accessibility contracts
+- File tree refresh contract exposed via `WorkspaceContext` for in-portal edits (silent refresh after save)
 
 ## Definition
 
@@ -43,12 +44,24 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - The active tab MUST have `aria-current="page"`
 - Sidebar tabs MUST be keyboard-navigable (Tab key focuses tabs, Enter/Space activates)
 - Close buttons MUST remain in the DOM (not `display:none`) and be revealed via opacity for keyboard accessibility
+- `WorkspaceContext` MUST expose a `refreshFileTree: () => Promise<void>` function and a `fileTreeRefreshing: boolean` flag in addition to `setFileTree` / `setFileTreeLoading`
+- `refreshFileTree` MUST be a no-op when the active `project` is null/undefined (no fetch issued, `fileTreeRefreshing` MUST remain `false`)
+- `refreshFileTree` MUST issue `GET /api/files?slug=<project.slug>` with `{ cache: "no-store" }` to bypass the short browser cache configured by the API route
+- `refreshFileTree` MUST update `fileTree` on success and log (not throw) on failure; the previous `fileTree` MUST remain intact on error
+- `refreshFileTree` MUST toggle ONLY `fileTreeRefreshing` (true on entry, false on completion) — it MUST NOT mutate `fileTreeLoading`
+- The initial file-tree load MUST continue to use `fileTreeLoading` so `ExplorerContent` can render its initial spinner; subsequent (post-save) refreshes MUST be silent (no spinner, no layout shift, no flicker)
+- `WorkspaceLayout` MUST trigger the initial load via `refreshFileTree()` (wrapping it to set `fileTreeLoading=true` before the first call and `false` after) and MUST NOT define its own `fetchTree` callback
+- `FileViewer` MUST call `refreshFileTree()` after a successful save (after `toast.success("File saved")`) and MUST NOT call it on failure paths (non-OK HTTP status, network error, or thrown exception)
+- `ExplorerContent` MUST gate its loading spinner on `fileTreeLoading` only; it MUST NOT read `fileTreeRefreshing`
 
 ### Interfaces
 
 - **OpenProjectsProvider:** React context providing `openProjects`, `openProject()`, `closeProject()`, `saveWorkspaceState()`, `restoreWorkspaceState()`
 - **useOpenProjects():** Hook to consume the context; throws if used outside provider
 - **PerProjectWorkspaceState:** `{ selectedFile: string | null; expandedFolders: string[]; showFileViewer: boolean; showTerminal: boolean; fileTree: FileNode[] }`
+- **WorkspaceContextValue (extended):** in addition to existing members (`setProject`, `selectFile`, `toggleFolder`, `toggleFileViewer`, `toggleTerminal`, `setFileTree`, `setFileTreeLoading`), MUST include:
+  - `refreshFileTree: () => Promise<void>` — silent refetch of the active project's file tree using `cache: "no-store"`
+  - `fileTreeRefreshing: boolean` — true while a silent refresh is in flight; never gates the initial spinner
 - **ProjectSidebar:** Component rendering the vertical tab strip; consumes `useOpenProjects()` and `usePathname()`
 - **languageColor(language?: string): string** — Shared utility extracted to `src/lib/utils.ts`
 
@@ -58,6 +71,8 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - Terminal state is preserved server-side via tmux reattachment (CORE-COMPONENT-0003) — no client-side terminal state caching is needed
 - The sidebar MUST NOT appear on the landing page — only on `/project/*` routes
 - The `OpenProjectsProvider` MUST hydrate stored slugs by fetching `/api/projects` on cold start for metadata and stale slug pruning; the project page component also calls `openProject()` after fetching for direct URL navigation
+- After every successful in-portal save, the file explorer's git-status badges (`M`, `A`, `D`, `??`) MUST reflect the new state without a manual reload, page refresh, or tab switch
+- Silent refresh MUST NOT cause the explorer to remount, scroll-jump, lose folder expansion state, or flash a spinner
 
 ## Rationale
 
@@ -88,6 +103,34 @@ interface OpenProjectsContextValue {
 }
 ```
 
+```typescript
+// src/lib/workspace-context.tsx — silent refresh contract
+const [fileTreeRefreshing, setFileTreeRefreshing] = useState(false);
+
+const refreshFileTree = useCallback(async () => {
+  if (!project?.slug) return;                        // no-op when no project
+  setFileTreeRefreshing(true);
+  try {
+    const res = await fetch(
+      `/api/files?slug=${encodeURIComponent(project.slug)}`,
+      { cache: "no-store" },                         // bypass 5s browser cache
+    );
+    if (!res.ok) throw new Error("Failed to fetch file tree");
+    setFileTree(await res.json());
+  } catch (err) {
+    console.error("Failed to refresh file tree:", err);
+  } finally {
+    setFileTreeRefreshing(false);                    // never touches fileTreeLoading
+  }
+}, [project?.slug, setFileTree]);
+```
+
+```tsx
+// src/components/file-viewer.tsx — call site after a successful save
+toast.success("File saved");
+void refreshFileTree();   // success only; not in catch / non-OK branches
+```
+
 ```tsx
 // src/app/project/[slug]/page.tsx — on mount
 const { openProject } = useOpenProjects();
@@ -115,6 +158,8 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
 - `WorkspaceProvider` in `src/lib/workspace-context.tsx` must be updated to accept an optional `slug` prop and call `restoreWorkspaceState`/`saveWorkspaceState`
 - The `PerProjectWorkspaceState` type must be added to `src/lib/types.ts`
 - `languageColor()` must be extracted from `src/components/project-card.tsx` to `src/lib/utils.ts` and re-exported for use by both `ProjectCard` and `ProjectSidebar`
+- Any component that mutates the working tree (file save, create, delete, rename) MUST call `refreshFileTree()` from `useWorkspace()` after the mutation succeeds; failure paths MUST NOT call it
+- Components rendering tree-derived UI (e.g. `ExplorerContent`) MUST consume `fileTreeLoading` for spinner gating and MUST NOT read `fileTreeRefreshing`
 
 ## Exceptions
 
@@ -127,6 +172,9 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
 - [x] Automated checks: Unit tests for `ProjectSidebar` (render, active state, close, navigation, accessibility)
 - [x] Code review checklist: New sidebar elements must use CSS custom properties, not hardcoded colors
 - [x] Test coverage requirements: Workspace state round-trip (save on unmount → restore on mount) must be tested
+- [x] Test coverage requirements: `refreshFileTree` unit tests assert (a) `cache: "no-store"` fetch option, (b) `fileTree` updates on success, (c) `fileTreeRefreshing` toggles true→false, (d) no-op when project is null
+- [x] Test coverage requirements: `FileViewer` save tests assert `refreshFileTree` is called exactly once on success and zero times on failure (non-OK status or network error)
+- [x] Code review checklist: `ExplorerContent` (and any future tree consumer) MUST NOT read `fileTreeRefreshing`
 
 ## Related ADRs
 
