@@ -90,6 +90,7 @@ describe("WorkspaceLayout", () => {
     // Spinner is visible while fileTreeLoading=true (no FileTree yet).
     expect(screen.queryByTestId("file-tree")).not.toBeInTheDocument();
     expect(refreshFileTree).toHaveBeenCalledTimes(1);
+    expect(refreshFileTree).toHaveBeenCalledWith(project.slug);
     expect(setFileTreeLoading).toHaveBeenCalledWith(true);
 
     await act(async () => {

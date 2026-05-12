@@ -31,12 +31,21 @@ interface WorkspaceContextValue extends WorkspaceState {
   setFileTree: (tree: FileNode[]) => void;
   setFileTreeLoading: (loading: boolean) => void;
   /**
-   * Silently re-fetches the file tree from `/api/files` for the active project.
-   * Per Decision #60, this never mutates `fileTreeLoading` — it is the
+   * Silently re-fetches the file tree from `/api/files`.
+   *
+   * - Without arguments, uses the active context `project.slug`.
+   * - When called with `explicitSlug`, fetches that slug directly without
+   *   waiting for the context `project` state to propagate. This makes the
+   *   initial-load path in `WorkspaceLayout` deterministic in a single pass
+   *   (Decision #63).
+   *
+   * Per Decision #60 this never mutates `fileTreeLoading` — it is the
    * "silent refresh" path used after in-portal mutations (e.g. file save).
-   * Surface in-flight state via `fileTreeRefreshing` if needed.
+   * Concurrent invocations are tracked via an in-flight counter; per
+   * Decision #64, `fileTreeRefreshing` only flips back to `false` when all
+   * pending refreshes have completed.
    */
-  refreshFileTree: () => Promise<void>;
+  refreshFileTree: (explicitSlug?: string) => Promise<void>;
   fileTreeRefreshing: boolean;
 }
 
@@ -85,6 +94,9 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
   });
   const [fileTreeLoading, setFileTreeLoadingState] = useState(false);
   const [fileTreeRefreshing, setFileTreeRefreshing] = useState(false);
+  // Tracks how many `refreshFileTree` calls are currently in flight so that
+  // `fileTreeRefreshing` stays `true` until the LAST one completes (Decision #64).
+  const refreshInFlightCountRef = useRef(0);
 
   // Use a single ref that holds the latest state for save-on-unmount
   const stateRef = useRef({
@@ -175,26 +187,38 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
   // Silent refresh of the file tree — does not toggle `fileTreeLoading`
   // (Decision #60). Used after in-portal mutations like file save so the
   // explorer reflects new git status without the spinner re-flashing.
-  const refreshFileTree = useCallback(async () => {
-    const slug = project?.slug;
-    if (!slug) return;
-    setFileTreeRefreshing(true);
-    try {
-      const res = await fetch(`/api/files?slug=${encodeURIComponent(slug)}`, {
-        cache: "no-store",
-      });
-      if (!res.ok) {
-        console.error("Failed to refresh file tree: HTTP", res.status);
-        return;
+  //
+  // Accepts an optional `explicitSlug` so callers (e.g. `WorkspaceLayout`'s
+  // initial-load effect) can fetch deterministically before the context
+  // `project` state has propagated, avoiding a no-op + double-pass flicker
+  // on cold mount (Decision #63).
+  const refreshFileTree = useCallback(
+    async (explicitSlug?: string) => {
+      const targetSlug = explicitSlug ?? project?.slug;
+      if (!targetSlug) return;
+      refreshInFlightCountRef.current += 1;
+      setFileTreeRefreshing(true);
+      try {
+        const res = await fetch(`/api/files?slug=${encodeURIComponent(targetSlug)}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) {
+          console.error("Failed to refresh file tree: HTTP", res.status);
+          return;
+        }
+        const data = (await res.json()) as FileNode[];
+        setFileTreeState(data);
+      } catch (err) {
+        console.error("Failed to refresh file tree:", err);
+      } finally {
+        refreshInFlightCountRef.current -= 1;
+        if (refreshInFlightCountRef.current === 0) {
+          setFileTreeRefreshing(false);
+        }
       }
-      const data = (await res.json()) as FileNode[];
-      setFileTreeState(data);
-    } catch (err) {
-      console.error("Failed to refresh file tree:", err);
-    } finally {
-      setFileTreeRefreshing(false);
-    }
-  }, [project?.slug]);
+    },
+    [project?.slug],
+  );
 
   const value = useMemo(
     () => ({

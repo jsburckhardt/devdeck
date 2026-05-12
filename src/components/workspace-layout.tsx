@@ -108,12 +108,17 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
   // Initial file-tree load: toggle the spinner via `fileTreeLoading` only on
   // first mount (or project switch). All subsequent refreshes go through
   // `refreshFileTree` directly and remain silent (Decision #62).
+  //
+  // Pass `project.slug` explicitly so the fetch does NOT depend on the
+  // context `project` state having propagated from the `setProject` effect
+  // above — this avoids a no-op + double-pass spinner flicker on cold mount
+  // (Decision #63).
   useEffect(() => {
     let cancelled = false;
     setFileTreeLoading(true);
     (async () => {
       try {
-        await refreshFileTree();
+        await refreshFileTree(project.slug);
       } finally {
         if (!cancelled) setFileTreeLoading(false);
       }

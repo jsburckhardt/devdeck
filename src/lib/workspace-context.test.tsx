@@ -354,4 +354,65 @@ describe("WorkspaceProvider.refreshFileTree", () => {
     expect(screen.getByTestId("refreshing").textContent).toBe("false");
     expect(errSpy).toHaveBeenCalled();
   });
+
+  it("T9: refreshFileTree(explicitSlug) fetches that slug even when no context project is set", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify([{ name: "x", path: "x", type: "file" }]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const { captured } = renderHarness({ withProject: false });
+
+    await act(async () => {
+      await captured.state!.refreshFileTree("explicit");
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("/api/files?slug=explicit");
+    expect((init as FetchInit)?.cache).toBe("no-store");
+    expect(screen.getByTestId("tree-len").textContent).toBe("1");
+  });
+
+  it("T10: concurrent refreshes — fileTreeRefreshing stays true until ALL complete", async () => {
+    const resolvers: Array<(res: Response) => void> = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolvers.push(resolve);
+        }),
+    );
+
+    const { captured } = renderHarness({ withProject: true });
+
+    let firstPending: Promise<void>;
+    let secondPending: Promise<void>;
+
+    act(() => {
+      firstPending = captured.state!.refreshFileTree();
+      secondPending = captured.state!.refreshFileTree();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("refreshing").textContent).toBe("true");
+    });
+    expect(resolvers).toHaveLength(2);
+
+    // Resolve only the first call. Counter should still be > 0, so the flag
+    // must remain true (regression guard for review comment #2).
+    await act(async () => {
+      resolvers[0](new Response("[]", { status: 200 }));
+      await firstPending!;
+    });
+    expect(screen.getByTestId("refreshing").textContent).toBe("true");
+
+    // Resolve the second call — counter hits 0, flag flips to false.
+    await act(async () => {
+      resolvers[1](new Response("[]", { status: 200 }));
+      await secondPending!;
+    });
+    expect(screen.getByTestId("refreshing").textContent).toBe("false");
+  });
 });
