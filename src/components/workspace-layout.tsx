@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback } from "react";
+import { useEffect } from "react";
 import dynamic from "next/dynamic";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Spinner, FileCode, TerminalWindow } from "@phosphor-icons/react";
@@ -93,8 +93,8 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     setProject,
     fileTree,
     fileTreeLoading,
-    setFileTree,
     setFileTreeLoading,
+    refreshFileTree,
     showFileViewer,
     showTerminal,
     toggleFileViewer,
@@ -105,23 +105,23 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     setProject(project);
   }, [project, setProject]);
 
-  const fetchTree = useCallback(async () => {
-    setFileTreeLoading(true);
-    try {
-      const res = await fetch(`/api/files?slug=${encodeURIComponent(project.slug)}`);
-      if (!res.ok) throw new Error("Failed to fetch file tree");
-      const data = await res.json();
-      setFileTree(data);
-    } catch (err) {
-      console.error("Failed to load file tree:", err);
-    } finally {
-      setFileTreeLoading(false);
-    }
-  }, [project.slug, setFileTree, setFileTreeLoading]);
-
+  // Initial file-tree load: toggle the spinner via `fileTreeLoading` only on
+  // first mount (or project switch). All subsequent refreshes go through
+  // `refreshFileTree` directly and remain silent (Decision #62).
   useEffect(() => {
-    fetchTree();
-  }, [fetchTree]);
+    let cancelled = false;
+    setFileTreeLoading(true);
+    (async () => {
+      try {
+        await refreshFileTree();
+      } finally {
+        if (!cancelled) setFileTreeLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [project.slug, refreshFileTree, setFileTreeLoading]);
 
   // Compute panel sizes based on which panels are visible
   const rightPanelCount = (showFileViewer ? 1 : 0) + (showTerminal ? 1 : 0);
@@ -152,7 +152,10 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
         orientation="horizontal"
         className="min-h-0 flex-1"
       >
-        {/* File Explorer — always visible */}
+        {/* File Explorer — always visible. Spinner is gated SOLELY by
+            `fileTreeLoading` (initial-load). `fileTreeRefreshing` is
+            intentionally NOT surfaced here so background refreshes after
+            in-portal edits stay silent (Decision #62). */}
         <Panel defaultSize={explorerSize} minSize={12}>
           <ExplorerContent loading={fileTreeLoading} nodes={fileTree} />
         </Panel>

@@ -230,7 +230,7 @@ function EditView({ content, onChange }: { content: string; onChange: (value: st
 }
 
 export default function FileViewer() {
-  const { project, selectedFile, fileTree } = useWorkspace();
+  const { project, selectedFile, fileTree, refreshFileTree } = useWorkspace();
   const [fileContent, setFileContent] = useState<FileContent | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -391,12 +391,14 @@ export default function FileViewer() {
       // Reset diff cache so it re-fetches with new content
       setDiffContent(null);
       toast.success("File saved");
+      // Silent refresh so the explorer reflects new git status (Decision #61).
+      void refreshFileTree();
     } catch {
       toast.error("Network error — your changes are preserved");
     } finally {
       setSaving(false);
     }
-  }, [project, selectedFile, fileContent, editContent]);
+  }, [project, selectedFile, fileContent, editContent, refreshFileTree]);
 
   if (!selectedFile) {
     return (

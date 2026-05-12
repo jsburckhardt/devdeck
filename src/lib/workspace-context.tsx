@@ -30,6 +30,14 @@ interface WorkspaceContextValue extends WorkspaceState {
   toggleTerminal: () => void;
   setFileTree: (tree: FileNode[]) => void;
   setFileTreeLoading: (loading: boolean) => void;
+  /**
+   * Silently re-fetches the file tree from `/api/files` for the active project.
+   * Per Decision #60, this never mutates `fileTreeLoading` — it is the
+   * "silent refresh" path used after in-portal mutations (e.g. file save).
+   * Surface in-flight state via `fileTreeRefreshing` if needed.
+   */
+  refreshFileTree: () => Promise<void>;
+  fileTreeRefreshing: boolean;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | undefined>(undefined);
@@ -76,6 +84,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
     return cached?.fileTree ?? [];
   });
   const [fileTreeLoading, setFileTreeLoadingState] = useState(false);
+  const [fileTreeRefreshing, setFileTreeRefreshing] = useState(false);
 
   // Use a single ref that holds the latest state for save-on-unmount
   const stateRef = useRef({
@@ -163,6 +172,30 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
     setFileTreeLoadingState(loading);
   }, []);
 
+  // Silent refresh of the file tree — does not toggle `fileTreeLoading`
+  // (Decision #60). Used after in-portal mutations like file save so the
+  // explorer reflects new git status without the spinner re-flashing.
+  const refreshFileTree = useCallback(async () => {
+    const slug = project?.slug;
+    if (!slug) return;
+    setFileTreeRefreshing(true);
+    try {
+      const res = await fetch(`/api/files?slug=${encodeURIComponent(slug)}`, {
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        console.error("Failed to refresh file tree: HTTP", res.status);
+        return;
+      }
+      const data = (await res.json()) as FileNode[];
+      setFileTreeState(data);
+    } catch (err) {
+      console.error("Failed to refresh file tree:", err);
+    } finally {
+      setFileTreeRefreshing(false);
+    }
+  }, [project?.slug]);
+
   const value = useMemo(
     () => ({
       project,
@@ -172,6 +205,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       showTerminal,
       fileTree,
       fileTreeLoading,
+      fileTreeRefreshing,
       setProject,
       selectFile,
       toggleFolder,
@@ -179,6 +213,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       toggleTerminal,
       setFileTree,
       setFileTreeLoading,
+      refreshFileTree,
     }),
     [
       project,
@@ -188,6 +223,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       showTerminal,
       fileTree,
       fileTreeLoading,
+      fileTreeRefreshing,
       setProject,
       selectFile,
       toggleFolder,
@@ -195,6 +231,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       toggleTerminal,
       setFileTree,
       setFileTreeLoading,
+      refreshFileTree,
     ],
   );
 

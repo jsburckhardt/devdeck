@@ -67,6 +67,7 @@ function setupWorkspace(overrides: Record<string, unknown> = {}) {
     showFileViewer: true,
     showTerminal: true,
     fileTreeLoading: false,
+    fileTreeRefreshing: false,
     setProject: vi.fn(),
     selectFile: vi.fn(),
     toggleFolder: vi.fn(),
@@ -74,6 +75,7 @@ function setupWorkspace(overrides: Record<string, unknown> = {}) {
     toggleTerminal: vi.fn(),
     setFileTree: vi.fn(),
     setFileTreeLoading: vi.fn(),
+    refreshFileTree: vi.fn().mockResolvedValue(undefined),
   };
   mockUseWorkspace.mockReturnValue({ ...defaults, ...overrides } as ReturnType<
     typeof useWorkspace
@@ -541,6 +543,150 @@ describe("FileViewer", () => {
         expect(toast.error).toHaveBeenCalledWith("Server error");
       });
       // Should still be in edit mode
+      expect(screen.getByLabelText("File editor")).toBeInTheDocument();
+    });
+
+    it("T5: save success calls refreshFileTree exactly once after toast.success", async () => {
+      const refreshFileTree = vi.fn().mockResolvedValue(undefined);
+      setupWorkspace({ selectedFile: "src/index.ts", refreshFileTree });
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+      fetchSpy.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            content: "const x = 1;",
+            language: "typescript",
+            size: 12,
+            isBinary: false,
+            path: "src/index.ts",
+            name: "index.ts",
+            mtime: 1000,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+
+      render(<FileViewer />);
+      const user = userEvent.setup();
+
+      await waitFor(() => {
+        expect(screen.getByLabelText("Edit file")).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByLabelText("Edit file"));
+      await waitFor(() => {
+        expect(screen.getByLabelText("File editor")).toBeInTheDocument();
+      });
+      await user.type(screen.getByLabelText("File editor"), " ");
+
+      fetchSpy.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            content: "const x = 1; ",
+            language: "typescript",
+            size: 13,
+            isBinary: false,
+            path: "src/index.ts",
+            name: "index.ts",
+            mtime: 2000,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+
+      await user.click(screen.getByLabelText("Save file"));
+
+      await waitFor(() => {
+        expect(toast.success).toHaveBeenCalledWith("File saved");
+      });
+      expect(refreshFileTree).toHaveBeenCalledTimes(1);
+    });
+
+    it("T6a: save HTTP failure does NOT call refreshFileTree", async () => {
+      const refreshFileTree = vi.fn().mockResolvedValue(undefined);
+      setupWorkspace({ selectedFile: "src/index.ts", refreshFileTree });
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+      fetchSpy.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            content: "const x = 1;",
+            language: "typescript",
+            size: 12,
+            isBinary: false,
+            path: "src/index.ts",
+            name: "index.ts",
+            mtime: 1000,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+
+      render(<FileViewer />);
+      const user = userEvent.setup();
+
+      await waitFor(() => {
+        expect(screen.getByLabelText("Edit file")).toBeInTheDocument();
+      });
+      await user.click(screen.getByLabelText("Edit file"));
+      await waitFor(() => {
+        expect(screen.getByLabelText("File editor")).toBeInTheDocument();
+      });
+      await user.type(screen.getByLabelText("File editor"), " ");
+
+      fetchSpy.mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: "boom" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
+      await user.click(screen.getByLabelText("Save file"));
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalled();
+      });
+      expect(refreshFileTree).not.toHaveBeenCalled();
+      expect(screen.getByLabelText("File editor")).toBeInTheDocument();
+    });
+
+    it("T6b: save network rejection does NOT call refreshFileTree", async () => {
+      const refreshFileTree = vi.fn().mockResolvedValue(undefined);
+      setupWorkspace({ selectedFile: "src/index.ts", refreshFileTree });
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+      fetchSpy.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            content: "const x = 1;",
+            language: "typescript",
+            size: 12,
+            isBinary: false,
+            path: "src/index.ts",
+            name: "index.ts",
+            mtime: 1000,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+
+      render(<FileViewer />);
+      const user = userEvent.setup();
+
+      await waitFor(() => {
+        expect(screen.getByLabelText("Edit file")).toBeInTheDocument();
+      });
+      await user.click(screen.getByLabelText("Edit file"));
+      await waitFor(() => {
+        expect(screen.getByLabelText("File editor")).toBeInTheDocument();
+      });
+      await user.type(screen.getByLabelText("File editor"), " ");
+
+      fetchSpy.mockRejectedValueOnce(new Error("network"));
+
+      await user.click(screen.getByLabelText("Save file"));
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalled();
+      });
+      expect(refreshFileTree).not.toHaveBeenCalled();
       expect(screen.getByLabelText("File editor")).toBeInTheDocument();
     });
 
