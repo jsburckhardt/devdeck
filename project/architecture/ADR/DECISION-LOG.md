@@ -90,3 +90,5 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 60 | Require `refreshFileTree` to no-op when no active project and to never mutate `fileTreeLoading` (silent refresh) | CORE-COMPONENT-0008 | 2026-05-12 |
 | 61 | Require `FileViewer` to call `refreshFileTree()` after a successful save only; prohibit calling it on failure paths | CORE-COMPONENT-0008 | 2026-05-12 |
 | 62 | Prohibit `ExplorerContent` (and future tree consumers) from reading `fileTreeRefreshing` to gate spinners | CORE-COMPONENT-0008 | 2026-05-12 |
+| 63 | Allow `refreshFileTree(explicitSlug?)` to accept an explicit slug so initial-load callers can fetch deterministically without waiting for context `project` propagation | CORE-COMPONENT-0008 | 2026-05-12 |
+| 64 | Track concurrent `refreshFileTree` calls via an in-flight counter; only clear `fileTreeRefreshing` when the LAST in-flight call completes | CORE-COMPONENT-0008 | 2026-05-12 |

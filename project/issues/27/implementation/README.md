@@ -115,3 +115,22 @@ Route (app)
 - `useEffect` dependency array in `WorkspaceLayout` includes `project.slug`, so switching tabs re-runs the loading sequence as required.
 - `findFileStatus` continues to read from `fileTree`, so the existing `FileViewer` "Changes" tab will pick up the new status badge on the very next render after the silent refresh completes.
 - Pre-existing TypeScript test-file errors (e.g. `Project.description` missing in `setupWorkspace`, `xterm` event-handler typing in `terminal-server.test.ts`) are not introduced by this change and remain out of scope per the planner's guidance.
+
+## Post-review follow-up (review of PR #31)
+
+Two findings from `copilot-pull-request-reviewer` were addressed in a follow-up commit on the same branch:
+
+| # | File / line | Finding | Fix |
+|---|---|---|---|
+| 1 | `src/components/workspace-layout.tsx:124` | Initial-load effect ran before `setProject(project)` had updated context, so `refreshFileTree()` no-op'd on first pass and `fileTreeLoading` toggled `true→false` causing a flicker. | `refreshFileTree(explicitSlug?)` now accepts an explicit slug. The layout passes `project.slug` directly, eliminating the race against `setProject`. (Decision #63) |
+| 2 | `src/lib/workspace-context.tsx:197` | `fileTreeRefreshing` was a plain boolean; a fast first refresh would clear the flag while a later refresh was still in flight. | Added an `inFlightCountRef` counter; `fileTreeRefreshing` only flips to `false` when the **last** in-flight call completes. (Decision #64) |
+
+Two new regression tests:
+- **T9** (`workspace-context.test.tsx`) — `refreshFileTree(explicitSlug)` fetches that slug even with no context project.
+- **T10** (`workspace-context.test.tsx`) — Two concurrent refreshes; `fileTreeRefreshing` stays `true` after the first resolves and only flips to `false` when both finish.
+
+Workspace-layout test T7 now also asserts `refreshFileTree` is invoked **with** `project.slug`.
+
+CORE-COMPONENT-0008 amended to document the explicit-slug parameter and the in-flight counter contract; DECISION-LOG.md gains rows #63 and #64.
+
+Verification (post-fix): lint ✅ • format:check ✅ • build ✅ • test ✅ (203/203, +2 new tests).
