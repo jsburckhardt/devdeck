@@ -29,8 +29,10 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - The client MAY pass `slug=<project-slug>` as a query parameter on the WebSocket upgrade URL to request a project-specific terminal session
 - The server MUST resolve the CWD server-side using `resolveProjectPath(slug)` — the filesystem path MUST NOT be exposed to the client in any WebSocket message
 - The server MUST sanitize the slug before passing it to `resolveProjectPath` or using it as a tmux session name
-- If `<resolvedCwd>/.devcontainer/.tmux-shared` exists, the server SHOULD spawn `tmux -S <socketPath> attach-session -t <sanitizedSlug>` instead of a login shell
-- If tmux attach fails (session not found or tmux not installed), the server MUST fall back to a regular shell in the project directory
+- The server MUST use this terminal spawn decision tree for project slugs:
+  1. If `<resolvedCwd>/.devcontainer/.tmux-shared` exists and is a socket, and `tmux has-session -t <sanitizedSlug>` succeeds, spawn `tmux -S <socketPath> attach-session -t <sanitizedSlug>` using the shared socket.
+  2. If `.devcontainer/.tmux-shared` is absent, attempt `tmux new-session -A -s <sanitizedSlug>` on the system default tmux socket. System-default tmux sessions are visible to processes for the same host user.
+  3. If tmux attach/create fails, tmux exits non-zero, or tmux cannot be spawned, fall back to a regular shell in the resolved project directory.
 - If no slug is provided, the server MUST fall back to the configured default CWD (`DEVDECK_WORKSPACE_ROOT`, `options.cwd`, or `os.homedir()`)
 - The client MUST pass initial terminal dimensions as `cols` and `rows` query parameters on the WebSocket upgrade URL so the server can spawn the PTY at the correct size before any resize message arrives
 - The frontend MUST load `@xterm/addon-clipboard` (ClipboardAddon) to support OSC 52 clipboard escape sequences from programs like tmux and vim
