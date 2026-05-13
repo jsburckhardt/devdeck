@@ -226,7 +226,9 @@ function getPreviewErrorMessage(error: PreviewErrorResponse, status: number): st
     return "DevDeck does not have permission to preview this file.";
   }
   if (error.code === "NOT_REGULAR_FILE") {
-    return `DevDeck cannot preview ${formatFileKind(error.kind)} entries.`;
+    return error.kind
+      ? `DevDeck cannot preview ${formatFileKind(error.kind)} entries.`
+      : "DevDeck cannot preview this item.";
   }
   if (error.code === "BROKEN_SYMLINK") {
     return "DevDeck cannot preview this broken symlink.";

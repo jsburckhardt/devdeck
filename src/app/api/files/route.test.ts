@@ -148,6 +148,18 @@ describe("GET /api/files", () => {
     expect(data[0]).toMatchObject({ kind: "broken-symlink", unreadable: true });
   });
 
+  it("classifies symlinks to regular files as readable nodes", async () => {
+    mockFs.readdir.mockResolvedValueOnce([dirent("linked-file.ts")] as never);
+    mockFs.lstat.mockResolvedValue(stat("symlink", 12) as never);
+    mockFs.stat.mockResolvedValue(stat("file", 42) as never);
+
+    const res = await GET(request("test"));
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as Array<{ kind: string; size: number; unreadable?: boolean }>;
+    expect(data[0]).toMatchObject({ kind: "symlink", size: 42 });
+    expect(data[0].unreadable).toBeUndefined();
+  });
+
   it("returns structured errors for missing slug and missing project", async () => {
     const missingSlug = await GET(request());
     expect(missingSlug.status).toBe(400);

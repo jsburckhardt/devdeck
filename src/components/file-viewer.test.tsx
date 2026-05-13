@@ -143,6 +143,19 @@ describe("FileViewer", () => {
       expect(screen.getByText(/Kind: permission denied/i)).toBeInTheDocument();
       expect(refreshFileTree).not.toHaveBeenCalled();
     });
+
+    it("renders a grammatical cannot-preview message when kind is omitted", async () => {
+      setupWorkspace({ selectedFile: "unknown" });
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      mockFetchResponse({ error: "Cannot preview file", code: "NOT_REGULAR_FILE" }, 415);
+
+      render(<FileViewer />);
+
+      await waitFor(() => {
+        expect(screen.getByText("DevDeck cannot preview this item.")).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/this item entries/i)).not.toBeInTheDocument();
+    });
   });
 
   describe("4a. Markdown Enhancement", () => {

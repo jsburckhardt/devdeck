@@ -58,7 +58,10 @@ async function classifyPath(fullPath: string): Promise<ClassifiedEntry> {
     const lstat = (await fs.lstat(fullPath)) as FileSystemStats;
     if (lstat.isSymbolicLink()) {
       try {
-        await fs.stat(fullPath);
+        const stat = (await fs.stat(fullPath)) as FileSystemStats;
+        if (stat.isFile()) {
+          return { type: "file", kind: "symlink", size: stat.size };
+        }
         return { type: "file", kind: "symlink", unreadable: true, size: lstat.size };
       } catch (error) {
         return {
