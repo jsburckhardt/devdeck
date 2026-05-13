@@ -4,29 +4,84 @@ import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { resolveProjectPath } from "@/lib/registry";
-import type { FileNode } from "@/lib/types";
+import type { FileKind, FileNode } from "@/lib/types";
 
 const execFileAsync = promisify(execFile);
 
-const IGNORED_DIRS = new Set([
-  ".git",
-  "node_modules",
-  ".next",
-  ".turbo",
-  "dist",
-  "build",
-  ".cache",
-  ".devcontainer",
-  "__pycache__",
-  ".playwright-mcp",
-]);
+type GitStatus = "added" | "modified" | "deleted";
 
-const IGNORED_FILES = new Set([".DS_Store", "Thumbs.db", "package-lock.json"]);
+interface FileSystemStats {
+  size: number;
+  isFile(): boolean;
+  isDirectory(): boolean;
+  isSymbolicLink(): boolean;
+  isSocket(): boolean;
+  isFIFO(): boolean;
+  isBlockDevice(): boolean;
+  isCharacterDevice(): boolean;
+}
 
-async function getGitStatus(
-  projectRoot: string,
-): Promise<Map<string, "added" | "modified" | "deleted">> {
-  const statusMap = new Map<string, "added" | "modified" | "deleted">();
+interface ClassifiedEntry {
+  type: "file" | "directory";
+  kind: FileKind;
+  unreadable?: boolean;
+  size?: number;
+}
+
+function getErrorCode(error: unknown): string | undefined {
+  return typeof error === "object" && error !== null && "code" in error
+    ? String((error as { code?: unknown }).code)
+    : undefined;
+}
+
+function isPermissionError(error: unknown): boolean {
+  const code = getErrorCode(error);
+  return code === "EACCES" || code === "EPERM";
+}
+
+function classifyStats(stats: FileSystemStats): ClassifiedEntry {
+  if (stats.isDirectory()) return { type: "directory", kind: "directory" };
+  if (stats.isFile()) return { type: "file", kind: "regular-file", size: stats.size };
+  if (stats.isSocket()) return { type: "file", kind: "socket", unreadable: true, size: stats.size };
+  if (stats.isFIFO()) return { type: "file", kind: "fifo", unreadable: true, size: stats.size };
+  if (stats.isBlockDevice()) {
+    return { type: "file", kind: "block-device", unreadable: true, size: stats.size };
+  }
+  if (stats.isCharacterDevice()) {
+    return { type: "file", kind: "character-device", unreadable: true, size: stats.size };
+  }
+  return { type: "file", kind: "unknown", unreadable: true, size: stats.size };
+}
+
+async function classifyPath(fullPath: string): Promise<ClassifiedEntry> {
+  try {
+    const lstat = (await fs.lstat(fullPath)) as FileSystemStats;
+    if (lstat.isSymbolicLink()) {
+      try {
+        await fs.stat(fullPath);
+        return { type: "file", kind: "symlink", unreadable: true, size: lstat.size };
+      } catch (error) {
+        return {
+          type: "file",
+          kind: isPermissionError(error) ? "permission-denied" : "broken-symlink",
+          unreadable: true,
+          size: lstat.size,
+        };
+      }
+    }
+    return classifyStats(lstat);
+  } catch (error) {
+    return {
+      type: "file",
+      kind: isPermissionError(error) ? "permission-denied" : "unknown",
+      unreadable: true,
+      size: 0,
+    };
+  }
+}
+
+async function getGitStatus(projectRoot: string): Promise<Map<string, GitStatus>> {
+  const statusMap = new Map<string, GitStatus>();
   try {
     const { stdout } = await execFileAsync("git", ["status", "--porcelain", "-u"], {
       cwd: projectRoot,
@@ -44,7 +99,7 @@ async function getGitStatus(
       }
     }
   } catch {
-    // Not a git repo or git not available
+    // Not a git repo or git not available. Tree visibility must not depend on git status.
   }
   return statusMap;
 }
@@ -52,58 +107,72 @@ async function getGitStatus(
 async function readDirectory(
   dirPath: string,
   projectRoot: string,
-  gitStatus: Map<string, "added" | "modified" | "deleted">,
+  gitStatus: Map<string, GitStatus>,
   depth: number = 0,
   maxDepth: number = 6,
 ): Promise<FileNode[]> {
-  if (depth > maxDepth) return [];
-
   const entries = await fs.readdir(dirPath, { withFileTypes: true });
 
-  const filteredEntries = entries.filter(
-    (entry) => !IGNORED_DIRS.has(entry.name) && !IGNORED_FILES.has(entry.name),
+  const classifiedEntries = await Promise.all(
+    entries.map(async (entry) => {
+      const fullPath = path.join(dirPath, entry.name);
+      return { entry, fullPath, classification: await classifyPath(fullPath) };
+    }),
   );
 
   const nodes: FileNode[] = [];
 
-  // Separate directories and files for processing
-  const dirEntries = filteredEntries.filter((e) => e.isDirectory());
-  const fileEntries = filteredEntries.filter((e) => !e.isDirectory());
-
-  // Process directories (sequential recursion is fine)
-  for (const entry of dirEntries) {
-    const fullPath = path.join(dirPath, entry.name);
+  for (const { entry, fullPath, classification } of classifiedEntries) {
     const relativePath = path.relative(projectRoot, fullPath);
-    const children = await readDirectory(fullPath, projectRoot, gitStatus, depth + 1, maxDepth);
-    const dirStatus = inferDirStatus(relativePath, gitStatus);
-    nodes.push({
+    const baseNode = {
       name: entry.name,
       path: relativePath,
-      type: "directory",
-      children,
-      status: dirStatus,
-    });
-  }
+      type: classification.type,
+      kind: classification.kind,
+      status:
+        classification.type === "directory"
+          ? inferDirStatus(relativePath, gitStatus)
+          : gitStatus.get(relativePath),
+      ...(classification.size !== undefined ? { size: classification.size } : {}),
+      ...(classification.unreadable ? { unreadable: true } : {}),
+    } satisfies Omit<FileNode, "children">;
 
-  // Parallelize fs.stat() calls for files
-  const fileStats = await Promise.all(
-    fileEntries.map((entry) => {
-      const fullPath = path.join(dirPath, entry.name);
-      return fs.stat(fullPath).catch(() => null);
-    }),
-  );
+    if (classification.type !== "directory") {
+      nodes.push(baseNode);
+      continue;
+    }
 
-  for (let i = 0; i < fileEntries.length; i++) {
-    const entry = fileEntries[i];
-    const relativePath = path.relative(projectRoot, path.join(dirPath, entry.name));
-    const stat = fileStats[i];
-    nodes.push({
-      name: entry.name,
-      path: relativePath,
-      type: "file",
-      size: stat?.size ?? 0,
-      status: gitStatus.get(relativePath),
-    });
+    if (classification.unreadable) {
+      nodes.push({ ...baseNode, type: "directory", children: [] });
+      continue;
+    }
+
+    if (depth >= maxDepth) {
+      nodes.push({
+        ...baseNode,
+        type: "directory",
+        children: [],
+        truncated: true,
+        truncatedReason: "max-depth",
+      });
+      continue;
+    }
+
+    try {
+      nodes.push({
+        ...baseNode,
+        type: "directory",
+        children: await readDirectory(fullPath, projectRoot, gitStatus, depth + 1, maxDepth),
+      });
+    } catch (error) {
+      nodes.push({
+        ...baseNode,
+        type: "directory",
+        kind: isPermissionError(error) ? "permission-denied" : "unknown",
+        unreadable: true,
+        children: [],
+      });
+    }
   }
 
   nodes.sort((a, b) => {
@@ -114,10 +183,7 @@ async function readDirectory(
   return nodes;
 }
 
-function inferDirStatus(
-  dirPath: string,
-  gitStatus: Map<string, "added" | "modified" | "deleted">,
-): "added" | "modified" | "deleted" | undefined {
+function inferDirStatus(dirPath: string, gitStatus: Map<string, GitStatus>): GitStatus | undefined {
   for (const [filePath] of gitStatus) {
     if (filePath.startsWith(dirPath + "/")) {
       return "modified";
@@ -131,7 +197,10 @@ export async function GET(request: NextRequest) {
   const slug = searchParams.get("slug");
 
   if (!slug) {
-    return NextResponse.json({ error: "Missing 'slug' parameter" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Missing 'slug' parameter", code: "MISSING_PARAMETERS" },
+      { status: 400 },
+    );
   }
 
   const root = await resolveProjectPath(slug);
@@ -139,7 +208,10 @@ export async function GET(request: NextRequest) {
   try {
     await fs.access(root);
   } catch {
-    return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Project not found", code: "PROJECT_NOT_FOUND" },
+      { status: 404 },
+    );
   }
 
   try {
@@ -150,7 +222,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     return NextResponse.json(
-      { error: "Failed to read directory", details: String(error) },
+      { error: "Failed to read directory", code: "READ_DIRECTORY_FAILED", details: String(error) },
       { status: 500 },
     );
   }

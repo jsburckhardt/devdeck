@@ -23,6 +23,30 @@ function makeGetRequest(params: Record<string, string>): NextRequest {
   return new NextRequest(url);
 }
 
+type StatKind =
+  | "file"
+  | "directory"
+  | "symlink"
+  | "socket"
+  | "fifo"
+  | "block"
+  | "character"
+  | "unknown";
+
+function stat(kind: StatKind, size = 100, mtimeMs = 1000) {
+  return {
+    size,
+    mtimeMs,
+    isFile: () => kind === "file",
+    isDirectory: () => kind === "directory",
+    isSymbolicLink: () => kind === "symlink",
+    isSocket: () => kind === "socket",
+    isFIFO: () => kind === "fifo",
+    isBlockDevice: () => kind === "block",
+    isCharacterDevice: () => kind === "character",
+  };
+}
+
 function makePutRequest(body: Record<string, unknown>): NextRequest {
   return new NextRequest("http://localhost:3000/api/files/content", {
     method: "PUT",
@@ -37,16 +61,73 @@ beforeEach(() => {
 });
 
 describe("GET /api/files/content", () => {
-  it("3.9 — returns file content successfully", async () => {
-    mockFs.stat.mockResolvedValue({ size: 100, mtimeMs: 1000 } as never);
+  it("TP7 returns regular text file content with existing shape", async () => {
+    mockFs.lstat.mockResolvedValue(stat("file") as never);
     mockFs.readFile.mockResolvedValue("file content" as never);
 
     const res = await GET(makeGetRequest({ slug: "test", path: "src/index.ts" }));
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data.content).toBe("file content");
-    expect(data.language).toBe("typescript");
-    expect(data.mtime).toBe(1000);
+    expect(data).toMatchObject({
+      content: "file content",
+      language: "typescript",
+      size: 100,
+      isBinary: false,
+      path: "src/index.ts",
+      name: "index.ts",
+      mtime: 1000,
+    });
+  });
+
+  it.each([
+    ["socket", "socket"],
+    ["fifo", "fifo"],
+    ["directory", "directory"],
+  ] as const)("TP5 rejects %s before readFile", async (kind, expectedKind) => {
+    mockFs.lstat.mockResolvedValue(stat(kind) as never);
+
+    const res = await GET(makeGetRequest({ slug: "test", path: `target-${kind}` }));
+    expect(res.status).toBe(415);
+    await expect(res.json()).resolves.toMatchObject({
+      error: "Cannot preview file",
+      code: "NOT_REGULAR_FILE",
+      kind: expectedKind,
+    });
+    expect(mockFs.readFile).not.toHaveBeenCalled();
+  });
+
+  it("TP6 returns permission-denied structured error", async () => {
+    mockFs.lstat.mockRejectedValue(Object.assign(new Error("denied"), { code: "EACCES" }));
+
+    const res = await GET(makeGetRequest({ slug: "test", path: "secret.txt" }));
+    expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toMatchObject({
+      code: "PERMISSION_DENIED",
+      kind: "permission-denied",
+    });
+    expect(mockFs.readFile).not.toHaveBeenCalled();
+  });
+
+  it("TP6 returns broken-symlink structured error", async () => {
+    mockFs.lstat.mockResolvedValue(stat("symlink") as never);
+    mockFs.stat.mockRejectedValue(Object.assign(new Error("missing"), { code: "ENOENT" }));
+
+    const res = await GET(makeGetRequest({ slug: "test", path: "missing-link" }));
+    expect(res.status).toBe(422);
+    await expect(res.json()).resolves.toMatchObject({
+      code: "BROKEN_SYMLINK",
+      kind: "broken-symlink",
+    });
+    expect(mockFs.readFile).not.toHaveBeenCalled();
+  });
+
+  it("returns READ_FAILED for unexpected regular-file read failures", async () => {
+    mockFs.lstat.mockResolvedValue(stat("file") as never);
+    mockFs.readFile.mockRejectedValue(new Error("boom"));
+
+    const res = await GET(makeGetRequest({ slug: "test", path: "src/index.ts" }));
+    expect(res.status).toBe(500);
+    await expect(res.json()).resolves.toMatchObject({ code: "READ_FAILED", kind: "regular-file" });
   });
 });
 

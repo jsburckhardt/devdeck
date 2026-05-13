@@ -30,7 +30,7 @@ import { useWorkspace } from "@/lib/workspace-context";
 import { useTheme } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
 import { DiffView } from "@/components/diff-view";
-import type { FileContent, FileNode } from "@/lib/types";
+import type { FileContent, FileKind, FileNode } from "@/lib/types";
 
 hljs.registerLanguage("typescript", typescript);
 hljs.registerLanguage("javascript", javascript);
@@ -204,6 +204,50 @@ function MarkdownView({ content }: { content: string }) {
   );
 }
 
+interface PreviewErrorState {
+  message: string;
+  code?: string;
+  kind?: FileKind;
+}
+
+interface PreviewErrorResponse {
+  error?: string;
+  code?: string;
+  kind?: FileKind;
+  details?: unknown;
+}
+
+function formatFileKind(kind?: FileKind): string {
+  return kind ? kind.replace(/-/g, " ") : "this item";
+}
+
+function getPreviewErrorMessage(error: PreviewErrorResponse, status: number): string {
+  if (error.code === "PERMISSION_DENIED") {
+    return "DevDeck does not have permission to preview this file.";
+  }
+  if (error.code === "NOT_REGULAR_FILE") {
+    return `DevDeck cannot preview ${formatFileKind(error.kind)} entries.`;
+  }
+  if (error.code === "BROKEN_SYMLINK") {
+    return "DevDeck cannot preview this broken symlink.";
+  }
+  if (error.code === "FILE_NOT_FOUND") {
+    return "This file no longer exists.";
+  }
+  return error.error || `Cannot preview file (HTTP ${status}).`;
+}
+
+function CannotPreviewView({ error }: { error: PreviewErrorState }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
+      <WarningCircle size={36} className="text-amber-500" />
+      <p className="text-sm font-medium text-foreground">Cannot preview file</p>
+      <p className="max-w-sm text-center text-sm">{error.message}</p>
+      {error.kind && <p className="text-xs opacity-70">Kind: {formatFileKind(error.kind)}</p>}
+    </div>
+  );
+}
+
 function BinaryFileView({ name, size }: { name: string; size: number }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
@@ -233,7 +277,7 @@ export default function FileViewer() {
   const { project, selectedFile, fileTree, refreshFileTree } = useWorkspace();
   const [fileContent, setFileContent] = useState<FileContent | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<PreviewErrorState | null>(null);
 
   // Markdown raw/preview toggle
   const [showRaw, setShowRaw] = useState(false);
@@ -283,8 +327,21 @@ export default function FileViewer() {
     fetch(
       `/api/files/content?slug=${encodeURIComponent(project.slug)}&path=${encodeURIComponent(selectedFile)}`,
     )
-      .then((res) => {
-        if (!res.ok) throw new Error(`Failed to load file: ${res.statusText}`);
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = (await res.json().catch(() => ({}))) as PreviewErrorResponse;
+          console.error("Failed to preview file", {
+            path: selectedFile,
+            status: res.status,
+            code: data.code,
+            kind: data.kind,
+          });
+          throw {
+            message: getPreviewErrorMessage(data, res.status),
+            code: data.code,
+            kind: data.kind,
+          } satisfies PreviewErrorState;
+        }
         return res.json();
       })
       .then((data: FileContent) => {
@@ -293,9 +350,15 @@ export default function FileViewer() {
           setLoading(false);
         }
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         if (!cancelled) {
-          setError(err.message);
+          const previewError =
+            typeof err === "object" && err !== null && "message" in err
+              ? (err as PreviewErrorState)
+              : { message: "Cannot preview file." };
+          console.error("File preview failed", { path: selectedFile, error: err });
+          setError(previewError);
+          setFileContent(null);
           setLoading(false);
         }
       });
@@ -417,12 +480,7 @@ export default function FileViewer() {
   }
 
   if (error) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 text-destructive">
-        <WarningCircle size={32} />
-        <p className="text-sm">{error}</p>
-      </div>
-    );
+    return <CannotPreviewView error={error} />;
   }
 
   if (!fileContent) return null;

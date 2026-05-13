@@ -23,13 +23,29 @@ export interface ProjectRegistry {
   projects: ProjectRegistryEntry[];
 }
 
+export type FileKind =
+  | "regular-file"
+  | "directory"
+  | "symlink"
+  | "broken-symlink"
+  | "socket"
+  | "fifo"
+  | "block-device"
+  | "character-device"
+  | "permission-denied"
+  | "unknown";
+
 export interface FileNode {
   name: string;
   path: string;
   type: "file" | "directory";
+  kind: FileKind;
   children?: FileNode[];
   status?: "added" | "modified" | "deleted";
   size?: number;
+  unreadable?: boolean;
+  truncated?: boolean;
+  truncatedReason?: "max-depth" | "entry-limit";
 }
 
 export interface FileContent {
