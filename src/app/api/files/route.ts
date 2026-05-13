@@ -107,12 +107,15 @@ async function getGitStatus(projectRoot: string): Promise<Map<string, GitStatus>
   return statusMap;
 }
 
-async function readDirectory(
+async function hasDirectChildren(dirPath: string): Promise<boolean> {
+  const children = await fs.readdir(dirPath, { withFileTypes: true });
+  return children.length > 0;
+}
+
+async function readDirectoryChildren(
   dirPath: string,
   projectRoot: string,
   gitStatus: Map<string, GitStatus>,
-  depth: number = 0,
-  maxDepth: number = 6,
 ): Promise<FileNode[]> {
   const entries = await fs.readdir(dirPath, { withFileTypes: true });
 
@@ -138,7 +141,7 @@ async function readDirectory(
           : gitStatus.get(relativePath),
       ...(classification.size !== undefined ? { size: classification.size } : {}),
       ...(classification.unreadable ? { unreadable: true } : {}),
-    } satisfies Omit<FileNode, "children">;
+    } satisfies Omit<FileNode, "children" | "hasChildren" | "childrenLoaded">;
 
     if (classification.type !== "directory") {
       nodes.push(baseNode);
@@ -146,26 +149,26 @@ async function readDirectory(
     }
 
     if (classification.unreadable) {
-      nodes.push({ ...baseNode, type: "directory", children: [] });
-      continue;
-    }
-
-    if (depth >= maxDepth) {
       nodes.push({
         ...baseNode,
         type: "directory",
+        kind: classification.kind,
+        unreadable: true,
+        hasChildren: false,
+        childrenLoaded: true,
         children: [],
-        truncated: true,
-        truncatedReason: "max-depth",
       });
       continue;
     }
 
     try {
+      const containsChildren = await hasDirectChildren(fullPath);
       nodes.push({
         ...baseNode,
         type: "directory",
-        children: await readDirectory(fullPath, projectRoot, gitStatus, depth + 1, maxDepth),
+        hasChildren: containsChildren,
+        childrenLoaded: !containsChildren,
+        ...(containsChildren ? {} : { children: [] }),
       });
     } catch (error) {
       nodes.push({
@@ -173,6 +176,8 @@ async function readDirectory(
         type: "directory",
         kind: isPermissionError(error) ? "permission-denied" : "unknown",
         unreadable: true,
+        hasChildren: false,
+        childrenLoaded: true,
         children: [],
       });
     }
@@ -184,6 +189,19 @@ async function readDirectory(
   });
 
   return nodes;
+}
+
+function resolveRequestedDirectory(
+  projectRoot: string,
+  requestedPath: string | null,
+): string | null {
+  if (!requestedPath) return projectRoot;
+  if (path.isAbsolute(requestedPath)) return null;
+
+  const resolved = path.resolve(projectRoot, requestedPath);
+  const relative = path.relative(projectRoot, resolved);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) return null;
+  return resolved;
 }
 
 function inferDirStatus(dirPath: string, gitStatus: Map<string, GitStatus>): GitStatus | undefined {
@@ -198,6 +216,7 @@ function inferDirStatus(dirPath: string, gitStatus: Map<string, GitStatus>): Git
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const slug = searchParams.get("slug");
+  const requestedPath = searchParams.get("path");
 
   if (!slug) {
     return NextResponse.json(
@@ -217,13 +236,45 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const targetDirectory = resolveRequestedDirectory(root, requestedPath);
+  if (!targetDirectory) {
+    return NextResponse.json(
+      { error: "Invalid 'path' parameter", code: "INVALID_PATH" },
+      { status: 400 },
+    );
+  }
+
+  if (requestedPath) {
+    try {
+      const targetStats = (await fs.lstat(targetDirectory)) as FileSystemStats;
+      if (!targetStats.isDirectory()) {
+        return NextResponse.json(
+          { error: "Requested path is not a directory", code: "NOT_A_DIRECTORY" },
+          { status: 400 },
+        );
+      }
+    } catch (error) {
+      const status = isPermissionError(error) ? 403 : 404;
+      return NextResponse.json(
+        { error: "Requested directory is not readable", code: "DIRECTORY_NOT_READABLE" },
+        { status },
+      );
+    }
+  }
+
   try {
     const gitStatus = await getGitStatus(root);
-    const tree = await readDirectory(root, root, gitStatus);
+    const tree = await readDirectoryChildren(targetDirectory, root, gitStatus);
     return NextResponse.json(tree, {
       headers: { "Cache-Control": "private, max-age=5, stale-while-revalidate=15" },
     });
   } catch (error) {
+    if (requestedPath && isPermissionError(error)) {
+      return NextResponse.json(
+        { error: "Requested directory is not readable", code: "DIRECTORY_NOT_READABLE" },
+        { status: 403 },
+      );
+    }
     return NextResponse.json(
       { error: "Failed to read directory", code: "READ_DIRECTORY_FAILED", details: String(error) },
       { status: 500 },

@@ -3,7 +3,7 @@ import { render, screen, act, waitFor } from "@testing-library/react";
 import { useEffect } from "react";
 import { WorkspaceProvider, useWorkspace } from "./workspace-context";
 import { OpenProjectsProvider, useOpenProjects } from "./open-projects-context";
-import type { PerProjectWorkspaceState } from "./types";
+import type { FileNode, PerProjectWorkspaceState } from "./types";
 
 const mockPush = vi.fn();
 
@@ -200,6 +200,15 @@ describe("WorkspaceProvider.refreshFileTree", () => {
           <span data-testid="refreshing">{String(ws.fileTreeRefreshing)}</span>
           <span data-testid="loading">{String(ws.fileTreeLoading)}</span>
           <span data-testid="tree-len">{ws.fileTree.length}</span>
+          <span data-testid="directory-loading">{Array.from(ws.directoryLoading).join(",")}</span>
+          <span data-testid="directory-errors">
+            {Array.from(ws.directoryErrors.entries())
+              .map(([path, error]) => `${path}:${error}`)
+              .join(",")}
+          </span>
+          <span data-testid="tree-json">{JSON.stringify(ws.fileTree)}</span>
+          <span data-testid="selected-json">{ws.selectedFile ?? ""}</span>
+          <span data-testid="expanded-json">{Array.from(ws.expandedFolders).join(",")}</span>
         </div>
       );
     }
@@ -376,7 +385,7 @@ describe("WorkspaceProvider.refreshFileTree", () => {
     expect(screen.getByTestId("tree-len").textContent).toBe("1");
   });
 
-  it("T10: concurrent refreshes — fileTreeRefreshing stays true until ALL complete", async () => {
+  it("TP6: concurrent duplicate root refreshes share one in-flight request", async () => {
     const resolvers: Array<(res: Response) => void> = [];
     vi.spyOn(globalThis, "fetch").mockImplementation(
       () =>
@@ -398,21 +407,194 @@ describe("WorkspaceProvider.refreshFileTree", () => {
     await waitFor(() => {
       expect(screen.getByTestId("refreshing").textContent).toBe("true");
     });
-    expect(resolvers).toHaveLength(2);
+    expect(resolvers).toHaveLength(1);
 
-    // Resolve only the first call. Counter should still be > 0, so the flag
-    // must remain true (regression guard for review comment #2).
     await act(async () => {
       resolvers[0](new Response("[]", { status: 200 }));
       await firstPending!;
-    });
-    expect(screen.getByTestId("refreshing").textContent).toBe("true");
-
-    // Resolve the second call — counter hits 0, flag flips to false.
-    await act(async () => {
-      resolvers[1](new Response("[]", { status: 200 }));
       await secondPending!;
     });
     expect(screen.getByTestId("refreshing").textContent).toBe("false");
+  });
+
+  it("TP7: deduplicates duplicate same-directory child requests and merges children", async () => {
+    const resolvers: Array<(res: Response) => void> = [];
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolvers.push(resolve);
+        }),
+    );
+    const { captured } = renderHarness({ withProject: true });
+    const root: FileNode[] = [
+      {
+        name: "src",
+        path: "src",
+        type: "directory",
+        kind: "directory",
+        hasChildren: true,
+        childrenLoaded: false,
+      },
+    ];
+
+    await act(async () => {
+      captured.state!.setFileTree(root);
+    });
+
+    let firstPending: Promise<void>;
+    let secondPending: Promise<void>;
+    act(() => {
+      firstPending = captured.state!.loadDirectoryChildren("src");
+      secondPending = captured.state!.loadDirectoryChildren("src");
+    });
+
+    await waitFor(() => expect(screen.getByTestId("directory-loading").textContent).toBe("src"));
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledWith("/api/files?slug=demo&path=src", { cache: "no-store" });
+
+    await act(async () => {
+      resolvers[0](
+        new Response(
+          JSON.stringify([
+            { name: "index.ts", path: "src/index.ts", type: "file", kind: "regular-file" },
+          ]),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      );
+      await firstPending!;
+      await secondPending!;
+    });
+
+    expect(screen.getByTestId("directory-loading").textContent).toBe("");
+    expect(screen.getByTestId("tree-json").textContent).toContain("src/index.ts");
+  });
+
+  it("TP8: allows independent different-directory child requests", async () => {
+    const resolvers: Array<(res: Response) => void> = [];
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolvers.push(resolve);
+        }),
+    );
+    const { captured } = renderHarness({ withProject: true });
+
+    await act(async () => {
+      captured.state!.setFileTree([
+        {
+          name: "src",
+          path: "src",
+          type: "directory",
+          kind: "directory",
+          hasChildren: true,
+          childrenLoaded: false,
+        },
+        {
+          name: "docs",
+          path: "docs",
+          type: "directory",
+          kind: "directory",
+          hasChildren: true,
+          childrenLoaded: false,
+        },
+      ]);
+    });
+
+    act(() => {
+      void captured.state!.loadDirectoryChildren("src");
+      void captured.state!.loadDirectoryChildren("docs");
+    });
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
+    expect(String(fetchSpy.mock.calls[0][0])).toContain("path=src");
+    expect(String(fetchSpy.mock.calls[1][0])).toContain("path=docs");
+
+    await act(async () => {
+      resolvers[0](new Response("[]", { status: 200 }));
+      resolvers[1](new Response("[]", { status: 200 }));
+    });
+  });
+
+  it("TP9: ignores stale project responses", async () => {
+    let resolveFetch: (res: Response) => void = () => {};
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const { captured } = renderHarness({ withProject: true });
+
+    let pending: Promise<void>;
+    act(() => {
+      pending = captured.state!.refreshFileTree("demo");
+    });
+    await waitFor(() => expect(screen.getByTestId("refreshing").textContent).toBe("true"));
+
+    await act(async () => {
+      captured.state!.setProject({
+        slug: "beta",
+        name: "Beta",
+        path: "/beta",
+        description: "",
+        source: "auto",
+      });
+    });
+
+    await act(async () => {
+      resolveFetch(
+        new Response(
+          JSON.stringify([{ name: "stale", path: "stale", type: "file", kind: "regular-file" }]),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      );
+      await pending!;
+    });
+
+    expect(screen.getByTestId("tree-json").textContent).not.toContain("stale");
+  });
+
+  it("TP10: preserves tree and records path-scoped errors on child-load failure", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("nope", { status: 500 }));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { captured } = renderHarness({ withProject: true });
+
+    await act(async () => {
+      captured.state!.setFileTree([
+        {
+          name: "src",
+          path: "src",
+          type: "directory",
+          kind: "directory",
+          hasChildren: true,
+          childrenLoaded: false,
+        },
+        {
+          name: "docs",
+          path: "docs",
+          type: "directory",
+          kind: "directory",
+          hasChildren: true,
+          childrenLoaded: false,
+        },
+      ]);
+      captured.state!.selectFile("docs/readme.md");
+      captured.state!.toggleFolder("docs");
+    });
+
+    await act(async () => {
+      await captured.state!.loadDirectoryChildren("src");
+    });
+
+    expect(screen.getByTestId("tree-json").textContent).toContain("docs");
+    expect(screen.getByTestId("directory-errors").textContent).toContain("src:HTTP 500");
+    expect(screen.getByTestId("selected-json").textContent).toBe("docs/readme.md");
+    expect(screen.getByTestId("expanded-json").textContent).toBe("docs");
   });
 });

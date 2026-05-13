@@ -20,6 +20,8 @@ interface WorkspaceState {
   showTerminal: boolean;
   fileTree: FileNode[];
   fileTreeLoading: boolean;
+  directoryLoading: Set<string>;
+  directoryErrors: Map<string, string>;
 }
 
 interface WorkspaceContextValue extends WorkspaceState {
@@ -30,25 +32,12 @@ interface WorkspaceContextValue extends WorkspaceState {
   toggleTerminal: () => void;
   setFileTree: (tree: FileNode[]) => void;
   setFileTreeLoading: (loading: boolean) => void;
-  /**
-   * Silently re-fetches the file tree from `/api/files`.
-   *
-   * - Without arguments, uses the active context `project.slug`.
-   * - When called with `explicitSlug`, fetches that slug directly without
-   *   waiting for the context `project` state to propagate. This makes the
-   *   initial-load path in `WorkspaceLayout` deterministic in a single pass
-   *   (Decision #63).
-   *
-   * Per Decision #60 this never mutates `fileTreeLoading` — it is the
-   * "silent refresh" path used after in-portal mutations (e.g. file save).
-   * Concurrent invocations are tracked via an in-flight counter; per
-   * Decision #64, `fileTreeRefreshing` only flips back to `false` when all
-   * pending refreshes have completed.
-   */
   refreshFileTree: (explicitSlug?: string) => Promise<void>;
+  loadDirectoryChildren: (path: string, explicitSlug?: string) => Promise<void>;
   fileTreeRefreshing: boolean;
 }
 
+const ROOT_REQUEST_PATH = "";
 const WorkspaceContext = createContext<WorkspaceContextValue | undefined>(undefined);
 
 interface WorkspaceProviderProps {
@@ -56,55 +45,95 @@ interface WorkspaceProviderProps {
   children: React.ReactNode;
 }
 
+function requestKey(slug: string, relativePath: string): string {
+  return `${slug}:${relativePath}`;
+}
+
+function mergeRootTrees(nextRoot: FileNode[], previousRoot: FileNode[]): FileNode[] {
+  const previousByPath = new Map(previousRoot.map((node) => [node.path, node]));
+  return nextRoot.map((node) => {
+    const previous = previousByPath.get(node.path);
+    if (
+      node.type === "directory" &&
+      previous?.type === "directory" &&
+      previous.childrenLoaded &&
+      node.hasChildren !== false
+    ) {
+      return {
+        ...node,
+        children: previous.children,
+        hasChildren: previous.hasChildren ?? node.hasChildren,
+        childrenLoaded: true,
+      };
+    }
+    return node;
+  });
+}
+
+function mergeDirectoryChildren(
+  nodes: FileNode[],
+  directoryPath: string,
+  children: FileNode[],
+): FileNode[] {
+  return nodes.map((node) => {
+    if (node.path === directoryPath && node.type === "directory") {
+      return {
+        ...node,
+        children,
+        hasChildren: children.length > 0,
+        childrenLoaded: true,
+      };
+    }
+
+    if (node.children) {
+      return { ...node, children: mergeDirectoryChildren(node.children, directoryPath, children) };
+    }
+
+    return node;
+  });
+}
+
+function responseErrorMessage(response: Response): string {
+  return `HTTP ${response.status}`;
+}
+
 export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
   const { saveWorkspaceState, restoreWorkspaceState } = useOpenProjects();
+  const cachedState = slug ? restoreWorkspaceState(slug) : undefined;
 
-  // Compute cached state once for lazy initializers
-  // Using useState to store the "restored" flag so it's part of React state, not a ref
-  const [, setRestoredFromCache] = useState(() => {
-    if (!slug) return false;
-    return !!restoreWorkspaceState(slug);
-  });
-
+  const [, setRestoredFromCache] = useState(() => !!cachedState);
   const [project, setProjectState] = useState<Project | null>(null);
-  const [selectedFile, setSelectedFile] = useState<string | null>(() => {
-    if (!slug) return null;
-    const cached = restoreWorkspaceState(slug);
-    return cached?.selectedFile ?? null;
-  });
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => {
-    if (!slug) return new Set<string>();
-    const cached = restoreWorkspaceState(slug);
-    return cached ? new Set(cached.expandedFolders) : new Set<string>();
-  });
-  const [showFileViewer, setShowFileViewer] = useState(() => {
-    if (!slug) return true;
-    const cached = restoreWorkspaceState(slug);
-    return cached?.showFileViewer ?? true;
-  });
-  const [showTerminal, setShowTerminal] = useState(() => {
-    if (!slug) return true;
-    const cached = restoreWorkspaceState(slug);
-    return cached?.showTerminal ?? true;
-  });
-  const [fileTree, setFileTreeState] = useState<FileNode[]>(() => {
-    if (!slug) return [];
-    const cached = restoreWorkspaceState(slug);
-    return cached?.fileTree ?? [];
-  });
+  const [selectedFile, setSelectedFile] = useState<string | null>(
+    cachedState?.selectedFile ?? null,
+  );
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
+    () => new Set(cachedState?.expandedFolders ?? []),
+  );
+  const [showFileViewer, setShowFileViewer] = useState(cachedState?.showFileViewer ?? true);
+  const [showTerminal, setShowTerminal] = useState(cachedState?.showTerminal ?? true);
+  const [fileTree, setFileTreeState] = useState<FileNode[]>(cachedState?.fileTree ?? []);
   const [fileTreeLoading, setFileTreeLoadingState] = useState(false);
   const [fileTreeRefreshing, setFileTreeRefreshing] = useState(false);
-  // Tracks how many `refreshFileTree` calls are currently in flight so that
-  // `fileTreeRefreshing` stays `true` until the LAST one completes (Decision #64).
-  const refreshInFlightCountRef = useRef(0);
+  const [directoryLoading, setDirectoryLoading] = useState<Set<string>>(() => new Set());
+  const [directoryErrors, setDirectoryErrors] = useState<Map<string, string>>(
+    () => new Map(Object.entries(cachedState?.directoryLoadErrors ?? {})),
+  );
 
-  // Use a single ref that holds the latest state for save-on-unmount
+  const currentSlugRef = useRef<string | undefined>(slug);
+  const rootRefreshCountRef = useRef(0);
+  const inFlightFileTreeRequests = useRef<Map<string, Promise<void>>>(new Map());
+
+  useEffect(() => {
+    currentSlugRef.current = project?.slug ?? slug;
+  }, [project?.slug, slug]);
+
   const stateRef = useRef({
     selectedFile,
     expandedFolders,
     showFileViewer,
     showTerminal,
     fileTree,
+    directoryErrors,
   });
 
   useEffect(() => {
@@ -114,10 +143,10 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       showFileViewer,
       showTerminal,
       fileTree,
+      directoryErrors,
     };
-  }, [selectedFile, expandedFolders, showFileViewer, showTerminal, fileTree]);
+  }, [selectedFile, expandedFolders, showFileViewer, showTerminal, fileTree, directoryErrors]);
 
-  // Save state on unmount
   useEffect(() => {
     if (!slug) return;
     return () => {
@@ -128,20 +157,22 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
         showFileViewer: s.showFileViewer,
         showTerminal: s.showTerminal,
         fileTree: s.fileTree,
+        directoryLoadErrors: Object.fromEntries(s.directoryErrors),
       });
     };
   }, [slug, saveWorkspaceState]);
 
   const setProject = useCallback((p: Project) => {
+    currentSlugRef.current = p.slug;
     setProjectState(p);
     setRestoredFromCache((wasRestored) => {
-      // Only reset state if we didn't restore from cache
       if (!wasRestored) {
         setSelectedFile(null);
         setExpandedFolders(new Set());
         setFileTreeState([]);
+        setDirectoryErrors(new Map());
+        setDirectoryLoading(new Set());
       }
-      // Clear the flag after first setProject call
       return false;
     });
   }, []);
@@ -159,11 +190,8 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
   const toggleFolder = useCallback((path: string) => {
     setExpandedFolders((prev) => {
       const next = new Set(prev);
-      if (next.has(path)) {
-        next.delete(path);
-      } else {
-        next.add(path);
-      }
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
       return next;
     });
   }, []);
@@ -184,41 +212,95 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
     setFileTreeLoadingState(loading);
   }, []);
 
-  // Silent refresh of the file tree — does not toggle `fileTreeLoading`
-  // (Decision #60). Used after in-portal mutations like file save so the
-  // explorer reflects new git status without the spinner re-flashing.
-  //
-  // Accepts an optional `explicitSlug` so callers (e.g. `WorkspaceLayout`'s
-  // initial-load effect) can fetch deterministically before the context
-  // `project` state has propagated, avoiding a no-op + double-pass flicker
-  // on cold mount (Decision #63).
-  const refreshFileTree = useCallback(
-    async (explicitSlug?: string) => {
-      const targetSlug = explicitSlug ?? project?.slug;
-      if (!targetSlug) return;
-      refreshInFlightCountRef.current += 1;
-      setFileTreeRefreshing(true);
+  const refreshFileTree = useCallback(async (explicitSlug?: string) => {
+    const targetSlug = explicitSlug ?? currentSlugRef.current;
+    if (!targetSlug) return;
+
+    const key = requestKey(targetSlug, ROOT_REQUEST_PATH);
+    const inFlight = inFlightFileTreeRequests.current.get(key);
+    if (inFlight) return inFlight;
+
+    rootRefreshCountRef.current += 1;
+    setFileTreeRefreshing(true);
+
+    const promise = (async () => {
       try {
         const res = await fetch(`/api/files?slug=${encodeURIComponent(targetSlug)}`, {
           cache: "no-store",
         });
         if (!res.ok) {
-          console.error("Failed to refresh file tree: HTTP", res.status);
+          console.error("Failed to refresh file tree:", responseErrorMessage(res));
           return;
         }
         const data = (await res.json()) as FileNode[];
-        setFileTreeState(data);
+        const activeSlug = currentSlugRef.current;
+        if (activeSlug && activeSlug !== targetSlug) return;
+        setFileTreeState((prev) => mergeRootTrees(data, prev));
       } catch (err) {
         console.error("Failed to refresh file tree:", err);
       } finally {
-        refreshInFlightCountRef.current -= 1;
-        if (refreshInFlightCountRef.current === 0) {
+        inFlightFileTreeRequests.current.delete(key);
+        rootRefreshCountRef.current -= 1;
+        if (rootRefreshCountRef.current === 0) {
           setFileTreeRefreshing(false);
         }
       }
-    },
-    [project?.slug],
-  );
+    })();
+
+    inFlightFileTreeRequests.current.set(key, promise);
+    return promise;
+  }, []);
+
+  const loadDirectoryChildren = useCallback(async (relativePath: string, explicitSlug?: string) => {
+    const targetSlug = explicitSlug ?? currentSlugRef.current;
+    if (!targetSlug || !relativePath) return;
+
+    const key = requestKey(targetSlug, relativePath);
+    const inFlight = inFlightFileTreeRequests.current.get(key);
+    if (inFlight) return inFlight;
+
+    setDirectoryLoading((prev) => new Set(prev).add(relativePath));
+    setDirectoryErrors((prev) => {
+      const next = new Map(prev);
+      next.delete(relativePath);
+      return next;
+    });
+
+    const promise = (async () => {
+      try {
+        const params = new URLSearchParams({ slug: targetSlug, path: relativePath });
+        const res = await fetch(`/api/files?${params.toString()}`, { cache: "no-store" });
+        if (!res.ok) throw new Error(responseErrorMessage(res));
+        const data = (await res.json()) as FileNode[];
+        const activeSlug = currentSlugRef.current;
+        if (activeSlug && activeSlug !== targetSlug) return;
+        setFileTreeState((prev) => mergeDirectoryChildren(prev, relativePath, data));
+      } catch (err) {
+        const activeSlug = currentSlugRef.current;
+        if (!activeSlug || activeSlug === targetSlug) {
+          console.error(`Failed to load directory children for ${relativePath}:`, err);
+          setDirectoryErrors((prev) => {
+            const next = new Map(prev);
+            next.set(relativePath, err instanceof Error ? err.message : String(err));
+            return next;
+          });
+        }
+      } finally {
+        inFlightFileTreeRequests.current.delete(key);
+        const activeSlug = currentSlugRef.current;
+        if (!activeSlug || activeSlug === targetSlug) {
+          setDirectoryLoading((prev) => {
+            const next = new Set(prev);
+            next.delete(relativePath);
+            return next;
+          });
+        }
+      }
+    })();
+
+    inFlightFileTreeRequests.current.set(key, promise);
+    return promise;
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -229,6 +311,8 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       showTerminal,
       fileTree,
       fileTreeLoading,
+      directoryLoading,
+      directoryErrors,
       fileTreeRefreshing,
       setProject,
       selectFile,
@@ -238,6 +322,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       setFileTree,
       setFileTreeLoading,
       refreshFileTree,
+      loadDirectoryChildren,
     }),
     [
       project,
@@ -247,6 +332,8 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       showTerminal,
       fileTree,
       fileTreeLoading,
+      directoryLoading,
+      directoryErrors,
       fileTreeRefreshing,
       setProject,
       selectFile,
@@ -256,6 +343,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       setFileTree,
       setFileTreeLoading,
       refreshFileTree,
+      loadDirectoryChildren,
     ],
   );
 
