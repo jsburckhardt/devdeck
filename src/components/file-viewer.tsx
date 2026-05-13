@@ -30,6 +30,7 @@ import { useWorkspace } from "@/lib/workspace-context";
 import { useTheme } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
 import { DiffView } from "@/components/diff-view";
+import { ExcalidrawView } from "@/components/excalidraw-view";
 import type { FileContent, FileKind, FileNode } from "@/lib/types";
 
 hljs.registerLanguage("typescript", typescript);
@@ -488,6 +489,7 @@ export default function FileViewer() {
   if (!fileContent) return null;
 
   const isMarkdown = fileContent.language === "markdown";
+  const isExcalidraw = fileContent.language === "excalidraw";
   const showTabs = fileStatus === "modified" || fileStatus === "added";
 
   return (
@@ -535,7 +537,7 @@ export default function FileViewer() {
 
         <div className="ml-auto flex items-center gap-1.5">
           {/* Markdown Raw/Preview toggle */}
-          {isMarkdown && !editMode && viewMode === "file" && (
+          {(isMarkdown || isExcalidraw) && !editMode && viewMode === "file" && (
             <button
               className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               onClick={() => setShowRaw((v) => !v)}
@@ -611,6 +613,8 @@ export default function FileViewer() {
             )
           ) : fileContent.isBinary ? (
             <BinaryFileView name={fileContent.name} size={fileContent.size} />
+          ) : isExcalidraw && !showRaw ? (
+            <ExcalidrawView content={fileContent.content} />
           ) : isMarkdown && !showRaw ? (
             <MarkdownView content={fileContent.content} />
           ) : (

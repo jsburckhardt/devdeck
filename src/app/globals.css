@@ -1,3 +1,4 @@
+@import "../../node_modules/@excalidraw/excalidraw/dist/prod/index.css";
 @import "tailwindcss" source("../");
 @source not "../.devcontainer";
 

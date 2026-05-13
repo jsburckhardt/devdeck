@@ -50,6 +50,24 @@ vi.mock("framer-motion", () => ({
   AnimatePresence: ({ children }: React.PropsWithChildren) => <>{children}</>,
 }));
 
+const mockExcalidrawProps = vi.fn();
+
+vi.mock("next/dynamic", () => ({
+  default: (loader: () => Promise<{ default: React.ComponentType<unknown> }>) => {
+    void loader;
+    const MockedComponent = (props: Record<string, unknown>) => {
+      mockExcalidrawProps(props);
+      return <div data-testid="excalidraw-renderer" />;
+    };
+    MockedComponent.displayName = "DynamicExcalidraw";
+    return MockedComponent;
+  },
+}));
+
+vi.mock("@excalidraw/excalidraw", () => ({
+  Excalidraw: (props: Record<string, unknown>) => <div data-testid="excalidraw-renderer" />,
+}));
+
 import { toast } from "sonner";
 import { useWorkspace } from "@/lib/workspace-context";
 import { useTheme } from "@/components/theme-provider";
@@ -1071,6 +1089,156 @@ describe("FileViewer", () => {
 
       // mermaid.initialize should not have been called since there are no mermaid blocks
       expect(mockMermaidInitialize).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("4e. Excalidraw Rendering", () => {
+    const validScene = JSON.stringify({
+      type: "excalidraw",
+      version: 2,
+      elements: [{ id: "1", type: "rectangle", x: 0, y: 0, width: 100, height: 50 }],
+      appState: { viewBackgroundColor: "#ffffff" },
+      files: {
+        img1: { id: "img1", dataURL: "data:image/png;base64,abc", mimeType: "image/png" },
+      },
+    });
+    const excalidrawFileData = {
+      content: validScene,
+      language: "excalidraw",
+      size: validScene.length,
+      isBinary: false,
+      path: "diagram.excalidraw",
+      name: "diagram.excalidraw",
+      mtime: 1000,
+    };
+
+    beforeEach(() => {
+      mockExcalidrawProps.mockReset();
+    });
+
+    it("T-EX-1 valid scene renders Excalidraw component", async () => {
+      setupWorkspace({ selectedFile: "diagram.excalidraw" });
+      mockFetchResponse(excalidrawFileData);
+      render(<FileViewer />);
+      await waitFor(() => {
+        expect(screen.getByTestId("excalidraw-renderer")).toBeInTheDocument();
+      });
+      expect(screen.queryByRole("article")).not.toBeInTheDocument();
+    });
+
+    it("T-EX-2 invalid JSON shows inline error", async () => {
+      setupWorkspace({ selectedFile: "bad.excalidraw" });
+      mockFetchResponse({
+        ...excalidrawFileData,
+        content: "{ not valid json",
+        path: "bad.excalidraw",
+        name: "bad.excalidraw",
+      });
+      render(<FileViewer />);
+      await waitFor(() => {
+        expect(screen.getByText("Invalid Excalidraw file")).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId("excalidraw-renderer")).not.toBeInTheDocument();
+    });
+
+    it("T-EX-3 missing elements shows validation error", async () => {
+      const noElements = JSON.stringify({ type: "excalidraw", version: 2 });
+      setupWorkspace({ selectedFile: "no-elements.excalidraw" });
+      mockFetchResponse({
+        ...excalidrawFileData,
+        content: noElements,
+        path: "no-elements.excalidraw",
+        name: "no-elements.excalidraw",
+      });
+      render(<FileViewer />);
+      await waitFor(() => {
+        expect(screen.getByText("Invalid Excalidraw file")).toBeInTheDocument();
+      });
+      expect(screen.getByText(/missing or invalid 'elements'/)).toBeInTheDocument();
+      expect(screen.queryByTestId("excalidraw-renderer")).not.toBeInTheDocument();
+    });
+
+    it("T-EX-4 raw mode shows source, not renderer", async () => {
+      setupWorkspace({ selectedFile: "diagram.excalidraw" });
+      mockFetchResponse(excalidrawFileData);
+      render(<FileViewer />);
+      const user = userEvent.setup();
+      await waitFor(() => {
+        expect(screen.getByTestId("excalidraw-renderer")).toBeInTheDocument();
+      });
+      const rawButton = screen.getByRole("button", { name: /show raw source/i });
+      await user.click(rawButton);
+      expect(screen.queryByTestId("excalidraw-renderer")).not.toBeInTheDocument();
+    });
+
+    it("T-EX-5 dark theme passes theme='dark'", async () => {
+      mockUseTheme.mockReturnValue({ theme: "dark", setTheme: vi.fn(), toggleTheme: vi.fn() });
+      setupWorkspace({ selectedFile: "diagram.excalidraw" });
+      mockFetchResponse(excalidrawFileData);
+      render(<FileViewer />);
+      await waitFor(() => {
+        expect(screen.getByTestId("excalidraw-renderer")).toBeInTheDocument();
+      });
+      expect(mockExcalidrawProps).toHaveBeenCalledWith(expect.objectContaining({ theme: "dark" }));
+    });
+
+    it("T-EX-6 light theme passes theme='light'", async () => {
+      mockUseTheme.mockReturnValue({ theme: "light", setTheme: vi.fn(), toggleTheme: vi.fn() });
+      setupWorkspace({ selectedFile: "diagram.excalidraw" });
+      mockFetchResponse(excalidrawFileData);
+      render(<FileViewer />);
+      await waitFor(() => {
+        expect(screen.getByTestId("excalidraw-renderer")).toBeInTheDocument();
+      });
+      expect(mockExcalidrawProps).toHaveBeenCalledWith(expect.objectContaining({ theme: "light" }));
+    });
+
+    it("T-EX-7 files field is passed to initialData", async () => {
+      setupWorkspace({ selectedFile: "diagram.excalidraw" });
+      mockFetchResponse(excalidrawFileData);
+      render(<FileViewer />);
+      await waitFor(() => {
+        expect(screen.getByTestId("excalidraw-renderer")).toBeInTheDocument();
+      });
+      expect(mockExcalidrawProps).toHaveBeenCalledWith(
+        expect.objectContaining({
+          initialData: expect.objectContaining({
+            files: expect.objectContaining({ img1: expect.objectContaining({ id: "img1" }) }),
+          }),
+        }),
+      );
+    });
+
+    it("T-EX-8 edit mode shows textarea, not renderer", async () => {
+      setupWorkspace({ selectedFile: "diagram.excalidraw" });
+      mockFetchResponse(excalidrawFileData);
+      render(<FileViewer />);
+      const user = userEvent.setup();
+      await waitFor(() => {
+        expect(screen.getByTestId("excalidraw-renderer")).toBeInTheDocument();
+      });
+      const editButton = screen.getByRole("button", { name: /edit file/i });
+      await user.click(editButton);
+      expect(screen.getByLabelText("File editor")).toBeInTheDocument();
+      expect(screen.queryByTestId("excalidraw-renderer")).not.toBeInTheDocument();
+    });
+
+    it("T-EX-9 markdown files still render as markdown, not excalidraw", async () => {
+      setupWorkspace({ selectedFile: "README.md" });
+      mockFetchResponse({
+        content: "# Hello",
+        language: "markdown",
+        size: 7,
+        isBinary: false,
+        path: "README.md",
+        name: "README.md",
+        mtime: 1000,
+      });
+      render(<FileViewer />);
+      await waitFor(() => {
+        expect(screen.getByRole("article")).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId("excalidraw-renderer")).not.toBeInTheDocument();
     });
   });
 });
