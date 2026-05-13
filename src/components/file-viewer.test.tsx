@@ -105,6 +105,59 @@ describe("FileViewer", () => {
     expect(screen.getByText("Select a file to view its contents")).toBeInTheDocument();
   });
 
+  describe("Issue #32 preview errors", () => {
+    it("TP8 renders a friendly cannot-preview panel for structured NOT_REGULAR_FILE errors", async () => {
+      const refreshFileTree = vi.fn().mockResolvedValue(undefined);
+      setupWorkspace({ selectedFile: "app.sock", refreshFileTree });
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      mockFetchResponse(
+        { error: "Cannot preview file", code: "NOT_REGULAR_FILE", kind: "socket" },
+        415,
+      );
+
+      render(<FileViewer />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Cannot preview file")).toBeInTheDocument();
+      });
+      expect(screen.getByText(/socket entries/i)).toBeInTheDocument();
+      expect(screen.getByText(/Kind: socket/i)).toBeInTheDocument();
+      expect(screen.queryByLabelText("Edit file")).not.toBeInTheDocument();
+      expect(refreshFileTree).not.toHaveBeenCalled();
+    });
+
+    it("TP9 renders permission denied preview errors without refreshing the file tree", async () => {
+      const refreshFileTree = vi.fn().mockResolvedValue(undefined);
+      setupWorkspace({ selectedFile: "secret.txt", refreshFileTree });
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      mockFetchResponse(
+        { error: "Cannot preview file", code: "PERMISSION_DENIED", kind: "permission-denied" },
+        403,
+      );
+
+      render(<FileViewer />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/does not have permission/i)).toBeInTheDocument();
+      });
+      expect(screen.getByText(/Kind: permission denied/i)).toBeInTheDocument();
+      expect(refreshFileTree).not.toHaveBeenCalled();
+    });
+
+    it("renders a grammatical cannot-preview message when kind is omitted", async () => {
+      setupWorkspace({ selectedFile: "unknown" });
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      mockFetchResponse({ error: "Cannot preview file", code: "NOT_REGULAR_FILE" }, 415);
+
+      render(<FileViewer />);
+
+      await waitFor(() => {
+        expect(screen.getByText("DevDeck cannot preview this item.")).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/this item entries/i)).not.toBeInTheDocument();
+    });
+  });
+
   describe("4a. Markdown Enhancement", () => {
     it("4.1 — renders markdown with hljs-highlighted code blocks", async () => {
       setupWorkspace({ selectedFile: "README.md" });

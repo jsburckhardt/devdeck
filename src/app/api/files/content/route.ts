@@ -3,11 +3,108 @@ import fs from "fs/promises";
 import path from "path";
 import { resolveProjectPath } from "@/lib/registry";
 import { getLanguageFromFilename, isBinaryFile } from "@/lib/file-utils";
-import type { FileContent } from "@/lib/types";
+import type { FileContent, FileKind } from "@/lib/types";
 
 const MAX_FILE_SIZE = 1024 * 1024; // 1MB
 
 const CACHE_HEADERS = { "Cache-Control": "private, max-age=5, stale-while-revalidate=15" };
+
+interface FileSystemStats {
+  size: number;
+  mtimeMs: number;
+  isFile(): boolean;
+  isDirectory(): boolean;
+  isSymbolicLink(): boolean;
+  isSocket(): boolean;
+  isFIFO(): boolean;
+  isBlockDevice(): boolean;
+  isCharacterDevice(): boolean;
+}
+
+interface PreviewTarget {
+  ok: true;
+  stat: FileSystemStats;
+}
+
+interface PreviewError {
+  ok: false;
+  status: number;
+  code: string;
+  kind?: FileKind;
+}
+
+function getErrorCode(error: unknown): string | undefined {
+  return typeof error === "object" && error !== null && "code" in error
+    ? String((error as { code?: unknown }).code)
+    : undefined;
+}
+
+function isPermissionError(error: unknown): boolean {
+  const code = getErrorCode(error);
+  return code === "EACCES" || code === "EPERM";
+}
+
+function isNotFoundError(error: unknown): boolean {
+  const code = getErrorCode(error);
+  return code === "ENOENT" || code === "ENOTDIR";
+}
+
+function nonRegularError(kind: Exclude<FileKind, "regular-file" | "symlink">): PreviewError {
+  if (kind === "permission-denied") {
+    return { ok: false, status: 403, code: "PERMISSION_DENIED", kind };
+  }
+  if (kind === "broken-symlink") {
+    return { ok: false, status: 422, code: "BROKEN_SYMLINK", kind };
+  }
+  return { ok: false, status: 415, code: "NOT_REGULAR_FILE", kind };
+}
+
+function classifyNonRegular(stat: FileSystemStats): FileKind {
+  if (stat.isDirectory()) return "directory";
+  if (stat.isSocket()) return "socket";
+  if (stat.isFIFO()) return "fifo";
+  if (stat.isBlockDevice()) return "block-device";
+  if (stat.isCharacterDevice()) return "character-device";
+  return "unknown";
+}
+
+async function classifyPreviewTarget(fullPath: string): Promise<PreviewTarget | PreviewError> {
+  let lstat: FileSystemStats;
+  try {
+    lstat = (await fs.lstat(fullPath)) as FileSystemStats;
+  } catch (error) {
+    if (isPermissionError(error)) return nonRegularError("permission-denied");
+    if (isNotFoundError(error)) {
+      return { ok: false, status: 404, code: "FILE_NOT_FOUND", kind: "unknown" };
+    }
+    return { ok: false, status: 500, code: "READ_FAILED", kind: "unknown" };
+  }
+
+  if (lstat.isSymbolicLink()) {
+    try {
+      const stat = (await fs.stat(fullPath)) as FileSystemStats;
+      if (stat.isFile()) return { ok: true, stat };
+      return nonRegularError(
+        classifyNonRegular(stat) as Exclude<FileKind, "regular-file" | "symlink">,
+      );
+    } catch (error) {
+      if (isPermissionError(error)) return nonRegularError("permission-denied");
+      return nonRegularError("broken-symlink");
+    }
+  }
+
+  if (lstat.isFile()) return { ok: true, stat: lstat };
+  return nonRegularError(
+    classifyNonRegular(lstat) as Exclude<FileKind, "regular-file" | "symlink">,
+  );
+}
+
+function previewErrorResponse(error: PreviewError) {
+  return NextResponse.json(
+    { error: "Cannot preview file", code: error.code, ...(error.kind ? { kind: error.kind } : {}) },
+    { status: error.status },
+  );
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -15,7 +112,10 @@ export async function GET(request: NextRequest) {
   const filePath = searchParams.get("path");
 
   if (!slug || !filePath) {
-    return NextResponse.json({ error: "Missing 'slug' or 'path' parameter" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Missing 'slug' or 'path' parameter", code: "MISSING_PARAMETERS" },
+      { status: 400 },
+    );
   }
 
   const root = await resolveProjectPath(slug);
@@ -24,11 +124,16 @@ export async function GET(request: NextRequest) {
   // Prevent path traversal — resolved path must remain under root
   const relative = path.relative(root, fullPath);
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    return NextResponse.json({ error: "Invalid path" }, { status: 403 });
+    return NextResponse.json({ error: "Invalid path", code: "INVALID_PATH" }, { status: 403 });
+  }
+
+  const target = await classifyPreviewTarget(fullPath);
+  if (!target.ok) {
+    return previewErrorResponse(target);
   }
 
   try {
-    const stat = await fs.stat(fullPath);
+    const stat = target.stat;
     const filename = path.basename(fullPath);
 
     if (isBinaryFile(filename)) {
@@ -70,7 +175,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(result, { headers: CACHE_HEADERS });
   } catch (error) {
     return NextResponse.json(
-      { error: "Failed to read file", details: String(error) },
+      {
+        error: "Cannot preview file",
+        code: "READ_FAILED",
+        kind: "regular-file",
+        details: String(error),
+      },
       { status: 500 },
     );
   }

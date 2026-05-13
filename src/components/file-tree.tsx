@@ -1,5 +1,13 @@
 import React, { useCallback } from "react";
-import { Folder, FolderOpen, CaretRight, Plus, PencilSimple, Trash } from "@phosphor-icons/react";
+import {
+  Folder,
+  FolderOpen,
+  CaretRight,
+  Plus,
+  PencilSimple,
+  Trash,
+  WarningCircle,
+} from "@phosphor-icons/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useWorkspace } from "@/lib/workspace-context";
 import { getFileIcon } from "@/lib/file-icons";
@@ -14,29 +22,31 @@ function FileNodeIcon({
   name,
   isDirectory,
   isExpanded,
+  unreadable,
 }: {
   name: string;
   isDirectory: boolean;
   isExpanded: boolean;
+  unreadable?: boolean;
 }) {
   if (isDirectory) {
     return isExpanded
       ? React.createElement(FolderOpenIcon, {
           size: 16,
           weight: "duotone",
-          className: "flex-shrink-0 text-primary",
+          className: cn("flex-shrink-0 text-primary", unreadable && "text-amber-500"),
         })
       : React.createElement(FolderIcon, {
           size: 16,
           weight: "duotone",
-          className: "flex-shrink-0 text-primary",
+          className: cn("flex-shrink-0 text-primary", unreadable && "text-amber-500"),
         });
   }
   const IconComponent = getFileIcon(name);
   return React.createElement(IconComponent, {
     size: 16,
     weight: "regular",
-    className: "flex-shrink-0 text-muted-foreground",
+    className: cn("flex-shrink-0 text-muted-foreground", unreadable && "text-amber-500"),
   });
 }
 
@@ -92,16 +102,21 @@ const FileTreeItem = React.memo(function FileTreeItem({
   const isExpanded = expandedFolders.has(node.path);
   const isSelected = selectedFile === node.path;
   const isDirectory = node.type === "directory";
+  const isUnreadableDirectory = isDirectory && node.unreadable;
 
   const handleClick = useCallback(() => {
+    if (isUnreadableDirectory) return;
     if (isDirectory) {
       toggleFolder(node.path);
     } else {
       selectFile(node.path);
     }
-  }, [isDirectory, node.path, toggleFolder, selectFile]);
+  }, [isDirectory, isUnreadableDirectory, node.path, toggleFolder, selectFile]);
 
   const fileIconName = isDirectory ? (isExpanded ? "folderOpen" : "folder") : node.name;
+  const unreadableTitle = node.unreadable
+    ? `${node.path} — cannot preview/read ${node.kind.replace(/-/g, " ")}`
+    : node.path;
 
   return (
     <div>
@@ -112,11 +127,15 @@ const FileTreeItem = React.memo(function FileTreeItem({
           isSelected
             ? "bg-primary/15 text-foreground"
             : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+          node.unreadable && "text-amber-600 dark:text-amber-400",
+          isUnreadableDirectory &&
+            "cursor-default hover:bg-transparent hover:text-amber-600 dark:hover:text-amber-400",
         )}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
-        title={node.path}
+        title={unreadableTitle}
+        aria-label={node.unreadable ? `${node.name} (${node.kind}, unreadable)` : node.name}
       >
-        {isDirectory && (
+        {isDirectory && !isUnreadableDirectory && (
           <motion.span
             animate={{ rotate: isExpanded ? 90 : 0 }}
             transition={{ type: "spring", stiffness: 300, damping: 20 }}
@@ -125,14 +144,27 @@ const FileTreeItem = React.memo(function FileTreeItem({
             <CaretRight size={12} weight="bold" />
           </motion.span>
         )}
+        {isUnreadableDirectory && <span className="w-3 flex-shrink-0" />}
         {!isDirectory && <span className="w-3 flex-shrink-0" />}
-        <FileNodeIcon name={fileIconName} isDirectory={isDirectory} isExpanded={isExpanded} />
+        <FileNodeIcon
+          name={fileIconName}
+          isDirectory={isDirectory}
+          isExpanded={isExpanded}
+          unreadable={node.unreadable}
+        />
         <span className="truncate font-mono text-xs">{node.name}</span>
+        {node.unreadable && (
+          <WarningCircle
+            size={12}
+            className="ml-auto flex-shrink-0 text-amber-500"
+            aria-hidden="true"
+          />
+        )}
         <StatusBadge status={node.status} />
       </button>
 
       <AnimatePresence initial={false}>
-        {isDirectory && isExpanded && node.children && (
+        {isDirectory && !isUnreadableDirectory && isExpanded && node.children && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
