@@ -170,7 +170,15 @@ async function resolveTerminalSetup(
       }
     }
   } catch {
-    // No tmux socket — fall through to regular shell
+    const sessionName = tmuxSessionName(slug);
+    if (sessionName) {
+      return {
+        command: "tmux",
+        args: ["new-session", "-A", "-s", sessionName],
+        cwd: resolvedCwd,
+        mode: "tmux",
+      };
+    }
   }
 
   return { command: shell, args: shellArgs, cwd: resolvedCwd, mode: "shell" };
@@ -228,6 +236,7 @@ async function handleConnection(
   const pendingMessages: { data: Buffer; isBinary: boolean }[] = [];
   let pty: IPty | null = null;
   let cleaned = false;
+  let wsHandlersRegistered = false;
   let initialCols = urlDimensions?.cols ?? 80;
   let initialRows = urlDimensions?.rows ?? 24;
 
@@ -291,6 +300,28 @@ async function handleConnection(
     }
   }
 
+  function registerWebSocketHandlers() {
+    if (wsHandlersRegistered) return;
+    wsHandlersRegistered = true;
+
+    ws.on("close", () => {
+      console.log("Client disconnected");
+      cleanupPty("ws-close");
+    });
+
+    ws.on("error", (err: Error) => {
+      console.error("WebSocket error:", err.message);
+      cleanupPty("ws-error");
+    });
+  }
+
+  function flushPendingMessages(currentPty: IPty) {
+    for (const pending of pendingMessages) {
+      handleMessage(currentPty, pending.data, pending.isBinary);
+    }
+    pendingMessages.length = 0;
+  }
+
   function wirePty(currentPty: IPty, isTmux: boolean) {
     currentPty.onData((data: string) => {
       if (ws.readyState === WebSocket.OPEN) {
@@ -338,38 +369,33 @@ async function handleConnection(
     });
   }
 
-  try {
-    pty = spawn(setup.command, setup.args, {
+  function spawnAndWirePty(
+    command: string,
+    args: string[],
+    cwd: string,
+    ptyEnv: Record<string, string>,
+    isTmux: boolean,
+  ) {
+    const currentPty = spawn(command, args, {
       name: "xterm-256color",
       cols: initialCols,
       rows: initialRows,
-      cwd: setup.cwd,
-      env: cleanPtyEnv,
+      cwd,
+      env: ptyEnv,
     });
 
-    activePtys.add(pty);
+    pty = currentPty;
+    activePtys.add(currentPty);
     console.log(
-      `PTY spawned (pid: ${pty.pid}, command: ${setup.command}, cwd: ${setup.cwd}, mode: ${setup.mode}, cols: ${initialCols}, rows: ${initialRows})`,
+      `PTY spawned (pid: ${currentPty.pid}, command: ${command}, cwd: ${cwd}, mode: ${isTmux ? "tmux" : "shell"}, cols: ${initialCols}, rows: ${initialRows})`,
     );
 
-    wirePty(pty, setup.mode === "tmux");
+    wirePty(currentPty, isTmux);
+    registerWebSocketHandlers();
+    flushPendingMessages(currentPty);
+  }
 
-    // Flush any messages that arrived during async setup
-    for (const pending of pendingMessages) {
-      handleMessage(pty, pending.data, pending.isBinary);
-    }
-    pendingMessages.length = 0;
-
-    ws.on("close", () => {
-      console.log("Client disconnected");
-      cleanupPty("ws-close");
-    });
-
-    ws.on("error", (err: Error) => {
-      console.error("WebSocket error:", err.message);
-      cleanupPty("ws-error");
-    });
-  } catch (err) {
+  function sendSpawnError(err: unknown) {
     console.error("Failed to spawn shell:", err);
     if (ws.readyState === WebSocket.OPEN) {
       try {
@@ -379,6 +405,23 @@ async function handleConnection(
       }
       ws.close();
     }
+  }
+
+  try {
+    spawnAndWirePty(setup.command, setup.args, setup.cwd, cleanPtyEnv, setup.mode === "tmux");
+  } catch (err) {
+    if (setup.mode === "tmux" && ws.readyState === WebSocket.OPEN) {
+      console.error("Failed to spawn tmux, falling back to regular shell:", err);
+      try {
+        spawnAndWirePty(shell, shellArgs, setup.cwd, env, false);
+      } catch (fallbackErr) {
+        console.error("Fallback shell spawn failed:", fallbackErr);
+        sendSpawnError(fallbackErr);
+      }
+      return;
+    }
+
+    sendSpawnError(err);
   }
 }
 

@@ -156,6 +156,7 @@ describe("terminal-server", () => {
   const clients: WebSocket[] = [];
   const savedToken = process.env.DEVDECK_TOKEN;
   const savedWorkspaceRoot = process.env.DEVDECK_WORKSPACE_ROOT;
+  const savedTmux = process.env.TMUX;
 
   beforeEach(() => {
     fakePty = createFakePty();
@@ -163,6 +164,7 @@ describe("terminal-server", () => {
     clients.length = 0;
     delete process.env.DEVDECK_TOKEN;
     delete process.env.DEVDECK_WORKSPACE_ROOT;
+    delete process.env.TMUX;
     // Reset slug/tmux mock state
     resolvePathShouldThrow = false;
     mockRegistryJson = null;
@@ -190,6 +192,11 @@ describe("terminal-server", () => {
       process.env.DEVDECK_WORKSPACE_ROOT = savedWorkspaceRoot;
     } else {
       delete process.env.DEVDECK_WORKSPACE_ROOT;
+    }
+    if (savedTmux !== undefined) {
+      process.env.TMUX = savedTmux;
+    } else {
+      delete process.env.TMUX;
     }
   });
 
@@ -635,5 +642,128 @@ describe("terminal-server", () => {
 
     // Client should still be open
     expect(client.readyState).toBe(WebSocket.OPEN);
+  });
+
+  it("T23: missing tmux shared socket spawns system-default tmux session", async () => {
+    process.env.TMUX = "/tmp/tmux-1000/default,123,0";
+    fsStatResults["/workspaces/system-tmux"] = { isDirectory: true, isSocket: false };
+
+    const srv = await createServer();
+    handle = srv.handle;
+
+    const client = await connectClientWithSlug(srv.port, "system-tmux");
+    clients.push(client);
+    await tick();
+
+    const nodePty = await import("node-pty");
+    const spawnFn = nodePty.spawn as ReturnType<typeof vi.fn>;
+    const lastCall = spawnFn.mock.calls[spawnFn.mock.calls.length - 1] as [
+      string,
+      string[],
+      { cwd: string; env: Record<string, string> },
+    ];
+
+    expect(lastCall[0]).toBe("tmux");
+    expect(lastCall[1]).toEqual(["new-session", "-A", "-s", "system-tmux"]);
+    expect(lastCall[1]).not.toContain("-S");
+    expect(lastCall[2].cwd).toBe("/workspaces/system-tmux");
+    expect(lastCall[2].env.TMUX).toBeUndefined();
+  });
+
+  it("T24: tmux spawn throw falls back to regular shell and cleans it up", async () => {
+    fsStatResults["/workspaces/tmux-missing"] = { isDirectory: true, isSocket: false };
+
+    const nodePty = await import("node-pty");
+    const spawnFn = nodePty.spawn as ReturnType<typeof vi.fn>;
+    const fallbackPty = createFakePty();
+    spawnFn.mockImplementationOnce(() => {
+      throw new Error("tmux not found");
+    });
+    spawnFn.mockReturnValueOnce(fallbackPty);
+
+    const srv = await createServer();
+    handle = srv.handle;
+
+    const client = await connectClientWithSlug(srv.port, "tmux-missing");
+    clients.push(client);
+    await tick();
+
+    expect(spawnFn.mock.calls.length).toBeGreaterThanOrEqual(2);
+    const tmuxCall = spawnFn.mock.calls[spawnFn.mock.calls.length - 2] as [
+      string,
+      string[],
+      { cwd: string },
+    ];
+    const fallbackCall = spawnFn.mock.calls[spawnFn.mock.calls.length - 1] as [
+      string,
+      string[],
+      { cwd: string },
+    ];
+
+    expect(tmuxCall[0]).toBe("tmux");
+    expect(fallbackCall[0]).not.toBe("tmux");
+    expect(fallbackCall[2].cwd).toBe("/workspaces/tmux-missing");
+    expect(client.readyState).toBe(WebSocket.OPEN);
+
+    client.close();
+    await tick(100);
+    expect(fallbackPty.kill).toHaveBeenCalledTimes(1);
+  });
+
+  it("T25: system-default tmux PTY exit with non-zero code falls back to regular shell", async () => {
+    fsStatResults["/workspaces/system-tmux-fail"] = { isDirectory: true, isSocket: false };
+
+    const srv = await createServer();
+    handle = srv.handle;
+
+    const client = await connectClientWithSlug(srv.port, "system-tmux-fail");
+    clients.push(client);
+    await tick();
+
+    const nodePty = await import("node-pty");
+    const spawnFn = nodePty.spawn as ReturnType<typeof vi.fn>;
+    const tmuxCall = spawnFn.mock.calls[spawnFn.mock.calls.length - 1] as [
+      string,
+      string[],
+      { cwd: string },
+    ];
+    expect(tmuxCall[0]).toBe("tmux");
+    expect(tmuxCall[1]).toEqual(["new-session", "-A", "-s", "system-tmux-fail"]);
+
+    const fallbackPty = createFakePty();
+    spawnFn.mockReturnValueOnce(fallbackPty);
+
+    fakePty._emitExit(1, 0);
+    await tick();
+
+    expect(spawnFn.mock.calls.length).toBeGreaterThan(1);
+    const fallbackCall = spawnFn.mock.calls[spawnFn.mock.calls.length - 1] as [
+      string,
+      string[],
+      { cwd: string },
+    ];
+    expect(fallbackCall[0]).not.toBe("tmux");
+    expect(fallbackCall[2].cwd).toBe("/workspaces/system-tmux-fail");
+    expect(client.readyState).toBe(WebSocket.OPEN);
+  });
+
+  it("T26: slug that sanitizes empty falls back to default CWD shell", async () => {
+    const srv = await createServer({ cwd: "/tmp" });
+    handle = srv.handle;
+
+    const client = await connectClientWithSlug(srv.port, "!@#$%^&*()");
+    clients.push(client);
+    await tick();
+
+    const nodePty = await import("node-pty");
+    const spawnFn = nodePty.spawn as ReturnType<typeof vi.fn>;
+    const lastCall = spawnFn.mock.calls[spawnFn.mock.calls.length - 1] as [
+      string,
+      string[],
+      { cwd: string },
+    ];
+
+    expect(lastCall[0]).not.toBe("tmux");
+    expect(lastCall[2].cwd).toBe("/tmp");
   });
 });
