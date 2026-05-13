@@ -20,7 +20,7 @@ This file is the single registry of all architectural decisions and core-compone
 | CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2025-07-16 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
 | CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-05-07 |
-| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-05-12 |
+| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-05-13 |
 
 ## Decisions
 
@@ -92,3 +92,8 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 62 | Prohibit `ExplorerContent` (and future tree consumers) from reading `fileTreeRefreshing` to gate spinners | CORE-COMPONENT-0008 | 2026-05-12 |
 | 63 | Allow `refreshFileTree(explicitSlug?)` to accept an explicit slug so initial-load callers can fetch deterministically without waiting for context `project` propagation | CORE-COMPONENT-0008 | 2026-05-12 |
 | 64 | Track concurrent `refreshFileTree` calls via an in-flight counter; only clear `fileTreeRefreshing` when the LAST in-flight call completes | CORE-COMPONENT-0008 | 2026-05-12 |
+| 65 | Require root file-tree requests to return direct root entries only | CORE-COMPONENT-0008 | 2026-05-13 |
+| 66 | Load directory children lazily via path-scoped GET /api/files requests | CORE-COMPONENT-0008 | 2026-05-13 |
+| 67 | Deduplicate file-tree fetches by slug/path and ignore stale project responses | CORE-COMPONENT-0008 | 2026-05-13 |
+| 68 | Surface directory loading, error, retry, and empty states per directory | CORE-COMPONENT-0008 | 2026-05-13 |
+| 69 | Preserve all-files visibility; prohibit performance hide-lists in file tree | CORE-COMPONENT-0008 | 2026-05-13 |
