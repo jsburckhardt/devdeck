@@ -15,7 +15,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 const mockCloseProject = vi.fn();
-const mockOpenProjects: Project[] = [
+const defaultOpenProjects: Project[] = [
   {
     slug: "proj-a",
     name: "Alpha",
@@ -41,21 +41,27 @@ const mockOpenProjects: Project[] = [
     source: "auto",
   },
 ];
+let mockOpenProjects: Project[] = defaultOpenProjects;
 
-vi.mock("@/lib/open-projects-context", () => ({
-  useOpenProjects: () => ({
-    openProjects: mockOpenProjects,
-    closeProject: mockCloseProject,
-    openProject: vi.fn(),
-    saveWorkspaceState: vi.fn(),
-    restoreWorkspaceState: vi.fn(),
-  }),
-}));
+vi.mock("@/lib/open-projects-context", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/open-projects-context")>();
+  return {
+    ...actual,
+    useOpenProjects: () => ({
+      openProjects: mockOpenProjects,
+      closeProject: mockCloseProject,
+      openProject: vi.fn(),
+      saveWorkspaceState: vi.fn(),
+      restoreWorkspaceState: vi.fn(),
+    }),
+  };
+});
 
 describe("ProjectSidebar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockPathname = "/project/proj-b";
+    mockOpenProjects = defaultOpenProjects;
   });
 
   it("T8: renders correct number of tabs with first letters and titles", () => {
@@ -93,7 +99,7 @@ describe("ProjectSidebar", () => {
     expect(mockPush).toHaveBeenCalledWith("/project/proj-c");
   });
 
-  it("T11: close button calls closeProject and does not navigate", async () => {
+  it("P36-5: inactive close button calls closeProject and does not navigate", async () => {
     const user = userEvent.setup();
     render(<ProjectSidebar />);
 
@@ -103,8 +109,76 @@ describe("ProjectSidebar", () => {
     await user.click(closeButtons[0]); // Close Alpha
 
     expect(mockCloseProject).toHaveBeenCalledWith("proj-a");
-    // Clicking close should not trigger navigation to the project
-    expect(mockPush).not.toHaveBeenCalledWith("/project/proj-a");
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("P36-1: closing active first tab navigates to right neighbor exactly once", async () => {
+    const user = userEvent.setup();
+    mockPathname = "/project/proj-a";
+    render(<ProjectSidebar />);
+
+    await user.click(screen.getAllByRole("button", { name: /Close project/ })[0]);
+
+    expect(mockCloseProject).toHaveBeenCalledWith("proj-a");
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledWith("/project/proj-b");
+  });
+
+  it("P36-2: closing active middle tab navigates to same-index right neighbor exactly once", async () => {
+    const user = userEvent.setup();
+    mockPathname = "/project/proj-b";
+    render(<ProjectSidebar />);
+
+    await user.click(screen.getAllByRole("button", { name: /Close project/ })[1]);
+
+    expect(mockCloseProject).toHaveBeenCalledWith("proj-b");
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledWith("/project/proj-c");
+  });
+
+  it("P36-3: closing active last tab navigates to previous remaining project exactly once", async () => {
+    const user = userEvent.setup();
+    mockPathname = "/project/proj-c";
+    render(<ProjectSidebar />);
+
+    await user.click(screen.getAllByRole("button", { name: /Close project/ })[2]);
+
+    expect(mockCloseProject).toHaveBeenCalledWith("proj-c");
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledWith("/project/proj-b");
+  });
+
+  it("P36-4: closing only active tab navigates home exactly once", async () => {
+    const user = userEvent.setup();
+    mockOpenProjects = [defaultOpenProjects[0]];
+    mockPathname = "/project/proj-a";
+    render(<ProjectSidebar />);
+
+    await user.click(screen.getByRole("button", { name: /Close project/ }));
+
+    expect(mockCloseProject).toHaveBeenCalledWith("proj-a");
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledWith("/");
+  });
+
+  it("P36-6: closing active tab navigates to encoded adjacent slug", async () => {
+    const user = userEvent.setup();
+    const encodedTargetSlug = "project with/slash";
+    mockOpenProjects = [
+      defaultOpenProjects[0],
+      {
+        ...defaultOpenProjects[1],
+        slug: encodedTargetSlug,
+        name: "Encoded Target",
+      },
+    ];
+    mockPathname = "/project/proj-a";
+    render(<ProjectSidebar />);
+
+    await user.click(screen.getAllByRole("button", { name: /Close project/ })[0]);
+
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledWith(`/project/${encodeURIComponent(encodedTargetSlug)}`);
   });
 
   it("T12: home button navigates to /", async () => {
@@ -153,21 +227,20 @@ describe("ProjectSidebar", () => {
     await user.keyboard("{Enter}");
     expect(mockPush).toHaveBeenCalledWith("/project/proj-a");
 
-    // Tab to close button, then next tab
+    // Tab to an inactive close button and activate it from the keyboard.
+    // It should close without also triggering the tab's project navigation.
     mockPush.mockClear();
     await user.tab(); // close button for Alpha
-    await user.tab(); // Beta tab
-    expect(tabs[1]).toHaveFocus();
+    const closeButtons = screen.getAllByRole("button", { name: /Close project/ });
+    expect(closeButtons[0]).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(mockCloseProject).toHaveBeenCalledWith("proj-a");
+    expect(mockPush).not.toHaveBeenCalled();
 
-    // Press Space to navigate
+    // Tab to Beta tab and press Space to navigate
+    await user.tab();
+    expect(tabs[1]).toHaveFocus();
     await user.keyboard(" ");
     expect(mockPush).toHaveBeenCalledWith("/project/proj-b");
-
-    // Tab to close button and press Enter
-    await user.tab();
-    const closeButtons = screen.getAllByRole("button", { name: /Close project/ });
-    expect(closeButtons[1]).toHaveFocus();
-    await user.keyboard("{Enter}");
-    expect(mockCloseProject).toHaveBeenCalledWith("proj-b");
   });
 });
