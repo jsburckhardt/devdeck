@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, act, waitFor } from "@testing-library/react";
-import { OpenProjectsProvider, useOpenProjects } from "./open-projects-context";
+import {
+  closeNavigationTarget,
+  OpenProjectsProvider,
+  projectRoute,
+  useOpenProjects,
+} from "./open-projects-context";
 import type { Project, PerProjectWorkspaceState } from "./types";
 
 const mockPush = vi.fn();
@@ -58,6 +63,38 @@ function TestConsumer({
   );
 }
 
+describe("closeNavigationTarget", () => {
+  const projects = [{ slug: "alpha" }, { slug: "beta" }, { slug: "gamma" }];
+
+  it("P36-1: active first tab closes to right neighbor", () => {
+    expect(closeNavigationTarget(projects, "alpha", "alpha")).toBe("/project/beta");
+  });
+
+  it("P36-2: active middle tab closes to same-index right neighbor", () => {
+    expect(closeNavigationTarget(projects, "beta", "beta")).toBe("/project/gamma");
+  });
+
+  it("P36-3: active last tab closes to previous remaining project", () => {
+    expect(closeNavigationTarget(projects, "gamma", "gamma")).toBe("/project/beta");
+  });
+
+  it("P36-4: only active tab closes to home", () => {
+    expect(closeNavigationTarget([{ slug: "alpha" }], "alpha", "alpha")).toBe("/");
+  });
+
+  it("P36-5: inactive tab close returns no navigation target", () => {
+    expect(closeNavigationTarget(projects, "gamma", "alpha")).toBeNull();
+  });
+
+  it("P36-6: project routes encode slugs", () => {
+    const targetSlug = "project with/slash";
+    expect(projectRoute(targetSlug)).toBe(`/project/${encodeURIComponent(targetSlug)}`);
+    expect(closeNavigationTarget([{ slug: "alpha" }, { slug: targetSlug }], "alpha", "alpha")).toBe(
+      `/project/${encodeURIComponent(targetSlug)}`,
+    );
+  });
+});
+
 describe("OpenProjectsProvider", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -112,7 +149,7 @@ describe("OpenProjectsProvider", () => {
     expect(screen.getByTestId("count").textContent).toBe("1");
   });
 
-  it("T4: closeProject removes the project and deletes cached workspace state", async () => {
+  it("P36-7: closeProject removes the project and preserves persistence/cache contracts", async () => {
     let ctx: ReturnType<typeof useOpenProjects>;
     render(
       <OpenProjectsProvider>
@@ -128,8 +165,15 @@ describe("OpenProjectsProvider", () => {
       ctx!.openProject(projA);
       ctx!.openProject(projB);
     });
+    const otherState: PerProjectWorkspaceState = {
+      ...sampleState,
+      selectedFile: "other.py",
+      expandedFolders: ["lib"],
+    };
+
     await act(async () => {
       ctx!.saveWorkspaceState("proj-a", sampleState);
+      ctx!.saveWorkspaceState("proj-b", otherState);
     });
     await act(async () => {
       ctx!.closeProject("proj-a");
@@ -138,6 +182,7 @@ describe("OpenProjectsProvider", () => {
     expect(screen.getByTestId("count").textContent).toBe("1");
     expect(screen.queryByTestId("project-proj-a")).not.toBeInTheDocument();
     expect(ctx!.restoreWorkspaceState("proj-a")).toBeUndefined();
+    expect(ctx!.restoreWorkspaceState("proj-b")).toEqual(otherState);
     expect(JSON.parse(localStorage.getItem("devdeck-open-projects")!)).toEqual(["proj-b"]);
   });
 
@@ -174,8 +219,15 @@ describe("OpenProjectsProvider", () => {
       </OpenProjectsProvider>,
     );
 
+    const otherState: PerProjectWorkspaceState = {
+      ...sampleState,
+      selectedFile: "other.py",
+      expandedFolders: ["lib"],
+    };
+
     await act(async () => {
       ctx!.saveWorkspaceState("proj-a", sampleState);
+      ctx!.saveWorkspaceState("proj-b", otherState);
     });
 
     const restored = ctx!.restoreWorkspaceState("proj-a");
@@ -197,7 +249,7 @@ describe("OpenProjectsProvider", () => {
     expect(ctx!.restoreWorkspaceState("nonexistent")).toBeUndefined();
   });
 
-  it("T21: closing the last open project navigates to /", async () => {
+  it("T21: closing the last open project only updates provider state", async () => {
     let ctx: ReturnType<typeof useOpenProjects>;
     render(
       <OpenProjectsProvider>
@@ -216,10 +268,9 @@ describe("OpenProjectsProvider", () => {
       ctx!.closeProject("proj-a");
     });
 
-    // Navigation deferred via queueMicrotask
-    await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith("/");
-    });
+    expect(screen.getByTestId("count").textContent).toBe("0");
+    expect(JSON.parse(localStorage.getItem("devdeck-open-projects")!)).toEqual([]);
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });
 

@@ -9,7 +9,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
 import type { PerProjectWorkspaceState, Project } from "./types";
 
 interface OpenProjectsContextValue {
@@ -23,6 +22,33 @@ interface OpenProjectsContextValue {
 const STORAGE_KEY = "devdeck-open-projects";
 
 const OpenProjectsContext = createContext<OpenProjectsContextValue | undefined>(undefined);
+
+export function projectRoute(slug: string): string {
+  return `/project/${encodeURIComponent(slug)}`;
+}
+
+export function closeNavigationTarget(
+  openProjects: readonly Pick<Project, "slug">[],
+  closedSlug: string,
+  activeSlug: string | null | undefined,
+): string | null {
+  if (activeSlug !== closedSlug) {
+    return null;
+  }
+
+  const closedIndex = openProjects.findIndex((project) => project.slug === closedSlug);
+  if (closedIndex === -1) {
+    return null;
+  }
+
+  const remainingProjects = openProjects.filter((project) => project.slug !== closedSlug);
+  if (remainingProjects.length === 0) {
+    return "/";
+  }
+
+  const targetProject = remainingProjects[closedIndex] ?? remainingProjects[closedIndex - 1];
+  return targetProject ? projectRoute(targetProject.slug) : "/";
+}
 
 function readSlugsFromStorage(): string[] {
   try {
@@ -40,7 +66,6 @@ function writeSlugsToStorage(slugs: string[]): void {
 }
 
 export function OpenProjectsProvider({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
   const [openProjects, setOpenProjects] = useState<Project[]>([]);
   const workspaceCache = useRef<Map<string, PerProjectWorkspaceState>>(new Map());
   const hydrated = useRef(false);
@@ -89,13 +114,6 @@ export function OpenProjectsProvider({ children }: { children: React.ReactNode }
     writeSlugsToStorage(openProjects.map((p) => p.slug));
   }, [openProjects]);
 
-  // Navigate home when all projects are closed
-  useEffect(() => {
-    if (hydrated.current && openProjects.length === 0 && readSlugsFromStorage().length > 0) {
-      // Projects were just cleared — but only navigate if we had projects before
-    }
-  }, [openProjects, router]);
-
   const openProject = useCallback((project: Project) => {
     setOpenProjects((prev) => {
       if (prev.some((p) => p.slug === project.slug)) {
@@ -105,20 +123,10 @@ export function OpenProjectsProvider({ children }: { children: React.ReactNode }
     });
   }, []);
 
-  const closeProject = useCallback(
-    (slug: string) => {
-      workspaceCache.current.delete(slug);
-      setOpenProjects((prev) => {
-        const next = prev.filter((p) => p.slug !== slug);
-        if (next.length === 0) {
-          // Defer navigation to avoid side effect in updater
-          queueMicrotask(() => router.push("/"));
-        }
-        return next;
-      });
-    },
-    [router],
-  );
+  const closeProject = useCallback((slug: string) => {
+    workspaceCache.current.delete(slug);
+    setOpenProjects((prev) => prev.filter((p) => p.slug !== slug));
+  }, []);
 
   const saveWorkspaceState = useCallback((slug: string, state: PerProjectWorkspaceState) => {
     workspaceCache.current.set(slug, state);

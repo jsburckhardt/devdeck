@@ -1,12 +1,14 @@
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ProjectCard } from "./project-card";
 import type { Project } from "@/lib/types";
 
+const pushMock = vi.hoisted(() => vi.fn());
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
-    push: vi.fn(),
+    push: pushMock,
   }),
 }));
 
@@ -20,6 +22,10 @@ const baseProject: Project = {
 };
 
 describe("ProjectCard", () => {
+  beforeEach(() => {
+    pushMock.mockClear();
+  });
+
   it("renders project name and description (T21)", () => {
     render(<ProjectCard project={baseProject} />);
     expect(screen.getByText("Test Project")).toBeInTheDocument();
@@ -66,5 +72,17 @@ describe("ProjectCard", () => {
     render(<ProjectCard project={manualProject} />);
 
     expect(screen.getByTestId("manual-badge")).toBeInTheDocument();
+  });
+
+  it("navigates with encoded project slugs", async () => {
+    const user = userEvent.setup();
+    const specialSlugProject = { ...baseProject, slug: "team project/alpha?x=1" };
+    render(<ProjectCard project={specialSlugProject} />);
+
+    await user.click(screen.getByTestId("project-card"));
+
+    expect(pushMock).toHaveBeenCalledWith(
+      "/project/" + encodeURIComponent(specialSlugProject.slug),
+    );
   });
 });
