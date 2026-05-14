@@ -10,6 +10,7 @@ import {
   Trash,
   Warning,
 } from "@phosphor-icons/react";
+import { projectRoute } from "@/lib/open-projects-context";
 import type { Project } from "@/lib/types";
 import { languageColor } from "@/lib/utils";
 
@@ -24,7 +25,7 @@ export function ProjectCard({ project, onEdit, onRemove }: ProjectCardProps) {
 
   const handleClick = () => {
     if (project.available === false) return;
-    router.push(`/project/${project.slug}`);
+    router.push(projectRoute(project.slug));
   };
 
   const formattedDate = project.lastModified

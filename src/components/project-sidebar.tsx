@@ -2,13 +2,14 @@
 
 import { useRouter, usePathname } from "next/navigation";
 import { House, X } from "@phosphor-icons/react";
-import { useOpenProjects } from "@/lib/open-projects-context";
+import { closeNavigationTarget, projectRoute, useOpenProjects } from "@/lib/open-projects-context";
 import { languageColor } from "@/lib/utils";
 
 export function ProjectSidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const { openProjects, closeProject } = useOpenProjects();
+  const activeSlug = openProjects.find((project) => pathname === projectRoute(project.slug))?.slug;
 
   return (
     <nav
@@ -29,11 +30,11 @@ export function ProjectSidebar() {
 
       {/* Project tabs */}
       {openProjects.map((project) => {
-        const isActive = pathname === `/project/${project.slug}`;
+        const isActive = activeSlug === project.slug;
         return (
           <div key={project.slug} className="group relative">
             <button
-              onClick={() => router.push(`/project/${project.slug}`)}
+              onClick={() => router.push(projectRoute(project.slug))}
               className={`flex h-9 w-9 items-center justify-center rounded-md text-xs font-bold text-white transition-colors ${
                 isActive
                   ? `${languageColor(project.language)} ring-2 ring-primary/60`
@@ -50,7 +51,15 @@ export function ProjectSidebar() {
             <button
               onClick={(e) => {
                 e.stopPropagation();
+                const navigationTarget = closeNavigationTarget(
+                  openProjects,
+                  project.slug,
+                  activeSlug,
+                );
                 closeProject(project.slug);
+                if (navigationTarget) {
+                  router.push(navigationTarget);
+                }
               }}
               className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] text-destructive-foreground opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
               aria-label={`Close project ${project.name}`}
