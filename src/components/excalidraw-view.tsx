@@ -1,5 +1,6 @@
 "use client";
 
+import "@excalidraw/excalidraw/index.css";
 import dynamic from "next/dynamic";
 import { useMemo } from "react";
 import { Spinner, WarningCircle } from "@phosphor-icons/react";
