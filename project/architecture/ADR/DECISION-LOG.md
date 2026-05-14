@@ -16,7 +16,7 @@ This file is the single registry of all architectural decisions and core-compone
 |----|-------|--------|------|
 | CORE-COMPONENT-0002 | Commit Standards | Adopted | 2026-05-05 |
 | CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2026-05-13 |
-| CORE-COMPONENT-0004 | Theming | Adopted (updated) | 2025-07-17 |
+| CORE-COMPONENT-0004 | Theming | Adopted (updated) | 2026-05-13 |
 | CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2025-07-16 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
 | CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-05-07 |
@@ -94,3 +94,4 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 64 | Track concurrent `refreshFileTree` calls via an in-flight counter; only clear `fileTreeRefreshing` when the LAST in-flight call completes | CORE-COMPONENT-0008 | 2026-05-12 |
 | 65 | When `.devcontainer/.tmux-shared` is absent, attempt `tmux new-session -A -s <sanitizedSlug>` on the system default socket before falling back to a login shell | CORE-COMPONENT-0003 | 2026-05-13 |
 | 66 | If tmux cannot be spawned or exits non-zero for a project terminal, fall back to a login shell in the resolved project directory | CORE-COMPONENT-0003 | 2026-05-13 |
+| 67 | Map app theme `dark` to Excalidraw theme `'dark'` and `light` to `'light'` | CORE-COMPONENT-0004 | 2026-05-13 |

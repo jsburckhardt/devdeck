@@ -26,6 +26,7 @@ Provide a consistent dark/light theme system across the entire application, incl
 - All shadcn/ui components MUST use the theme CSS variables
 - Default theme MUST be dark (IDE convention)
 - Third-party rendering libraries with their own theme systems (e.g., mermaid) MUST consume `useTheme()` and map app theme values to their native theme tokens
+- Excalidraw (`@excalidraw/excalidraw`) MUST receive `theme="dark"` when app theme is `"dark"` and `theme="light"` when app theme is `"light"`
 
 ### Interfaces
 - **CSS variables:** Standard shadcn/ui variable names (`--background`, `--foreground`, `--card`, `--accent`, etc.)
@@ -73,6 +74,7 @@ const { theme, toggleTheme } = useTheme();
 - Terminal theme should be derived in `src/hooks/use-terminal.ts` by reading CSS custom property values
 - Use `next-themes` or a custom provider for SSR-safe theme management
 - Third-party renderers: map `theme === 'dark'` to the library's dark theme token and `theme === 'light'` to the library's default/light theme token. For mermaid: `dark` → `'dark'`, `light` → `'default'`
+- For Excalidraw: `dark` → `'dark'`, `light` → `'light'`. Note: unlike Mermaid, the light theme maps to `'light'` (not `'default'`)
 
 ## Exceptions
 
