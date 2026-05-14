@@ -16,7 +16,7 @@ This file is the single registry of all architectural decisions and core-compone
 |----|-------|--------|------|
 | CORE-COMPONENT-0002 | Commit Standards | Adopted | 2026-05-05 |
 | CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2025-07-16 |
-| CORE-COMPONENT-0004 | Theming | Adopted (updated) | 2025-07-17 |
+| CORE-COMPONENT-0004 | Theming | Adopted (updated) | 2026-05-13 |
 | CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2025-07-16 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
 | CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-05-07 |
@@ -97,3 +97,4 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 67 | Deduplicate file-tree fetches by slug/path and ignore stale project responses | CORE-COMPONENT-0008 | 2026-05-13 |
 | 68 | Surface directory loading, error, retry, and empty states per directory | CORE-COMPONENT-0008 | 2026-05-13 |
 | 69 | Preserve all-files visibility; prohibit performance hide-lists in file tree | CORE-COMPONENT-0008 | 2026-05-13 |
+| 70 | Map app theme `dark` to Excalidraw theme `'dark'` and `light` to `'light'` | CORE-COMPONENT-0004 | 2026-05-13 |
