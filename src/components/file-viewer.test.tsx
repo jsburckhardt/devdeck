@@ -65,7 +65,7 @@ vi.mock("next/dynamic", () => ({
 }));
 
 vi.mock("@excalidraw/excalidraw", () => ({
-  Excalidraw: (props: Record<string, unknown>) => <div data-testid="excalidraw-renderer" />,
+  Excalidraw: (_props: Record<string, unknown>) => <div data-testid="excalidraw-renderer" />,
 }));
 
 import { toast } from "sonner";

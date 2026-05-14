@@ -17,6 +17,8 @@ const ExcalidrawReact = dynamic(
   },
 );
 
+// Excalidraw's upstream type exports are broken (@excalidraw/math missing, esModuleInterop
+// issues), so we define a minimal local interface matching the initialData shape.
 interface ExcalidrawScene {
   elements: unknown[];
   appState?: Record<string, unknown>;
@@ -58,7 +60,7 @@ export function ExcalidrawView({ content }: { content: string }) {
   return (
     <div className="h-full w-full">
       <ExcalidrawReact
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- upstream types are broken
         initialData={{ elements, appState, files, scrollToContent: true } as any}
         viewModeEnabled={true}
         theme={theme === "dark" ? "dark" : "light"}
