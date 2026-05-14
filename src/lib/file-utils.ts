@@ -25,6 +25,7 @@ const languageMap: Record<string, string> = {
   toml: "ini",
   xml: "xml",
   sql: "sql",
+  excalidraw: "excalidraw",
   graphql: "graphql",
   dockerfile: "dockerfile",
   makefile: "makefile",
