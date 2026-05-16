@@ -108,8 +108,8 @@ async function getGitStatus(projectRoot: string): Promise<Map<string, GitStatus>
 }
 
 async function hasDirectChildren(dirPath: string): Promise<boolean> {
-  const children = await fs.readdir(dirPath, { withFileTypes: true });
-  return children.length > 0;
+  const entries = await fs.readdir(dirPath);
+  return entries.length > 0;
 }
 
 async function readDirectoryChildren(
@@ -246,7 +246,7 @@ export async function GET(request: NextRequest) {
 
   if (requestedPath) {
     try {
-      const targetStats = (await fs.lstat(targetDirectory)) as FileSystemStats;
+      const targetStats = (await fs.stat(targetDirectory)) as FileSystemStats;
       if (!targetStats.isDirectory()) {
         return NextResponse.json(
           { error: "Requested path is not a directory", code: "NOT_A_DIRECTORY" },

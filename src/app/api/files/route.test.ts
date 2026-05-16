@@ -61,7 +61,7 @@ function request(slug?: string, relativePath?: string): NextRequest {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   mockResolveProjectPath.mockResolvedValue("/workspaces/test-project");
   mockFs.access.mockResolvedValue(undefined);
 });
@@ -105,6 +105,7 @@ describe("GET /api/files", () => {
         ? (stat("file") as never)
         : (stat("directory") as never),
     );
+    mockFs.stat.mockResolvedValue(stat("directory") as never);
     mockFs.readdir.mockImplementation(async (fullPath) => {
       const text = String(fullPath);
       if (text === "/workspaces/test-project/src")
@@ -136,6 +137,7 @@ describe("GET /api/files", () => {
     await expect(absolute.json()).resolves.toMatchObject({ code: "INVALID_PATH" });
 
     mockFs.lstat.mockResolvedValueOnce(stat("file") as never);
+    mockFs.stat.mockResolvedValueOnce(stat("file") as never);
     const fileTarget = await GET(request("test", "package.json"));
     expect(fileTarget.status).toBe(400);
     await expect(fileTarget.json()).resolves.toMatchObject({ code: "NOT_A_DIRECTORY" });
@@ -189,6 +191,7 @@ describe("GET /api/files", () => {
         ? (stat("file") as never)
         : (stat("directory") as never),
     );
+    mockFs.stat.mockResolvedValue(stat("directory") as never);
     mockFs.readdir.mockImplementation(async (fullPath) => {
       const text = String(fullPath);
       if (text === "/workspaces/test-project/config") {

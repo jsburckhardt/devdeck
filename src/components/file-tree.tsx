@@ -214,6 +214,8 @@ const FileTreeItem = React.memo(function FileTreeItem({
               <div
                 className="space-y-1 px-2 py-1 text-xs text-destructive"
                 style={{ paddingLeft: `${(depth + 1) * 16 + 8}px` }}
+                role="status"
+                aria-live="polite"
               >
                 <div>
                   Could not load {node.name}: {directoryError}
@@ -235,6 +237,8 @@ const FileTreeItem = React.memo(function FileTreeItem({
                 <div
                   className="px-2 py-1 font-mono text-xs text-muted-foreground"
                   style={{ paddingLeft: `${(depth + 1) * 16 + 8}px` }}
+                  role="status"
+                  aria-live="polite"
                 >
                   Empty directory
                 </div>

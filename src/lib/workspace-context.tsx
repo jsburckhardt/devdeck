@@ -59,6 +59,11 @@ function mergeRootTrees(nextRoot: FileNode[], previousRoot: FileNode[]): FileNod
       previous.childrenLoaded &&
       node.hasChildren !== false
     ) {
+      const wasEmpty = previous.children?.length === 0;
+      const nowHasChildren = node.hasChildren === true;
+      if (wasEmpty && nowHasChildren) {
+        return node;
+      }
       return {
         ...node,
         children: previous.children,
@@ -99,24 +104,24 @@ function responseErrorMessage(response: Response): string {
 
 export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
   const { saveWorkspaceState, restoreWorkspaceState } = useOpenProjects();
-  const cachedState = slug ? restoreWorkspaceState(slug) : undefined;
+  const cachedStateRef = useRef(slug ? restoreWorkspaceState(slug) : undefined);
 
-  const [, setRestoredFromCache] = useState(() => !!cachedState);
+  const [, setRestoredFromCache] = useState(() => !!cachedStateRef.current);
   const [project, setProjectState] = useState<Project | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(
-    cachedState?.selectedFile ?? null,
+    cachedStateRef.current?.selectedFile ?? null,
   );
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
-    () => new Set(cachedState?.expandedFolders ?? []),
+    () => new Set(cachedStateRef.current?.expandedFolders ?? []),
   );
-  const [showFileViewer, setShowFileViewer] = useState(cachedState?.showFileViewer ?? true);
-  const [showTerminal, setShowTerminal] = useState(cachedState?.showTerminal ?? true);
-  const [fileTree, setFileTreeState] = useState<FileNode[]>(cachedState?.fileTree ?? []);
+  const [showFileViewer, setShowFileViewer] = useState(cachedStateRef.current?.showFileViewer ?? true);
+  const [showTerminal, setShowTerminal] = useState(cachedStateRef.current?.showTerminal ?? true);
+  const [fileTree, setFileTreeState] = useState<FileNode[]>(cachedStateRef.current?.fileTree ?? []);
   const [fileTreeLoading, setFileTreeLoadingState] = useState(false);
   const [fileTreeRefreshing, setFileTreeRefreshing] = useState(false);
   const [directoryLoading, setDirectoryLoading] = useState<Set<string>>(() => new Set());
   const [directoryErrors, setDirectoryErrors] = useState<Map<string, string>>(
-    () => new Map(Object.entries(cachedState?.directoryLoadErrors ?? {})),
+    () => new Map(Object.entries(cachedStateRef.current?.directoryLoadErrors ?? {})),
   );
 
   const currentSlugRef = useRef<string | undefined>(slug);
