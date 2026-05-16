@@ -114,7 +114,9 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     () => new Set(cachedStateRef.current?.expandedFolders ?? []),
   );
-  const [showFileViewer, setShowFileViewer] = useState(cachedStateRef.current?.showFileViewer ?? true);
+  const [showFileViewer, setShowFileViewer] = useState(
+    cachedStateRef.current?.showFileViewer ?? true,
+  );
   const [showTerminal, setShowTerminal] = useState(cachedStateRef.current?.showTerminal ?? true);
   const [fileTree, setFileTreeState] = useState<FileNode[]>(cachedStateRef.current?.fileTree ?? []);
   const [fileTreeLoading, setFileTreeLoadingState] = useState(false);
