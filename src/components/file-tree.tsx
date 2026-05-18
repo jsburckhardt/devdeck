@@ -97,21 +97,49 @@ const FileTreeItem = React.memo(function FileTreeItem({
   node: FileNode;
   depth: number;
 }) {
-  const { selectedFile, expandedFolders, selectFile, toggleFolder } = useWorkspace();
+  const {
+    selectedFile,
+    expandedFolders,
+    selectFile,
+    toggleFolder,
+    loadDirectoryChildren,
+    directoryLoading,
+    directoryErrors,
+  } = useWorkspace();
 
   const isExpanded = expandedFolders.has(node.path);
   const isSelected = selectedFile === node.path;
   const isDirectory = node.type === "directory";
   const isUnreadableDirectory = isDirectory && node.unreadable;
+  const isDirectoryLoading = directoryLoading.has(node.path);
+  const directoryError = directoryErrors.get(node.path);
+  const hasLoadedChildren = node.childrenLoaded === true || Array.isArray(node.children);
+  const shouldLoadOnExpand = isDirectory && !hasLoadedChildren && node.hasChildren !== false;
 
   const handleClick = useCallback(() => {
     if (isUnreadableDirectory) return;
     if (isDirectory) {
       toggleFolder(node.path);
+      if (!isExpanded && shouldLoadOnExpand) {
+        void loadDirectoryChildren(node.path);
+      }
     } else {
       selectFile(node.path);
     }
-  }, [isDirectory, isUnreadableDirectory, node.path, toggleFolder, selectFile]);
+  }, [
+    isDirectory,
+    isExpanded,
+    isUnreadableDirectory,
+    loadDirectoryChildren,
+    node.path,
+    selectFile,
+    shouldLoadOnExpand,
+    toggleFolder,
+  ]);
+
+  const handleRetry = useCallback(() => {
+    void loadDirectoryChildren(node.path);
+  }, [loadDirectoryChildren, node.path]);
 
   const fileIconName = isDirectory ? (isExpanded ? "folderOpen" : "folder") : node.name;
   const unreadableTitle = node.unreadable
@@ -135,7 +163,7 @@ const FileTreeItem = React.memo(function FileTreeItem({
         title={unreadableTitle}
         aria-label={node.unreadable ? `${node.name} (${node.kind}, unreadable)` : node.name}
       >
-        {isDirectory && !isUnreadableDirectory && (
+        {isDirectory && !isUnreadableDirectory && node.hasChildren !== false && (
           <motion.span
             animate={{ rotate: isExpanded ? 90 : 0 }}
             transition={{ type: "spring", stiffness: 300, damping: 20 }}
@@ -164,17 +192,61 @@ const FileTreeItem = React.memo(function FileTreeItem({
       </button>
 
       <AnimatePresence initial={false}>
-        {isDirectory && !isUnreadableDirectory && isExpanded && node.children && (
+        {isDirectory && !isUnreadableDirectory && isExpanded && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ type: "spring", stiffness: 400, damping: 30 }}
             className="overflow-hidden"
+            aria-busy={isDirectoryLoading}
           >
-            {node.children.map((child) => (
-              <FileTreeItem key={child.path} node={child} depth={depth + 1} />
-            ))}
+            {isDirectoryLoading && (
+              <div
+                className="px-2 py-1 font-mono text-xs text-muted-foreground"
+                style={{ paddingLeft: `${(depth + 1) * 16 + 8}px` }}
+                role="status"
+              >
+                Loading {node.name}…
+              </div>
+            )}
+            {directoryError && !isDirectoryLoading && (
+              <div
+                className="space-y-1 px-2 py-1 text-xs text-destructive"
+                style={{ paddingLeft: `${(depth + 1) * 16 + 8}px` }}
+                role="status"
+                aria-live="polite"
+              >
+                <div>
+                  Could not load {node.name}: {directoryError}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  className="rounded border border-destructive/40 px-2 py-0.5 text-xs hover:bg-destructive/10"
+                  aria-label={`Retry loading ${node.name}`}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+            {!directoryError &&
+              !isDirectoryLoading &&
+              node.childrenLoaded &&
+              node.children?.length === 0 && (
+                <div
+                  className="px-2 py-1 font-mono text-xs text-muted-foreground"
+                  style={{ paddingLeft: `${(depth + 1) * 16 + 8}px` }}
+                  role="status"
+                  aria-live="polite"
+                >
+                  Empty directory
+                </div>
+              )}
+            {!directoryError &&
+              node.children?.map((child) => (
+                <FileTreeItem key={child.path} node={child} depth={depth + 1} />
+              ))}
           </motion.div>
         )}
       </AnimatePresence>

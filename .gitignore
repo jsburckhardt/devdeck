@@ -11,6 +11,7 @@ next-env.d.ts
 
 # testing
 coverage/
+e2e/fixtures/.devdeck-data/
 
 # misc
 .DS_Store
