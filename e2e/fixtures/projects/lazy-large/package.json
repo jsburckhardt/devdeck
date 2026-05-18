@@ -1,0 +1,6 @@
+{
+  "name": "lazy-large",
+  "description": "Deterministic Playwright fixture for lazy file-tree loading",
+  "version": "1.0.0",
+  "private": true
+}

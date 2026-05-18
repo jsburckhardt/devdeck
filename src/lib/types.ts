@@ -41,6 +41,8 @@ export interface FileNode {
   type: "file" | "directory";
   kind: FileKind;
   children?: FileNode[];
+  hasChildren?: boolean;
+  childrenLoaded?: boolean;
   status?: "added" | "modified" | "deleted";
   size?: number;
   unreadable?: boolean;
@@ -78,4 +80,6 @@ export interface PerProjectWorkspaceState {
   showFileViewer: boolean;
   showTerminal: boolean;
   fileTree: FileNode[];
+  directoryLoadErrors?: Record<string, string>;
+  loadedDirectories?: string[];
 }

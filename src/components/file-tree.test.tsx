@@ -43,6 +43,8 @@ function setupWorkspace(overrides: Record<string, unknown> = {}) {
     showTerminal: true,
     fileTreeLoading: false,
     fileTreeRefreshing: false,
+    directoryLoading: new Set<string>(),
+    directoryErrors: new Map<string, string>(),
     setProject: vi.fn(),
     selectFile: vi.fn(),
     toggleFolder: vi.fn(),
@@ -51,6 +53,7 @@ function setupWorkspace(overrides: Record<string, unknown> = {}) {
     setFileTree: vi.fn(),
     setFileTreeLoading: vi.fn(),
     refreshFileTree: vi.fn().mockResolvedValue(undefined),
+    loadDirectoryChildren: vi.fn().mockResolvedValue(undefined),
   };
   const context = { ...defaults, ...overrides } as ReturnType<typeof useWorkspace>;
   mockUseWorkspace.mockReturnValue(context);
@@ -62,6 +65,92 @@ beforeEach(() => {
 });
 
 describe("FileTree", () => {
+  it("TP11 triggers lazy load on unloaded directory expansion", async () => {
+    const context = setupWorkspace();
+    const nodes: FileNode[] = [
+      {
+        name: "src",
+        path: "src",
+        type: "directory",
+        kind: "directory",
+        hasChildren: true,
+        childrenLoaded: false,
+      },
+    ];
+
+    render(<FileTree nodes={nodes} />);
+    await userEvent.click(screen.getByRole("button", { name: "src" }));
+
+    expect(context.toggleFolder).toHaveBeenCalledWith("src");
+    expect(context.loadDirectoryChildren).toHaveBeenCalledWith("src");
+  });
+
+  it("TP12 toggles already-loaded directories without refetching", async () => {
+    const context = setupWorkspace({ expandedFolders: new Set<string>(["src"]) });
+    const nodes: FileNode[] = [
+      {
+        name: "src",
+        path: "src",
+        type: "directory",
+        kind: "directory",
+        hasChildren: true,
+        childrenLoaded: true,
+        children: [{ name: "index.ts", path: "src/index.ts", type: "file", kind: "regular-file" }],
+      },
+    ];
+
+    render(<FileTree nodes={nodes} />);
+    expect(screen.getByText("index.ts")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "src" }));
+
+    expect(context.toggleFolder).toHaveBeenCalledWith("src");
+    expect(context.loadDirectoryChildren).not.toHaveBeenCalled();
+  });
+
+  it("TP13 renders per-directory loading, empty, error, and retry states", async () => {
+    const context = setupWorkspace({
+      expandedFolders: new Set<string>(["loading", "empty", "failed"]),
+      directoryLoading: new Set<string>(["loading"]),
+      directoryErrors: new Map<string, string>([["failed", "HTTP 500"]]),
+    });
+    const nodes: FileNode[] = [
+      {
+        name: "loading",
+        path: "loading",
+        type: "directory",
+        kind: "directory",
+        hasChildren: true,
+        childrenLoaded: false,
+      },
+      {
+        name: "empty",
+        path: "empty",
+        type: "directory",
+        kind: "directory",
+        hasChildren: false,
+        childrenLoaded: true,
+        children: [],
+      },
+      {
+        name: "failed",
+        path: "failed",
+        type: "directory",
+        kind: "directory",
+        hasChildren: true,
+        childrenLoaded: false,
+      },
+    ];
+
+    render(<FileTree nodes={nodes} />);
+
+    expect(screen.getByText("Loading loading…")).toBeInTheDocument();
+    expect(screen.getByText("Empty directory")).toBeInTheDocument();
+    expect(screen.getByText(/Could not load failed: HTTP 500/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Retry loading failed" }));
+    expect(context.loadDirectoryChildren).toHaveBeenCalledWith("failed");
+  });
+
   it("TP10 renders regular nodes unchanged and selects files", async () => {
     const context = setupWorkspace();
     const nodes: FileNode[] = [
