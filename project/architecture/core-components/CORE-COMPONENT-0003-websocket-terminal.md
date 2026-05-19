@@ -30,7 +30,7 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - The server MUST resolve the CWD server-side using `resolveProjectPath(slug)` — the filesystem path MUST NOT be exposed to the client in any WebSocket message
 - The server MUST sanitize the slug before passing it to `resolveProjectPath` or using it as a tmux session name
 - The server MUST use this terminal spawn decision tree for project slugs:
-  1. If `<resolvedCwd>/.devcontainer/.tmux-shared` exists and is a socket, and `tmux has-session -t <sanitizedSlug>` succeeds, spawn `tmux -S <socketPath> attach-session -t <sanitizedSlug>` using the shared socket.
+  1. If `<resolvedCwd>/.devcontainer/.tmux-shared` exists and is a socket, and `tmux -S <socketPath> has-session -t <sanitizedSlug>` succeeds, spawn `tmux -S <socketPath> attach-session -t <sanitizedSlug>` using the shared socket.
   2. If `.devcontainer/.tmux-shared` is absent, attempt `tmux new-session -A -s <sanitizedSlug>` on the system default tmux socket. System-default tmux sessions are visible to processes for the same host user.
   3. If tmux attach/create fails, tmux exits non-zero, or tmux cannot be spawned, fall back to a regular shell in the resolved project directory.
 - If no slug is provided, the server MUST fall back to the configured default CWD (`DEVDECK_WORKSPACE_ROOT`, `options.cwd`, or `os.homedir()`)

@@ -10,6 +10,12 @@ Implemented and verified tmux fallback behavior for project terminals:
 - Tmux spawn-time failures now attempt a regular shell fallback in the resolved project cwd before closing the WebSocket.
 - Fallback PTYs are wired through the same message flush and WebSocket close/error cleanup path, preventing PTY leaks on client close.
 
+### PR review follow-ups (PR #38)
+
+- Narrowed the tmux-socket `fs.stat` catch to ENOENT so non-ENOENT errors (EACCES, ENOTDIR, etc.) no longer silently create a system-default tmux session; they fall back to a regular shell instead.
+- Both tmux→shell fallbacks (spawn-throw and onExit) now use the TMUX-stripped `cleanPtyEnv` so the fallback shell never inherits a `TMUX` env var and confuses child programs into thinking they are nested in tmux.
+- Updated CORE-COMPONENT-0003 step 1 to show the actual `tmux -S <socketPath> has-session -t <session>` form used by the implementation.
+
 ## Files Changed
 
 - src/server/terminal-server.mts

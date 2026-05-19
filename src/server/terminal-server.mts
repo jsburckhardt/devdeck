@@ -169,16 +169,21 @@ async function resolveTerminalSetup(
         };
       }
     }
-  } catch {
-    const sessionName = tmuxSessionName(slug);
-    if (sessionName) {
-      return {
-        command: "tmux",
-        args: ["new-session", "-A", "-s", sessionName],
-        cwd: resolvedCwd,
-        mode: "tmux",
-      };
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException | null)?.code;
+    if (code === "ENOENT") {
+      const sessionName = tmuxSessionName(slug);
+      if (sessionName) {
+        return {
+          command: "tmux",
+          args: ["new-session", "-A", "-s", sessionName],
+          cwd: resolvedCwd,
+          mode: "tmux",
+        };
+      }
     }
+    // Non-ENOENT errors (EACCES, ENOTDIR, etc.) fall through to a regular shell
+    // rather than silently creating a system-default tmux session.
   }
 
   return { command: shell, args: shellArgs, cwd: resolvedCwd, mode: "shell" };
@@ -346,7 +351,7 @@ async function handleConnection(
             cols: initialCols,
             rows: initialRows,
             cwd: setup.cwd,
-            env,
+            env: cleanPtyEnv,
           });
           pty = fallbackPty;
           activePtys.add(fallbackPty);
@@ -413,7 +418,7 @@ async function handleConnection(
     if (setup.mode === "tmux" && ws.readyState === WebSocket.OPEN) {
       console.error("Failed to spawn tmux, falling back to regular shell:", err);
       try {
-        spawnAndWirePty(shell, shellArgs, setup.cwd, env, false);
+        spawnAndWirePty(shell, shellArgs, setup.cwd, cleanPtyEnv, false);
       } catch (fallbackErr) {
         console.error("Fallback shell spawn failed:", fallbackErr);
         sendSpawnError(fallbackErr);

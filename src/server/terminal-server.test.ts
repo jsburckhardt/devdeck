@@ -49,6 +49,7 @@ let resolvePathShouldThrow = false;
 let mockRegistryJson: { projects: { slug: string; path: string }[] } | null = null;
 
 let fsStatResults: Record<string, { isDirectory: boolean; isSocket: boolean }> = {};
+let fsStatErrors: Record<string, string> = {};
 
 vi.mock("fs/promises", () => ({
   default: {
@@ -62,6 +63,12 @@ vi.mock("fs/promises", () => ({
       return JSON.stringify(mockRegistryJson);
     }),
     stat: vi.fn(async (p: string) => {
+      const customCode = fsStatErrors[p];
+      if (customCode) {
+        const err = new Error(`${customCode}: stat '${p}'`) as NodeJS.ErrnoException;
+        err.code = customCode;
+        throw err;
+      }
       const result = fsStatResults[p];
       if (!result) {
         const err = new Error(
@@ -169,6 +176,7 @@ describe("terminal-server", () => {
     resolvePathShouldThrow = false;
     mockRegistryJson = null;
     fsStatResults = {};
+    fsStatErrors = {};
     tmuxHasSessionResult = false;
   });
 
@@ -765,5 +773,86 @@ describe("terminal-server", () => {
 
     expect(lastCall[0]).not.toBe("tmux");
     expect(lastCall[2].cwd).toBe("/tmp");
+  });
+
+  it("T27: non-ENOENT tmux socket stat error falls back to regular shell (no system tmux)", async () => {
+    fsStatResults["/workspaces/eacces-proj"] = { isDirectory: true, isSocket: false };
+    fsStatErrors["/workspaces/eacces-proj/.devcontainer/.tmux-shared"] = "EACCES";
+
+    const srv = await createServer();
+    handle = srv.handle;
+
+    const client = await connectClientWithSlug(srv.port, "eacces-proj");
+    clients.push(client);
+    await tick();
+
+    const nodePty = await import("node-pty");
+    const spawnFn = nodePty.spawn as ReturnType<typeof vi.fn>;
+    const lastCall = spawnFn.mock.calls[spawnFn.mock.calls.length - 1] as [
+      string,
+      string[],
+      { cwd: string },
+    ];
+
+    expect(lastCall[0]).not.toBe("tmux");
+    expect(lastCall[2].cwd).toBe("/workspaces/eacces-proj");
+  });
+
+  it("T28: tmux spawn throw fallback strips TMUX from shell env", async () => {
+    process.env.TMUX = "/tmp/tmux-1000/default,9999,0";
+    fsStatResults["/workspaces/tmux-env-leak"] = { isDirectory: true, isSocket: false };
+
+    const nodePty = await import("node-pty");
+    const spawnFn = nodePty.spawn as ReturnType<typeof vi.fn>;
+    const fallbackPty = createFakePty();
+    spawnFn.mockImplementationOnce(() => {
+      throw new Error("tmux not found");
+    });
+    spawnFn.mockReturnValueOnce(fallbackPty);
+
+    const srv = await createServer();
+    handle = srv.handle;
+
+    const client = await connectClientWithSlug(srv.port, "tmux-env-leak");
+    clients.push(client);
+    await tick();
+
+    const fallbackCall = spawnFn.mock.calls[spawnFn.mock.calls.length - 1] as [
+      string,
+      string[],
+      { cwd: string; env: Record<string, string> },
+    ];
+
+    expect(fallbackCall[0]).not.toBe("tmux");
+    expect(fallbackCall[2].env.TMUX).toBeUndefined();
+  });
+
+  it("T29: tmux PTY exit fallback strips TMUX from shell env", async () => {
+    process.env.TMUX = "/tmp/tmux-1000/default,9999,0";
+    fsStatResults["/workspaces/tmux-exit-env"] = { isDirectory: true, isSocket: false };
+
+    const srv = await createServer();
+    handle = srv.handle;
+
+    const client = await connectClientWithSlug(srv.port, "tmux-exit-env");
+    clients.push(client);
+    await tick();
+
+    const nodePty = await import("node-pty");
+    const spawnFn = nodePty.spawn as ReturnType<typeof vi.fn>;
+    const fallbackPty = createFakePty();
+    spawnFn.mockReturnValueOnce(fallbackPty);
+
+    fakePty._emitExit(1, 0);
+    await tick();
+
+    const fallbackCall = spawnFn.mock.calls[spawnFn.mock.calls.length - 1] as [
+      string,
+      string[],
+      { cwd: string; env: Record<string, string> },
+    ];
+
+    expect(fallbackCall[0]).not.toBe("tmux");
+    expect(fallbackCall[2].env.TMUX).toBeUndefined();
   });
 });
