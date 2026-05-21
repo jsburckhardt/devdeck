@@ -15,7 +15,7 @@ This file is the single registry of all architectural decisions and core-compone
 | ID | Title | Status | Date |
 |----|-------|--------|------|
 | CORE-COMPONENT-0002 | Commit Standards | Adopted | 2026-05-05 |
-| CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2025-07-16 |
+| CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2026-05-13 |
 | CORE-COMPONENT-0004 | Theming | Adopted (updated) | 2026-05-13 |
 | CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2025-07-16 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
@@ -71,7 +71,7 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 41 | Return 401 with `AUTH_REQUIRED` code for unauthenticated HTTP requests | CORE-COMPONENT-0005 | 2025-07-16 |
 | 42 | Pass project slug as `slug` query parameter on WebSocket upgrade URL | CORE-COMPONENT-0003 | 2025-07-17 |
 | 43 | Resolve per-connection PTY CWD server-side via `resolveProjectPath(slug)`; never expose path to client | CORE-COMPONENT-0003 | 2025-07-17 |
-| 44 | Detect `.devcontainer/.tmux-shared` to decide between tmux attach and fresh shell spawn | CORE-COMPONENT-0003 | 2025-07-17 |
+| 44 | Use a three-branch terminal spawn decision tree: shared-socket tmux, system-default tmux, then login shell fallback | CORE-COMPONENT-0003 | 2026-05-13 |
 | 45 | Sanitize tmux session names using `[^a-zA-Z0-9_-]` replacement before passing to tmux CLI | CORE-COMPONENT-0003 | 2025-07-17 |
 | 46 | Fall back to regular shell if tmux attach fails or tmux is not installed | CORE-COMPONENT-0003 | 2025-07-17 |
 | 47 | Render project sidebar as a fixed-width flex sibling outside the resizable panel Group | CORE-COMPONENT-0007 | 2025-07-18 |
@@ -92,9 +92,11 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 62 | Prohibit `ExplorerContent` (and future tree consumers) from reading `fileTreeRefreshing` to gate spinners | CORE-COMPONENT-0008 | 2026-05-12 |
 | 63 | Allow `refreshFileTree(explicitSlug?)` to accept an explicit slug so initial-load callers can fetch deterministically without waiting for context `project` propagation | CORE-COMPONENT-0008 | 2026-05-12 |
 | 64 | Track concurrent `refreshFileTree` calls via an in-flight counter; only clear `fileTreeRefreshing` when the LAST in-flight call completes | CORE-COMPONENT-0008 | 2026-05-12 |
-| 65 | Require root file-tree requests to return direct root entries only | CORE-COMPONENT-0008 | 2026-05-13 |
-| 66 | Load directory children lazily via path-scoped GET /api/files requests | CORE-COMPONENT-0008 | 2026-05-13 |
-| 67 | Deduplicate file-tree fetches by slug/path and ignore stale project responses | CORE-COMPONENT-0008 | 2026-05-13 |
-| 68 | Surface directory loading, error, retry, and empty states per directory | CORE-COMPONENT-0008 | 2026-05-13 |
-| 69 | Preserve all-files visibility; prohibit performance hide-lists in file tree | CORE-COMPONENT-0008 | 2026-05-13 |
-| 70 | Map app theme `dark` to Excalidraw theme `'dark'` and `light` to `'light'` | CORE-COMPONENT-0004 | 2026-05-13 |
+| 65 | When `.devcontainer/.tmux-shared` is absent, attempt `tmux new-session -A -s <sanitizedSlug>` on the system default socket before falling back to a login shell | CORE-COMPONENT-0003 | 2026-05-13 |
+| 66 | If tmux cannot be spawned or exits non-zero for a project terminal, fall back to a login shell in the resolved project directory | CORE-COMPONENT-0003 | 2026-05-13 |
+| 67 | Map app theme `dark` to Excalidraw theme `'dark'` and `light` to `'light'` | CORE-COMPONENT-0004 | 2026-05-13 |
+| 68 | Require root file-tree requests to return direct root entries only | CORE-COMPONENT-0008 | 2026-05-13 |
+| 69 | Load directory children lazily via path-scoped GET /api/files requests | CORE-COMPONENT-0008 | 2026-05-13 |
+| 70 | Deduplicate file-tree fetches by slug/path and ignore stale project responses | CORE-COMPONENT-0008 | 2026-05-13 |
+| 71 | Surface directory loading, error, retry, and empty states per directory | CORE-COMPONENT-0008 | 2026-05-13 |
+| 72 | Preserve all-files visibility; prohibit performance hide-lists in file tree | CORE-COMPONENT-0008 | 2026-05-13 |
