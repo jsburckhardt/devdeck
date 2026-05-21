@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import type { ITheme } from "@xterm/xterm";
+import { TERMINAL_THEMES } from "./use-terminal-theme";
 
 export type TerminalStatus =
   | "disconnected"
@@ -12,6 +14,7 @@ export type TerminalStatus =
 export interface UseTerminalOptions {
   wsUrl?: string;
   slug?: string;
+  theme?: ITheme;
 }
 
 export interface UseTerminalReturn {
@@ -27,28 +30,7 @@ export interface UseTerminalReturn {
 const MAX_RECONNECT_ATTEMPTS = 3;
 const WS_CLOSE_UNAUTHORIZED = 4401;
 
-const CATPPUCCIN_THEME = {
-  background: "#1e1e2e",
-  foreground: "#cdd6f4",
-  cursor: "#f5e0dc",
-  selectionBackground: "#585b7066",
-  black: "#45475a",
-  red: "#f38ba8",
-  green: "#a6e3a1",
-  yellow: "#f9e2af",
-  blue: "#89b4fa",
-  magenta: "#f5c2e7",
-  cyan: "#94e2d5",
-  white: "#bac2de",
-  brightBlack: "#585b70",
-  brightRed: "#f38ba8",
-  brightGreen: "#a6e3a1",
-  brightYellow: "#f9e2af",
-  brightBlue: "#89b4fa",
-  brightMagenta: "#f5c2e7",
-  brightCyan: "#94e2d5",
-  brightWhite: "#a6adc8",
-};
+const DEFAULT_THEME = TERMINAL_THEMES[0].colors;
 
 function buildWsUrl(slug?: string, cols?: number, rows?: number): string {
   if (typeof window === "undefined") return "ws://localhost:8001/api/terminal";
@@ -107,7 +89,7 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
         fontSize: 13,
         fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
         lineHeight: 1.5,
-        theme: CATPPUCCIN_THEME,
+        theme: options?.theme ?? DEFAULT_THEME,
         allowProposedApi: true,
         screenReaderMode: true,
       });
@@ -291,6 +273,7 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
       setStatus("failed");
       setError(String(err));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- theme is intentionally excluded; runtime theme updates are handled by a separate effect to avoid reconnection
   }, [baseWsUrl]);
 
   useEffect(() => {
@@ -336,6 +319,13 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
       }
     };
   }, [connect]);
+
+  // Runtime theme update without reconnection
+  useEffect(() => {
+    if (termRef.current && options?.theme) {
+      termRef.current.options.theme = options.theme;
+    }
+  }, [options?.theme]);
 
   return {
     containerRef,
