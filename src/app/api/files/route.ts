@@ -8,6 +8,8 @@ import type { FileKind, FileNode } from "@/lib/types";
 
 const execFileAsync = promisify(execFile);
 
+const EXCLUDED_NAMES = new Set([".git"]);
+
 type GitStatus = "added" | "modified" | "deleted";
 
 interface FileSystemStats {
@@ -118,9 +120,10 @@ async function readDirectoryChildren(
   gitStatus: Map<string, GitStatus>,
 ): Promise<FileNode[]> {
   const entries = await fs.readdir(dirPath, { withFileTypes: true });
+  const filteredEntries = entries.filter((entry) => !EXCLUDED_NAMES.has(entry.name));
 
   const classifiedEntries = await Promise.all(
-    entries.map(async (entry) => {
+    filteredEntries.map(async (entry) => {
       const fullPath = path.join(dirPath, entry.name);
       return { entry, fullPath, classification: await classifyPath(fullPath) };
     }),
