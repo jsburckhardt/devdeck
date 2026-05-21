@@ -21,6 +21,7 @@ You MUST run all configured project verification steps and confirm all checks pa
 You MUST load verification commands from `.github/soft-factory/verification.yml` when it exists.
 You MUST fall back to auto-detecting and running all applicable verification steps from project files when verification config is absent.
 You MUST NOT proceed if any configured or auto-detected verification step fails; stop immediately and report which step failed.
+You MUST run a smoke test after all other verification steps pass: start the application, confirm it becomes ready and responds to an HTTP request, then shut it down. If the smoke test fails, stop and report the error.
 You MUST check the current git branch before making changes.
 You MUST NOT push directly to main or master; always work on a feature branch.
 You MUST create a feature branch following the pattern <type>/<ISSUE_NUMBER>-<short-slug> when on main or master, where <ISSUE_NUMBER> is the GitHub issue number.
