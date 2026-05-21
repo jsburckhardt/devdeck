@@ -16,7 +16,7 @@ This file is the single registry of all architectural decisions and core-compone
 |----|-------|--------|------|
 | CORE-COMPONENT-0002 | Commit Standards | Adopted | 2026-05-05 |
 | CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2026-05-13 |
-| CORE-COMPONENT-0004 | Theming | Adopted (updated) | 2026-05-13 |
+| CORE-COMPONENT-0004 | Theming | Adopted (updated) | 2026-05-21 |
 | CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2025-07-16 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
 | CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-05-07 |
@@ -101,3 +101,8 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 71 | Surface directory loading, error, retry, and empty states per directory | CORE-COMPONENT-0008 | 2026-05-13 |
 | 72 | Preserve all-files visibility; prohibit performance hide-lists in file tree (Superseded by #73) | CORE-COMPONENT-0008 | 2026-05-13 |
 | 73 | Apply a server-side default exclusion list (`.git`) to filter noise directories from file-tree API responses | CORE-COMPONENT-0008 | 2026-05-21 |
+| 74 | Allow terminal color themes to be user-selectable from a predefined palette of 13 named themes | CORE-COMPONENT-0004 | 2026-05-21 |
+| 75 | Persist terminal theme under `devdeck-terminal-theme` localStorage key, defaulting to `catppuccin` | CORE-COMPONENT-0004 | 2026-05-21 |
+| 76 | Apply terminal theme changes via `terminal.options.theme` at runtime without reconnect | CORE-COMPONENT-0004 | 2026-05-21 |
+| 77 | Require terminal theme to be independent of the app dark/light theme toggle | CORE-COMPONENT-0004 | 2026-05-21 |
+| 78 | Exempt terminal (xterm.js) from Decision #57 — terminal themes are user-controlled, not mapped from app theme | CORE-COMPONENT-0004 | 2026-05-21 |
