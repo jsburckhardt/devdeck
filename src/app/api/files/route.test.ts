@@ -270,6 +270,32 @@ describe("GET /api/files", () => {
     expect(names).toContain("README.md");
   });
 
+  it("does not exclude .github, .gitignore, or .gitattributes", async () => {
+    mockFs.readdir.mockResolvedValueOnce([
+      dirent(".git"),
+      dirent(".github"),
+      dirent(".gitignore"),
+      dirent(".gitattributes"),
+      dirent("src"),
+    ] as never);
+    mockFs.lstat.mockImplementation(async (fullPath) =>
+      String(fullPath).endsWith(".gitignore") || String(fullPath).endsWith(".gitattributes")
+        ? (stat("file") as never)
+        : (stat("directory") as never),
+    );
+    mockFs.readdir.mockResolvedValue([] as never);
+
+    const res = await GET(request("test"));
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as Array<{ name: string }>;
+    const names = data.map((node) => node.name);
+    expect(names).not.toContain(".git");
+    expect(names).toContain(".github");
+    expect(names).toContain(".gitignore");
+    expect(names).toContain(".gitattributes");
+    expect(names).toContain("src");
+  });
+
   it("TP2 classifies sockets and FIFOs as unreadable nodes", async () => {
     mockFs.readdir.mockResolvedValueOnce([dirent("app.sock"), dirent("pipe.fifo")] as never);
     mockFs.lstat.mockImplementation(async (fullPath) =>

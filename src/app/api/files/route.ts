@@ -8,6 +8,7 @@ import type { FileKind, FileNode } from "@/lib/types";
 
 const execFileAsync = promisify(execFile);
 
+// Entries excluded from all directory listings by exact name match (Decision #73).
 const EXCLUDED_NAMES = new Set([".git"]);
 
 type GitStatus = "added" | "modified" | "deleted";

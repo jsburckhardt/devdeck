@@ -2,7 +2,7 @@
 
 ## Task 1: Add exclusion filtering to the API route
 
-- **Status:** Not Started
+- **Status:** Complete
 - **Complexity:** Low
 - **Dependencies:** None
 - **Related ADRs:** None
@@ -37,7 +37,7 @@ Add a server-side exclusion list to `src/app/api/files/route.ts` that filters ou
 
 ## Task 2: Update API route tests
 
-- **Status:** Not Started
+- **Status:** Complete
 - **Complexity:** Medium
 - **Dependencies:** Task 1
 - **Related ADRs:** None

@@ -53,7 +53,7 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - The file-tree API MUST resolve project roots server-side through `resolveProjectPath(slug)` and MUST NOT expose absolute filesystem paths to clients
 - The file-tree API MUST reject path traversal or absolute `path` escape attempts with a structured JSON error
 - The file-tree API MUST reject `path` targets that are not readable directories with a structured JSON error
-- The file-tree API MUST apply a server-side default exclusion list to filter directories whose internal contents are never meaningful to browse (default: `.git`). Filtered entries MUST be excluded from API responses. Dotfiles, lockfiles, `node_modules`, `.next`, and other user-relevant entries MUST remain visible.
+- The file-tree API MUST apply a server-side default exclusion list to filter entries named `.git` whose internal contents are never meaningful to browse. Filtered entries MUST be excluded from API responses regardless of whether they are files or directories. Dotfiles, lockfiles, `node_modules`, `.next`, and other user-relevant entries MUST remain visible.
 - File-tree performance MUST come from lazy direct-child loading, request deduplication, and stale-response guards. A server-side exclusion list for noise directories is permitted for UX; it MUST NOT be the sole performance mechanism.
 - Direct-child file-tree responses MUST preserve existing classification behavior for `kind`, `unreadable`, `truncated`, `truncatedReason`, `status`, and `size`
 - Directory `FileNode`s returned by the API MUST include lazy metadata: `hasChildren` and `childrenLoaded`
