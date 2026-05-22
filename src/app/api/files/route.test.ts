@@ -185,7 +185,7 @@ describe("GET /api/files", () => {
     });
   });
 
-  it("TP5 preserves all-files visibility in path-scoped requests", async () => {
+  it("TP5 excludes .git from path-scoped directory results", async () => {
     mockFs.lstat.mockImplementation(async (fullPath) =>
       String(fullPath).endsWith("package-lock.json") || String(fullPath).endsWith(".env")
         ? (stat("file") as never)
@@ -209,16 +209,15 @@ describe("GET /api/files", () => {
     const res = await GET(request("test", "config"));
     expect(res.status).toBe(200);
     const data = (await res.json()) as Array<{ name: string }>;
-    expect(data.map((node) => node.name)).toEqual([
-      ".git",
-      ".next",
-      "node_modules",
-      ".env",
-      "package-lock.json",
-    ]);
+    const names = data.map((node) => node.name);
+    expect(names).not.toContain(".git");
+    expect(names).toContain(".next");
+    expect(names).toContain("node_modules");
+    expect(names).toContain(".env");
+    expect(names).toContain("package-lock.json");
   });
 
-  it("TP1 includes hidden/config/dependency entries instead of filtering them", async () => {
+  it("TP1 excludes .git from root results while preserving other entries", async () => {
     mockFs.readdir.mockResolvedValueOnce([
       dirent(".devcontainer"),
       dirent(".git"),
@@ -238,14 +237,63 @@ describe("GET /api/files", () => {
     const res = await GET(request("test"));
     expect(res.status).toBe(200);
     const data = (await res.json()) as Array<{ name: string }>;
-    expect(data.map((node) => node.name)).toEqual([
-      ".devcontainer",
-      ".git",
-      "node_modules",
-      "src",
-      ".env",
-      "package-lock.json",
-    ]);
+    const names = data.map((node) => node.name);
+    expect(names).not.toContain(".git");
+    expect(names).toContain(".devcontainer");
+    expect(names).toContain("node_modules");
+    expect(names).toContain("src");
+    expect(names).toContain(".env");
+    expect(names).toContain("package-lock.json");
+  });
+
+  it("excludes .git at nested directory levels", async () => {
+    mockFs.lstat.mockImplementation(async (fullPath) =>
+      String(fullPath).endsWith("README.md")
+        ? (stat("file") as never)
+        : (stat("directory") as never),
+    );
+    mockFs.stat.mockResolvedValue(stat("directory") as never);
+    mockFs.readdir.mockImplementation(async (fullPath) => {
+      const text = String(fullPath);
+      if (text === "/workspaces/test-project/packages/sub") {
+        return [dirent(".git"), dirent("src"), dirent("README.md")] as never;
+      }
+      return [] as never;
+    });
+
+    const res = await GET(request("test", "packages/sub"));
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as Array<{ name: string }>;
+    const names = data.map((node) => node.name);
+    expect(names).not.toContain(".git");
+    expect(names).toContain("src");
+    expect(names).toContain("README.md");
+  });
+
+  it("does not exclude .github, .gitignore, or .gitattributes", async () => {
+    mockFs.readdir.mockResolvedValueOnce([
+      dirent(".git"),
+      dirent(".github"),
+      dirent(".gitignore"),
+      dirent(".gitattributes"),
+      dirent("src"),
+    ] as never);
+    mockFs.lstat.mockImplementation(async (fullPath) =>
+      String(fullPath).endsWith(".gitignore") || String(fullPath).endsWith(".gitattributes")
+        ? (stat("file") as never)
+        : (stat("directory") as never),
+    );
+    mockFs.readdir.mockResolvedValue([] as never);
+
+    const res = await GET(request("test"));
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as Array<{ name: string }>;
+    const names = data.map((node) => node.name);
+    expect(names).not.toContain(".git");
+    expect(names).toContain(".github");
+    expect(names).toContain(".gitignore");
+    expect(names).toContain(".gitattributes");
+    expect(names).toContain("src");
   });
 
   it("TP2 classifies sockets and FIFOs as unreadable nodes", async () => {

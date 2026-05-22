@@ -30,6 +30,7 @@ const fakeTerminal = {
   cols: 80,
   rows: 24,
   unicode: { activeVersion: "6" },
+  options: {} as Record<string, unknown>,
 };
 
 vi.mock("@xterm/xterm", () => ({
@@ -100,6 +101,7 @@ class MockWS {
 vi.stubGlobal("WebSocket", MockWS);
 
 import { useTerminal } from "./use-terminal";
+import { TERMINAL_THEMES } from "./use-terminal-theme";
 
 function getLatestWs(): MockWS {
   return wsInstances[wsInstances.length - 1];
@@ -130,6 +132,7 @@ describe("useTerminal", () => {
     fakeTerminal.cols = 80;
     fakeTerminal.rows = 24;
     fakeTerminal.unicode.activeVersion = "6";
+    fakeTerminal.options = {};
     fakeFitAddon.fit.mockClear();
     Object.keys(fakeTerminalHandlers).forEach((k) => delete fakeTerminalHandlers[k]);
     mockRODisconnect.mockClear();
@@ -529,6 +532,43 @@ describe("useTerminal", () => {
     expect(onResizeIndex).toBeGreaterThanOrEqual(0);
     expect(fitIndex).toBeGreaterThanOrEqual(0);
     expect(onResizeIndex).toBeLessThan(fitIndex);
+  });
+
+  it("T27: Terminal constructor receives provided theme", async () => {
+    const { colors: draculaColors } = TERMINAL_THEMES.find((t) => t.id === "dracula")!;
+    renderHook(() => useTerminal({ wsUrl: "ws://test:3100", theme: draculaColors }));
+    await waitForWs();
+    expect(terminalConstructorOptions.theme).toBe(draculaColors);
+  });
+
+  it("T28: runtime theme change updates terminal.options.theme without reconnect", async () => {
+    const catppuccin = TERMINAL_THEMES.find((t) => t.id === "catppuccin")!.colors;
+    const dracula = TERMINAL_THEMES.find((t) => t.id === "dracula")!.colors;
+
+    const { rerender } = renderHook(
+      ({ theme }) => useTerminal({ wsUrl: "ws://test:3100", theme }),
+      { initialProps: { theme: catppuccin } },
+    );
+
+    const ws = await waitForWs();
+    await act(async () => {
+      ws.onopen?.();
+    });
+
+    const countBefore = wsInstances.length;
+
+    await act(async () => {
+      rerender({ theme: dracula });
+    });
+
+    expect(fakeTerminal.options.theme).toBe(dracula);
+    expect(wsInstances.length).toBe(countBefore);
+  });
+
+  it("T29: no theme provided falls back to default", async () => {
+    renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+    await waitForWs();
+    expect(terminalConstructorOptions.theme).toBeDefined();
   });
 
   it("H-T1: setup message with mode tmux updates terminalMode", async () => {

@@ -13,6 +13,30 @@ vi.mock("@phosphor-icons/react", () => ({
   Spinner: () => <span data-testid="spinner-icon" />,
   ArrowClockwise: () => <span data-testid="arrow-icon" />,
   LockSimple: () => <span data-testid="lock-icon" />,
+  Palette: () => <span data-testid="palette-icon" />,
+  Check: () => <span data-testid="check-icon" />,
+}));
+
+// Mock terminal theme hook
+vi.mock("@/hooks/use-terminal-theme", () => ({
+  useTerminalTheme: () => ({
+    themeId: "catppuccin",
+    theme: { id: "catppuccin", name: "Catppuccin", colors: { background: "#1e1e2e" } },
+    setThemeId: vi.fn(),
+    themes: [],
+  }),
+}));
+
+// Mock radix dropdown menu
+vi.mock("@radix-ui/react-dropdown-menu", () => ({
+  Root: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  Trigger: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  Portal: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  Content: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  Item: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  RadioGroup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  RadioItem: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  ItemIndicator: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
 import { TerminalPanel } from "./terminal-panel";
