@@ -16,6 +16,7 @@ const fakeTerminal = {
   open: vi.fn(),
   write: vi.fn(),
   paste: vi.fn(),
+  clear: vi.fn(),
   dispose: vi.fn(),
   loadAddon: vi.fn(),
   attachCustomKeyEventHandler: vi.fn(),
@@ -121,6 +122,7 @@ describe("useTerminal", () => {
     fakeTerminal.open.mockClear();
     fakeTerminal.write.mockClear();
     fakeTerminal.paste.mockClear();
+    fakeTerminal.clear.mockClear();
     fakeTerminal.onData.mockClear();
     fakeTerminal.onResize.mockClear();
     fakeTerminal.loadAddon.mockClear();
@@ -527,5 +529,83 @@ describe("useTerminal", () => {
     expect(onResizeIndex).toBeGreaterThanOrEqual(0);
     expect(fitIndex).toBeGreaterThanOrEqual(0);
     expect(onResizeIndex).toBeLessThan(fitIndex);
+  });
+
+  it("H-T1: setup message with mode tmux updates terminalMode", async () => {
+    const { result } = renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+    const ws = await waitForWs();
+
+    await act(async () => {
+      ws.onopen?.();
+    });
+
+    await act(async () => {
+      ws.onmessage?.({ data: JSON.stringify({ type: "setup", mode: "tmux" }) });
+    });
+
+    expect(result.current.terminalMode).toBe("tmux");
+    expect(result.current.isFallback).toBe(false);
+  });
+
+  it("H-T2: fallback setup message sets isFallback and clears terminal", async () => {
+    const { result } = renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+    const ws = await waitForWs();
+
+    await act(async () => {
+      ws.onopen?.();
+    });
+
+    await act(async () => {
+      ws.onmessage?.({
+        data: JSON.stringify({
+          type: "setup",
+          mode: "shell",
+          fallback: true,
+          reason: "tmux-attach-failed",
+        }),
+      });
+    });
+
+    expect(result.current.terminalMode).toBe("shell");
+    expect(result.current.isFallback).toBe(true);
+    expect(fakeTerminal.clear).toHaveBeenCalledTimes(1);
+  });
+
+  it("H-T3: terminalMode resets to unknown on reconnect", async () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(50);
+      });
+
+      const ws1 = getLatestWs();
+      await act(async () => {
+        ws1.onopen?.();
+      });
+
+      // Set mode to tmux via setup message
+      await act(async () => {
+        ws1.onmessage?.({ data: JSON.stringify({ type: "setup", mode: "tmux" }) });
+      });
+      expect(result.current.terminalMode).toBe("tmux");
+
+      // Trigger unexpected close to initiate reconnect
+      await act(async () => {
+        ws1._triggerClose(1006, "");
+      });
+
+      // Advance timer to trigger reconnect
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1050);
+      });
+
+      // After reconnect, mode should be reset
+      expect(result.current.terminalMode).toBe("unknown");
+      expect(result.current.isFallback).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

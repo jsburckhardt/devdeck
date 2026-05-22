@@ -14,6 +14,8 @@ export interface UseTerminalOptions {
   slug?: string;
 }
 
+export type TerminalMode = "unknown" | "tmux" | "shell";
+
 export interface UseTerminalReturn {
   containerRef: React.RefObject<HTMLDivElement | null>;
   status: TerminalStatus;
@@ -22,6 +24,8 @@ export interface UseTerminalReturn {
   reconnectAttempt: number;
   maxReconnectAttempts: number;
   retry: () => void;
+  terminalMode: TerminalMode;
+  isFallback: boolean;
 }
 
 const MAX_RECONNECT_ATTEMPTS = 3;
@@ -67,6 +71,8 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
   const [status, setStatus] = useState<TerminalStatus>("disconnected");
   const [error, setError] = useState<string | null>(null);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
+  const [terminalMode, setTerminalMode] = useState<TerminalMode>("unknown");
+  const [isFallback, setIsFallback] = useState(false);
 
   const baseWsUrl = options?.wsUrl ?? buildWsUrl(options?.slug);
 
@@ -85,6 +91,8 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
 
     setStatus("connecting");
     setError(null);
+    setTerminalMode("unknown");
+    setIsFallback(false);
 
     try {
       const { Terminal } = await import("@xterm/xterm");
@@ -232,9 +240,21 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
         } else if (typeof event.data === "string") {
           // JSON control message from server
           try {
-            const msg = JSON.parse(event.data) as { type?: string; message?: string };
+            const msg = JSON.parse(event.data) as {
+              type?: string;
+              message?: string;
+              mode?: "tmux" | "shell";
+              fallback?: boolean;
+              reason?: string;
+            };
             if (msg.type === "error") {
               setError(msg.message ?? "Unknown error");
+            } else if (msg.type === "setup") {
+              setTerminalMode(msg.mode ?? "shell");
+              if (msg.fallback) {
+                setIsFallback(true);
+                term.clear();
+              }
             }
           } catch {
             // ignore
@@ -345,5 +365,7 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
     reconnectAttempt,
     maxReconnectAttempts: MAX_RECONNECT_ATTEMPTS,
     retry,
+    terminalMode,
+    isFallback,
   };
 }
