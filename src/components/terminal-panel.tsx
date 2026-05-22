@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useTerminal } from "@/hooks/use-terminal";
 import { WarningCircle, Spinner, ArrowClockwise, LockSimple } from "@phosphor-icons/react";
 
@@ -16,9 +17,24 @@ export function TerminalPanel({ slug }: TerminalPanelProps) {
     reconnectAttempt,
     maxReconnectAttempts,
     retry,
+    terminalMode,
+    isFallback,
   } = useTerminal({ slug });
 
   const isUnauthorized = error?.toLowerCase().includes("unauthorized");
+
+  const [showFallbackNotice, setShowFallbackNotice] = useState(false);
+
+  useEffect(() => {
+    if (isFallback) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- derive local UI state from hook prop; no infinite loop risk
+      setShowFallbackNotice(true);
+      const timer = setTimeout(() => setShowFallbackNotice(false), 3000);
+      return () => clearTimeout(timer);
+    } else {
+      setShowFallbackNotice(false);
+    }
+  }, [isFallback]);
 
   return (
     <div data-testid="terminal-panel" className="flex h-full flex-col bg-[#1e1e2e]">
@@ -49,10 +65,24 @@ export function TerminalPanel({ slug }: TerminalPanelProps) {
                       : "Failed"
                     : "Disconnected"}
           </span>
+          {terminalMode !== "unknown" && (
+            <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground uppercase tracking-wide">
+              {terminalMode}
+            </span>
+          )}
         </div>
       </div>
       <div className="relative min-h-0 flex-1">
         <div ref={containerRef} data-testid="terminal-container" className="h-full w-full p-1" />
+        {showFallbackNotice && (
+          <div
+            className="absolute top-2 left-1/2 z-10 -translate-x-1/2 rounded bg-yellow-900/90 px-3 py-1 text-xs text-yellow-200"
+            role="status"
+            aria-label="Terminal fallback notification"
+          >
+            tmux session unavailable — using shell
+          </div>
+        )}
         {status === "connecting" && (
           <StatusOverlay>
             <Spinner size={20} className="animate-spin" />
