@@ -49,6 +49,7 @@ function makeContext(overrides: Record<string, unknown> = {}) {
     showTerminal: true,
     fileTree: [],
     fileTreeLoading: false,
+    fileTreeError: null,
     fileTreeRefreshing: false,
     setProject: vi.fn(),
     selectFile: vi.fn(),
@@ -115,5 +116,91 @@ describe("WorkspaceLayout", () => {
 
     // FileTree rendered (no spinner gating from refreshing flag).
     expect(screen.getByTestId("file-tree")).toBeInTheDocument();
+  });
+
+  it("T2-layout-1: shows error+retry when root load fails and tree is empty", () => {
+    mockUseWorkspace.mockReturnValue(
+      makeContext({
+        fileTreeLoading: false,
+        fileTreeError: "HTTP 500",
+        fileTree: [],
+      }),
+    );
+
+    render(<WorkspaceLayout project={project} />);
+
+    expect(screen.getByText("Failed to load files")).toBeInTheDocument();
+    expect(screen.getByText("HTTP 500")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry loading file tree" })).toBeInTheDocument();
+    expect(screen.queryByTestId("file-tree")).not.toBeInTheDocument();
+  });
+
+  it("T2-layout-2: retry button triggers refreshFileTree", async () => {
+    const refreshFileTree = vi.fn().mockResolvedValue(undefined);
+    const setFileTreeLoading = vi.fn();
+
+    mockUseWorkspace.mockReturnValue(
+      makeContext({
+        fileTreeLoading: false,
+        fileTreeError: "HTTP 500",
+        fileTree: [],
+        refreshFileTree,
+        setFileTreeLoading,
+      }),
+    );
+
+    render(<WorkspaceLayout project={project} />);
+
+    await act(async () => {
+      screen.getByRole("button", { name: "Retry loading file tree" }).click();
+    });
+
+    expect(setFileTreeLoading).toHaveBeenCalledWith(true);
+    expect(refreshFileTree).toHaveBeenCalledWith(project.slug);
+  });
+
+  it("T2-layout-3: shows spinner during loading, hides error UI", () => {
+    mockUseWorkspace.mockReturnValue(
+      makeContext({
+        fileTreeLoading: true,
+        fileTreeError: "HTTP 500",
+        fileTree: [],
+      }),
+    );
+
+    render(<WorkspaceLayout project={project} />);
+
+    expect(screen.queryByText("Failed to load files")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("file-tree")).not.toBeInTheDocument();
+  });
+
+  it("T2-layout-4: shows file tree on success, no error UI", () => {
+    mockUseWorkspace.mockReturnValue(
+      makeContext({
+        fileTreeLoading: false,
+        fileTreeError: null,
+        fileTree: [{ name: "a", path: "a", type: "file" }],
+      }),
+    );
+
+    render(<WorkspaceLayout project={project} />);
+
+    expect(screen.getByTestId("file-tree")).toBeInTheDocument();
+    expect(screen.queryByText("Failed to load files")).not.toBeInTheDocument();
+  });
+
+  it("T2-layout-5: shows file tree when there are nodes even if error exists", () => {
+    mockUseWorkspace.mockReturnValue(
+      makeContext({
+        fileTreeLoading: false,
+        fileTreeError: "HTTP 500",
+        fileTree: [{ name: "a", path: "a", type: "file" }],
+      }),
+    );
+
+    render(<WorkspaceLayout project={project} />);
+
+    expect(screen.getByTestId("file-tree")).toBeInTheDocument();
+    expect(screen.queryByText("Failed to load files")).not.toBeInTheDocument();
   });
 });

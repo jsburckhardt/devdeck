@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { Group, Panel, Separator } from "react-resizable-panels";
-import { Spinner, FileCode, TerminalWindow } from "@phosphor-icons/react";
+import { Spinner, FileCode, TerminalWindow, WarningCircle } from "@phosphor-icons/react";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { FileTree } from "@/components/file-tree";
 import { TerminalPanel } from "@/components/terminal-panel";
@@ -50,10 +50,14 @@ function PanelToggle({
 
 function ExplorerContent({
   loading,
+  error,
   nodes,
+  onRetry,
 }: {
   loading: boolean;
+  error: string | null;
   nodes: import("@/lib/types").FileNode[];
+  onRetry: () => void;
 }) {
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -65,6 +69,24 @@ function ExplorerContent({
           {loading ? (
             <div className="flex h-full items-center justify-center">
               <Spinner size={20} className="animate-spin text-muted-foreground" />
+            </div>
+          ) : error && nodes.length === 0 ? (
+            <div
+              className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center"
+              role="status"
+              aria-live="polite"
+            >
+              <WarningCircle size={32} className="text-destructive" />
+              <p className="text-sm text-destructive">Failed to load files</p>
+              <p className="text-xs text-muted-foreground">{error}</p>
+              <button
+                type="button"
+                onClick={onRetry}
+                className="rounded-md bg-secondary px-3 py-1.5 text-xs text-secondary-foreground hover:bg-accent"
+                aria-label="Retry loading file tree"
+              >
+                Retry
+              </button>
             </div>
           ) : (
             <FileTree nodes={nodes} />
@@ -93,6 +115,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     setProject,
     fileTree,
     fileTreeLoading,
+    fileTreeError,
     setFileTreeLoading,
     refreshFileTree,
     showFileViewer,
@@ -105,6 +128,18 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     setProject(project);
   }, [project, setProject]);
 
+  const loadRootFileTree = useCallback(
+    async (slug: string) => {
+      setFileTreeLoading(true);
+      try {
+        await refreshFileTree(slug);
+      } finally {
+        setFileTreeLoading(false);
+      }
+    },
+    [refreshFileTree, setFileTreeLoading],
+  );
+
   // Initial file-tree load: toggle the spinner via `fileTreeLoading` only on
   // first mount (or project switch). All subsequent refreshes go through
   // `refreshFileTree` directly and remain silent (Decision #62).
@@ -115,18 +150,18 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
   // (Decision #63).
   useEffect(() => {
     let cancelled = false;
-    setFileTreeLoading(true);
     (async () => {
-      try {
-        await refreshFileTree(project.slug);
-      } finally {
-        if (!cancelled) setFileTreeLoading(false);
-      }
+      await loadRootFileTree(project.slug);
+      if (cancelled) return;
     })();
     return () => {
       cancelled = true;
     };
-  }, [project.slug, refreshFileTree, setFileTreeLoading]);
+  }, [project.slug, loadRootFileTree]);
+
+  const handleRetry = useCallback(() => {
+    void loadRootFileTree(project.slug);
+  }, [loadRootFileTree, project.slug]);
 
   // Compute panel sizes based on which panels are visible
   const rightPanelCount = (showFileViewer ? 1 : 0) + (showTerminal ? 1 : 0);
@@ -162,7 +197,12 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
             intentionally NOT surfaced here so background refreshes after
             in-portal edits stay silent (Decision #62). */}
         <Panel defaultSize={explorerSize} minSize={12}>
-          <ExplorerContent loading={fileTreeLoading} nodes={fileTree} />
+          <ExplorerContent
+            loading={fileTreeLoading}
+            error={fileTreeError}
+            nodes={fileTree}
+            onRetry={handleRetry}
+          />
         </Panel>
 
         {showFileViewer && (

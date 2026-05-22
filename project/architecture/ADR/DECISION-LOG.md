@@ -110,3 +110,4 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 80 | Send `{ type: "setup", mode: "shell", fallback: true }` when tmux attach fails before wiring fallback PTY | CORE-COMPONENT-0003 | 2026-05-22 |
 | 81 | Require client to call `term.clear()` on fallback setup message to erase tmux error output | CORE-COMPONENT-0003 | 2026-05-22 |
 | 82 | Reset `terminalMode` to `"unknown"` and `isFallback` to `false` at start of each `connect()` attempt | CORE-COMPONENT-0003 | 2026-05-22 |
+| 83 | Surface root file-tree load errors via `fileTreeError` state and render error+retry UI in `ExplorerContent` when tree is empty | CORE-COMPONENT-0008 | 2026-05-22 |

@@ -94,6 +94,10 @@ function setupWorkspace(overrides: Record<string, unknown> = {}) {
     setFileTree: vi.fn(),
     setFileTreeLoading: vi.fn(),
     refreshFileTree: vi.fn().mockResolvedValue(undefined),
+    loadDirectoryChildren: vi.fn().mockResolvedValue(undefined),
+    fileTreeError: null,
+    directoryLoading: new Set<string>(),
+    directoryErrors: new Map<string, string>(),
   };
   mockUseWorkspace.mockReturnValue({ ...defaults, ...overrides } as ReturnType<
     typeof useWorkspace

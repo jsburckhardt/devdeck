@@ -97,6 +97,7 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
   - `refreshFileTree: (explicitSlug?: string) => Promise<void>` — root lazy-list refresh using `cache: "no-store"`; uses `explicitSlug` when provided, else active `project.slug`
   - `loadDirectoryChildren: (path: string, explicitSlug?: string) => Promise<void>` — lazy child-list request and merge for a readable directory
   - `fileTreeRefreshing: boolean` — true while any root refresh is in flight
+  - `fileTreeError: string | null` — set when a root refresh fails (non-OK or network error), cleared on new refresh start, success, or project switch; used by `ExplorerContent` to render error+retry UI when tree is empty
   - `directoryLoading: ReadonlySet<string>` or equivalent serializable/context-safe representation — directory paths with in-flight child loads
   - `directoryErrors: ReadonlyMap<string, string>` or equivalent serializable/context-safe representation — directory paths with last child-load error messages
   - `retryDirectoryChildren: (path: string) => Promise<void>` MAY be exposed as an alias or implemented by clearing the path error and calling `loadDirectoryChildren(path)`
@@ -221,6 +222,8 @@ async function handleDirectoryClick(node: FileNode) {
 - [x] Test coverage requirements: `refreshFileTree` unit tests assert `cache: "no-store"`, success update, no-op without slug, explicit slug behavior, and no global loading mutation
 - [x] Test coverage requirements: `FileViewer` save tests assert `refreshFileTree` is called exactly once on success and zero times on failure
 - [x] Code review checklist: `ExplorerContent` and future tree consumers MUST NOT read `fileTreeRefreshing`
+- [x] Automated checks: Context tests must assert root file-tree error state is set on failure, cleared on retry/success, and guarded against stale project responses
+- [x] Automated checks: Layout tests must assert ExplorerContent renders error+retry UI when root load fails and tree is empty
 - [ ] Automated checks: API route tests must assert root requests return direct children only and path requests return direct children only
 - [ ] Automated checks: API route tests must assert path traversal and non-directory targets return structured errors
 - [ ] Automated checks: Context tests must assert root and same-directory request deduplication by `slug + path`
