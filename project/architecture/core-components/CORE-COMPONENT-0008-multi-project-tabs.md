@@ -2,7 +2,7 @@
 
 ## Status
 
-Adopted (updated) — 2026-05-13
+Adopted (updated) — 2026-05-21
 
 ## Purpose
 
@@ -53,8 +53,8 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - The file-tree API MUST resolve project roots server-side through `resolveProjectPath(slug)` and MUST NOT expose absolute filesystem paths to clients
 - The file-tree API MUST reject path traversal or absolute `path` escape attempts with a structured JSON error
 - The file-tree API MUST reject `path` targets that are not readable directories with a structured JSON error
-- The file-tree API MUST preserve all-files visibility: dotfiles, lockfiles, `.git`, `.next`, `node_modules`, and other filesystem entries MUST NOT be hidden by hardcoded performance filters
-- File-tree performance MUST come from lazy direct-child loading, request deduplication, and stale-response guards; it MUST NOT come from a hardcoded hide-list
+- The file-tree API MUST apply a server-side default exclusion list to filter entries named `.git` whose internal contents are never meaningful to browse. Filtered entries MUST be excluded from API responses regardless of whether they are files or directories. Dotfiles, lockfiles, `node_modules`, `.next`, and other user-relevant entries MUST remain visible.
+- File-tree performance MUST come from lazy direct-child loading, request deduplication, and stale-response guards. A server-side exclusion list for noise directories is permitted for UX; it MUST NOT be the sole performance mechanism.
 - Direct-child file-tree responses MUST preserve existing classification behavior for `kind`, `unreadable`, `truncated`, `truncatedReason`, `status`, and `size`
 - Directory `FileNode`s returned by the API MUST include lazy metadata: `hasChildren` and `childrenLoaded`
 - Readable directories with children MUST be returned with `hasChildren: true` and `childrenLoaded: false` until their children are loaded
@@ -116,13 +116,13 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - Switching projects while file-tree requests are in flight MUST NOT allow stale responses to overwrite the active project's tree
 - After every successful in-portal save, the file explorer's visible git-status badges (`M`, `A`, `D`, `??`) MUST refresh without a manual reload, page refresh, or tab switch
 - Silent refresh MUST NOT cause the explorer to remount, scroll-jump, lose folder expansion state, or flash a global spinner
-- Lazy loading MUST preserve issue #32 all-files visibility; users must still see dotfiles, lockfiles, `.git`, `.next`, `node_modules`, unreadable entries, and non-regular entries
+- Lazy loading MUST preserve visibility of all user-relevant entries. Internal tooling directories excluded by the server-side exclusion list (e.g. `.git`) are exempt from the visibility requirement.
 
 ## Rationale
 
 An in-memory `Map` cache avoids the complexity and performance cost of serializing large `fileTree` arrays to `localStorage` on every state change. Persisting only slugs keeps `localStorage` usage minimal and avoids stale data issues. Mounting the provider at root layout level ensures the cache survives Next.js client-side navigations. The sidebar is deliberately minimal (icon-width) to avoid consuming workspace real estate.
 
-The file tree previously performed an eager recursive traversal to depth 6 for every root load. After all-files visibility was introduced, large directories such as `node_modules`, `.git`, and `.next` made this root request too expensive. Lazy direct-child listing keeps complete visibility while making initial render proportional to root breadth instead of total descendant count. A hardcoded hide-list was rejected because it would regress the visibility contract and hide real project state from users.
+The file tree previously performed an eager recursive traversal to depth 6 for every root load. After all-files visibility was introduced, large directories such as `node_modules`, `.git`, and `.next` made this root request too expensive. Lazy direct-child listing keeps complete visibility of user-relevant entries while making initial render proportional to root breadth instead of total descendant count. The original hide-list prohibition (Decision #72) was motivated by performance concerns — hiding entries was rejected to avoid silently concealing real project state. Now that lazy loading handles performance, a server-side exclusion list filtering noise directories (e.g. `.git`) is permitted as a UX improvement. The `.git` directory contains internal VCS database objects that are never meaningful to browse; filtering it improves signal-to-noise without hiding real project state.
 
 Request deduplication and stale-response protection are required because React initialization, project switching, and user expansion actions can overlap. Per-directory state is required so one failed or slow child load does not blank the whole explorer.
 
@@ -226,7 +226,7 @@ async function handleDirectoryClick(node: FileNode) {
 - [ ] Automated checks: Context tests must assert root and same-directory request deduplication by `slug + path`
 - [ ] Automated checks: Context tests must assert stale project responses do not overwrite the active project's tree
 - [ ] Automated checks: File tree component tests must assert unloaded, loading, loaded, empty, error, retry, and unreadable directory states
-- [ ] Test coverage requirements: Lazy file-tree work must preserve all-files visibility with no hardcoded hide-list
+- [ ] Test coverage requirements: Server-side exclusion list must filter `.git` by default; exclusion must apply at all directory levels
 - [ ] Test coverage requirements: Verification must include `npm run lint`, `npm run format:check`, `npm run build`, and `npm run test`
 
 ## Related ADRs
