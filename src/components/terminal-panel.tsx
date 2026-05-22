@@ -141,6 +141,7 @@ function ThemePicker({
         <button
           className="flex items-center rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
           title="Terminal theme"
+          aria-label="Terminal theme"
           data-testid="theme-picker-trigger"
         >
           <Palette size={14} />
@@ -152,35 +153,39 @@ function ThemePicker({
           sideOffset={4}
           align="end"
         >
-          {themes.map((t) => (
-            <DropdownMenu.Item
-              key={t.id}
-              className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-popover-foreground outline-none hover:bg-accent hover:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
-              onSelect={() => onSelect(t.id)}
-              data-testid={`theme-option-${t.id}`}
-            >
-              <span className="flex gap-0.5">
-                <span
-                  className="inline-block h-3 w-3 rounded-sm border border-border"
-                  style={{ backgroundColor: t.colors.background }}
-                />
-                <span
-                  className="inline-block h-3 w-3 rounded-sm border border-border"
-                  style={{ backgroundColor: t.colors.foreground }}
-                />
-                <span
-                  className="inline-block h-3 w-3 rounded-sm border border-border"
-                  style={{ backgroundColor: t.colors.green }}
-                />
-                <span
-                  className="inline-block h-3 w-3 rounded-sm border border-border"
-                  style={{ backgroundColor: t.colors.blue }}
-                />
-              </span>
-              <span className="flex-1">{t.label}</span>
-              {t.id === activeThemeId && <Check size={12} className="text-primary" />}
-            </DropdownMenu.Item>
-          ))}
+          <DropdownMenu.RadioGroup value={activeThemeId} onValueChange={onSelect}>
+            {themes.map((t) => (
+              <DropdownMenu.RadioItem
+                key={t.id}
+                value={t.id}
+                className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-popover-foreground outline-none hover:bg-accent hover:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                data-testid={`theme-option-${t.id}`}
+              >
+                <span className="flex gap-0.5">
+                  <span
+                    className="inline-block h-3 w-3 rounded-sm border border-border"
+                    style={{ backgroundColor: t.colors.background }}
+                  />
+                  <span
+                    className="inline-block h-3 w-3 rounded-sm border border-border"
+                    style={{ backgroundColor: t.colors.foreground }}
+                  />
+                  <span
+                    className="inline-block h-3 w-3 rounded-sm border border-border"
+                    style={{ backgroundColor: t.colors.green }}
+                  />
+                  <span
+                    className="inline-block h-3 w-3 rounded-sm border border-border"
+                    style={{ backgroundColor: t.colors.blue }}
+                  />
+                </span>
+                <span className="flex-1">{t.label}</span>
+                <DropdownMenu.ItemIndicator>
+                  <Check size={12} className="text-primary" />
+                </DropdownMenu.ItemIndicator>
+              </DropdownMenu.RadioItem>
+            ))}
+          </DropdownMenu.RadioGroup>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

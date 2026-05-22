@@ -61,6 +61,12 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const reconnectAttemptRef = useRef(0);
   const connectRef = useRef<(() => void) | null>(null);
+  const themeRef = useRef<ITheme | undefined>(options?.theme);
+
+  // Keep themeRef in sync so connect() always sees the latest theme
+  useEffect(() => {
+    themeRef.current = options?.theme;
+  }, [options?.theme]);
 
   const connect = useCallback(async () => {
     const gen = ++generationRef.current;
@@ -89,7 +95,7 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
         fontSize: 13,
         fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
         lineHeight: 1.5,
-        theme: options?.theme ?? DEFAULT_THEME,
+        theme: themeRef.current ?? DEFAULT_THEME,
         allowProposedApi: true,
         screenReaderMode: true,
       });
@@ -273,7 +279,6 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
       setStatus("failed");
       setError(String(err));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- theme is intentionally excluded; runtime theme updates are handled by a separate effect to avoid reconnection
   }, [baseWsUrl]);
 
   useEffect(() => {

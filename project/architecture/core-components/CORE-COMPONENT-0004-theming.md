@@ -38,7 +38,7 @@ Provide a consistent dark/light theme system across the entire application, incl
 - **CSS variables:** Standard shadcn/ui variable names (`--background`, `--foreground`, `--card`, `--accent`, etc.)
 - **Theme hook (app):** `useTheme()` — returns `{ theme, setTheme, toggleTheme }`
 - **ThemeProvider:** Wraps the app, manages `.dark` class and localStorage sync
-- **Terminal theme hook:** `useTerminalTheme()` — returns `{ themeId, theme, setThemeId, themes }` where `themeId` is the string key, `theme` is the resolved `ITheme` object, `setThemeId` switches and persists, and `themes` is the full palette array
+- **Terminal theme hook:** `useTerminalTheme()` — returns `{ themeId, theme, setThemeId, themes }` where `themeId` is the string key, `theme` is the resolved `TerminalThemeDefinition` object (`{ id, label, colors: ITheme }`), `setThemeId` switches and persists, and `themes` is the full palette array
 - **Terminal theme data:** `TERMINAL_THEMES` — array of `{ id: string; label: string; colors: ITheme }` objects for all 13 themes
 
 ### Expectations
