@@ -636,4 +636,126 @@ describe("terminal-server", () => {
     // Client should still be open
     expect(client.readyState).toBe(WebSocket.OPEN);
   });
+
+  it("T23: shell connection sends setup message with mode shell", async () => {
+    const srv = await createServer();
+    handle = srv.handle;
+
+    const messages: string[] = [];
+    const client = await new Promise<WebSocket>((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${srv.port}`);
+      ws.on("message", (data: Buffer, isBinary: boolean) => {
+        if (!isBinary) messages.push(data.toString());
+      });
+      ws.on("open", () => resolve(ws));
+      ws.on("error", reject);
+    });
+    clients.push(client);
+    await tick();
+
+    const setupMsg = messages.find((m) => {
+      try {
+        return (JSON.parse(m) as { type?: string }).type === "setup";
+      } catch {
+        return false;
+      }
+    });
+    expect(setupMsg).toBeDefined();
+    const parsed = JSON.parse(setupMsg!) as { type: string; mode: string };
+    expect(parsed.type).toBe("setup");
+    expect(parsed.mode).toBe("shell");
+  });
+
+  it("T24: tmux connection sends setup message with mode tmux", async () => {
+    fsStatResults["/workspaces/tmux-setup"] = { isDirectory: true, isSocket: false };
+    fsStatResults["/workspaces/tmux-setup/.devcontainer/.tmux-shared"] = {
+      isDirectory: false,
+      isSocket: true,
+    };
+    tmuxHasSessionResult = true;
+
+    const srv = await createServer();
+    handle = srv.handle;
+
+    const messages: string[] = [];
+    const client = await new Promise<WebSocket>((resolve, reject) => {
+      const ws = new WebSocket(
+        `ws://127.0.0.1:${srv.port}?slug=${encodeURIComponent("tmux-setup")}`,
+      );
+      ws.on("message", (data: Buffer, isBinary: boolean) => {
+        if (!isBinary) messages.push(data.toString());
+      });
+      ws.on("open", () => resolve(ws));
+      ws.on("error", reject);
+    });
+    clients.push(client);
+    await tick();
+
+    const setupMsg = messages.find((m) => {
+      try {
+        return (JSON.parse(m) as { type?: string }).type === "setup";
+      } catch {
+        return false;
+      }
+    });
+    expect(setupMsg).toBeDefined();
+    const parsed = JSON.parse(setupMsg!) as { type: string; mode: string };
+    expect(parsed.type).toBe("setup");
+    expect(parsed.mode).toBe("tmux");
+  });
+
+  it("T25: tmux exit code 1 sends fallback setup message", async () => {
+    fsStatResults["/workspaces/tmux-fb"] = { isDirectory: true, isSocket: false };
+    fsStatResults["/workspaces/tmux-fb/.devcontainer/.tmux-shared"] = {
+      isDirectory: false,
+      isSocket: true,
+    };
+    tmuxHasSessionResult = true;
+
+    const srv = await createServer();
+    handle = srv.handle;
+
+    const messages: string[] = [];
+    const client = await connectClientWithSlug(srv.port, "tmux-fb");
+    clients.push(client);
+    client.on("message", (data: Buffer, isBinary: boolean) => {
+      if (!isBinary) messages.push(data.toString());
+    });
+    await tick();
+
+    const nodePty = await import("node-pty");
+    const spawnFn = nodePty.spawn as ReturnType<typeof vi.fn>;
+
+    // Create fallback PTY
+    const fallbackPty = createFakePty();
+    spawnFn.mockReturnValueOnce(fallbackPty);
+
+    // Simulate tmux exit with code 1
+    fakePty._emitExit(1, 0);
+    await tick();
+
+    // Find fallback setup message
+    const fallbackMsg = messages.find((m) => {
+      try {
+        const p = JSON.parse(m) as { type?: string; fallback?: boolean };
+        return p.type === "setup" && p.fallback === true;
+      } catch {
+        return false;
+      }
+    });
+    expect(fallbackMsg).toBeDefined();
+    const parsed = JSON.parse(fallbackMsg!) as {
+      type: string;
+      mode: string;
+      fallback: boolean;
+      reason: string;
+    };
+    expect(parsed.type).toBe("setup");
+    expect(parsed.mode).toBe("shell");
+    expect(parsed.fallback).toBe(true);
+    expect(parsed.reason).toBe("tmux-attach-failed");
+
+    // Client should still be connected
+    expect(client.readyState).toBe(WebSocket.OPEN);
+  });
 });

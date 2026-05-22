@@ -308,6 +308,19 @@ async function handleConnection(
       // If tmux attach failed, fall back to a regular shell in the project directory
       if (isTmux && exitCode !== 0 && ws.readyState === WebSocket.OPEN) {
         console.log("tmux attach failed, falling back to regular shell");
+        // Notify client of fallback before spawning replacement shell
+        try {
+          ws.send(
+            JSON.stringify({
+              type: "setup",
+              mode: "shell",
+              fallback: true,
+              reason: "tmux-attach-failed",
+            }),
+          );
+        } catch {
+          /* send failed */
+        }
         activePtys.delete(currentPty);
         try {
           const fallbackPty = spawn(shell, shellArgs, {
@@ -353,6 +366,13 @@ async function handleConnection(
     );
 
     wirePty(pty, setup.mode === "tmux");
+
+    // Notify client of terminal session mode
+    try {
+      ws.send(JSON.stringify({ type: "setup", mode: setup.mode }));
+    } catch {
+      /* send failed */
+    }
 
     // Flush any messages that arrived during async setup
     for (const pending of pendingMessages) {
