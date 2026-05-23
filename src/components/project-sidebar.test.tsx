@@ -64,15 +64,18 @@ describe("ProjectSidebar", () => {
     mockOpenProjects = defaultOpenProjects;
   });
 
-  it("T8: renders correct number of tabs with first letters and titles", () => {
+  it("T8: renders correct number of tabs with first letters, names and titles", () => {
     render(<ProjectSidebar />);
 
     const tabs = screen.getAllByRole("button", { name: /Open project/ });
     expect(tabs).toHaveLength(3);
 
     expect(tabs[0]).toHaveTextContent("A");
+    expect(tabs[0]).toHaveTextContent("Alpha");
     expect(tabs[1]).toHaveTextContent("B");
+    expect(tabs[1]).toHaveTextContent("Beta");
     expect(tabs[2]).toHaveTextContent("C");
+    expect(tabs[2]).toHaveTextContent("Charlie");
 
     expect(tabs[0]).toHaveAttribute("title", "Alpha");
     expect(tabs[1]).toHaveAttribute("title", "Beta");
@@ -242,5 +245,38 @@ describe("ProjectSidebar", () => {
     expect(tabs[1]).toHaveFocus();
     await user.keyboard(" ");
     expect(mockPush).toHaveBeenCalledWith("/project/proj-b");
+  });
+
+  it("T24: sidebar renders at w-44 width", () => {
+    render(<ProjectSidebar />);
+    const nav = screen.getByRole("navigation", { name: "Open projects" });
+    expect(nav.className).toContain("w-44");
+  });
+
+  it("T25: renders project name as visible text", () => {
+    render(<ProjectSidebar />);
+    expect(screen.getByText("Alpha")).toBeInTheDocument();
+    expect(screen.getByText("Beta")).toBeInTheDocument();
+    expect(screen.getByText("Charlie")).toBeInTheDocument();
+  });
+
+  it("T25: renders Home text in home button", () => {
+    render(<ProjectSidebar />);
+    const homeButton = screen.getByRole("button", { name: "Go to home page" });
+    expect(homeButton).toHaveTextContent("Home");
+  });
+
+  it("T26: preserves accessibility attributes on active project", () => {
+    render(<ProjectSidebar />);
+    const tabs = screen.getAllByRole("button", { name: /Open project/ });
+    // Beta is active
+    expect(tabs[1]).toHaveAttribute("aria-current", "page");
+    expect(tabs[1]).toHaveAttribute("aria-label");
+    expect(tabs[1]).toHaveAttribute("title");
+
+    const closeButtons = screen.getAllByRole("button", { name: /Close project/ });
+    closeButtons.forEach((btn) => {
+      expect(btn).toHaveAttribute("aria-label");
+    });
   });
 });

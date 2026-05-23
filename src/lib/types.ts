@@ -74,6 +74,11 @@ export interface DiffHunk {
   newStart: number;
 }
 
+export interface Worktree {
+  name: string; // Directory name under .trees/
+  branch: string; // Git branch name (fallback: directory name)
+}
+
 export interface PerProjectWorkspaceState {
   selectedFile: string | null;
   expandedFolders: string[];
@@ -82,4 +87,6 @@ export interface PerProjectWorkspaceState {
   fileTree: FileNode[];
   directoryLoadErrors?: Record<string, string>;
   loadedDirectories?: string[];
+  activeWorktree?: string | null;
+  worktreesSectionCollapsed?: boolean;
 }

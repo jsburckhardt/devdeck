@@ -41,11 +41,16 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - When tmux attach exits with a non-zero code and the server falls back to a regular shell, the server MUST send `{ type: "setup", mode: "shell", fallback: true, reason: "tmux-attach-failed" }` before wiring the fallback PTY
 - The client MUST handle `setup` messages: update `terminalMode` state, and call `term.clear()` when `fallback: true` is received to erase any error output the failed tmux process may have written to the terminal buffer
 - The client MUST reset `terminalMode` to `"unknown"` and `isFallback` to `false` at the start of each `connect()` attempt
+- The client MAY pass `worktree=<relative-path>` (e.g. `.trees/feature-branch`) as a query parameter on the WebSocket upgrade URL to open a terminal scoped to a git worktree directory
+- When `worktree` is present, the server MUST resolve CWD to `<resolvedProjectRoot>/<relativeWorktreePath>` and MUST bypass the tmux decision tree entirely, spawning a plain login shell in the worktree directory
+- The server MUST reject `worktree` paths containing `..` segments or resolving outside the project root; on rejection, fall back to the project root shell
+- An `extractWorktree(req: IncomingMessage): string | null` function MUST be added to `terminal-server.mts` to extract and sanitize the `worktree` query param before it reaches `resolveTerminalSetup`
+- Worktree terminal sessions MUST always result in `{ type: "setup", mode: "shell" }` sent to the client
 
 ### Interfaces
-- **WebSocket endpoint:** `/api/terminal?token=<bearer>&slug=<project-slug>&cols=<N>&rows=<N>` — accepts WebSocket upgrade requests with valid token (via query param or cookie); `slug` is optional and selects per-project CWD and tmux session; `cols`/`rows` are optional initial dimensions (clamped server-side, defaults to 80×24)
+- **WebSocket endpoint:** `/api/terminal?token=<bearer>&slug=<project-slug>&worktree=<relative-path>&cols=<N>&rows=<N>` — accepts WebSocket upgrade requests with valid token (via query param or cookie); `slug` is optional and selects per-project CWD and tmux session; `worktree` is optional and, when combined with `slug`, overrides CWD to the worktree directory in shell-only mode; `cols`/`rows` are optional initial dimensions (clamped server-side, defaults to 80×24)
 - **Token handshake:** On upgrade, server extracts `token` from query string or `devdeck_token` cookie, validates via `crypto.timingSafeEqual`, rejects with close code 4401 if invalid
-- **Frontend hook:** `useTerminal(options?: { slug?, wsUrl?, theme? })` — manages xterm.js instance, WebSocket connection, token injection, addon lifecycle, and exposes `containerRef`, `terminalMode`, and `isFallback` state
+- **Frontend hook:** `useTerminal(options?: { slug?, worktree?, wsUrl?, theme? })` — manages xterm.js instance, WebSocket connection, token injection, addon lifecycle, and exposes `containerRef`, `terminalMode`, and `isFallback` state; when `worktree` is provided, the WebSocket URL includes it as a query parameter
 - **Message format:** Raw binary data (ArrayBuffer) for terminal I/O; JSON for control messages (resize, ping)
 - **Setup message (server → client):** `{ type: "setup", mode: "tmux" | "shell", fallback?: true, reason?: string }` — sent as a JSON text frame immediately after PTY spawn and on any session mode transition (e.g., tmux fallback to shell)
 

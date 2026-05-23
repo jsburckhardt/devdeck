@@ -36,8 +36,8 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - `WorkspaceProvider` MUST call `restoreWorkspaceState(slug)` on mount to hydrate from cache when available
 - `WorkspaceProvider` MUST call `saveWorkspaceState(slug, state)` on unmount (via cleanup effect) to persist current state to the cache
 - The sidebar MUST render outside the `react-resizable-panels` `Group` as a sibling flex column (per CORE-COMPONENT-0007)
-- The sidebar MUST be a fixed-width vertical strip (~48px) on the left edge of the project layout
-- Each sidebar tab MUST display the first letter of the project name with the project's language color as background
+- The sidebar MUST be a fixed-width vertical strip (~176px) on the left edge of the project layout
+- Each sidebar tab MUST display the project's language-color badge (first letter) and the project name as a visible truncated text label
 - Sidebar tabs MUST show the full project name via the native `title` attribute (no `@radix-ui/react-tooltip` dependency)
 - The active project tab MUST be visually distinguished (e.g., left border accent, brighter background)
 - Each tab MUST have a close button (visible on hover) to remove the project from the open list
@@ -84,12 +84,18 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - `FileTree` MUST render per-directory loading, error, retry, and empty states without clearing the existing root tree
 - `FileTree` MUST preserve unreadable-node affordances and MUST NOT try to expand unreadable directories
 - Directory loading indicators, errors, retry controls, and empty states MUST have accessible text or labels and MUST NOT rely on color alone
+- `WorkspaceContext` MUST expose `activeWorktree: string | null` and `setActiveWorktree(path: string | null)` for worktree terminal scoping
+- `WorkspaceContext` MUST expose `worktreesSectionCollapsed: boolean` and `toggleWorktreesSection()`
+- `PerProjectWorkspaceState` MUST include `activeWorktree: string | null` and `worktreesSectionCollapsed: boolean` for per-project cache persistence
+- `WorktreeTree` MUST be rendered above `FileTree` inside `ExplorerContent`, always mounted per Decision #84, hidden via CSS when the worktree list is empty
+- Worktree data MUST be fetched via `GET /api/worktrees?slug=<slug>` returning `Worktree[]`; an empty array MUST be returned (not a server error) when `.trees/` is absent or git is unavailable
+- A `useWorktrees(slug: string)` hook MUST be provided exposing `{ worktrees: Worktree[], loading: boolean, error: string | null, refresh: () => void }`
 
 ### Interfaces
 
 - **OpenProjectsProvider:** React context providing `openProjects`, `openProject()`, `closeProject()`, `saveWorkspaceState()`, `restoreWorkspaceState()`
 - **useOpenProjects():** Hook to consume the context; throws if used outside provider
-- **PerProjectWorkspaceState:** `{ selectedFile: string | null; expandedFolders: string[]; showFileViewer: boolean; showTerminal: boolean; fileTree: FileNode[]; directoryLoadErrors?: Record<string, string>; loadedDirectories?: string[] }`
+- **PerProjectWorkspaceState:** `{ selectedFile: string | null; expandedFolders: string[]; showFileViewer: boolean; showTerminal: boolean; fileTree: FileNode[]; directoryLoadErrors?: Record<string, string>; loadedDirectories?: string[]; activeWorktree: string | null; worktreesSectionCollapsed: boolean }`
 - **FileNode lazy metadata:** `hasChildren?: boolean; childrenLoaded?: boolean; children?: FileNode[]; unreadable?: boolean; truncated?: boolean; truncatedReason?: "max-depth" | "entry-limit"`
 - **File tree root endpoint:** `GET /api/files?slug=<slug>` returns `FileNode[]` containing direct root children only
 - **File tree directory endpoint:** `GET /api/files?slug=<slug>&path=<relative-dir>` returns `FileNode[]` containing direct children of the requested directory only
@@ -101,6 +107,14 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
   - `directoryLoading: ReadonlySet<string>` or equivalent serializable/context-safe representation — directory paths with in-flight child loads
   - `directoryErrors: ReadonlyMap<string, string>` or equivalent serializable/context-safe representation — directory paths with last child-load error messages
   - `retryDirectoryChildren: (path: string) => Promise<void>` MAY be exposed as an alias or implemented by clearing the path error and calling `loadDirectoryChildren(path)`
+  - `activeWorktree: string | null` — relative path of the currently active worktree (e.g. `.trees/feature-branch`), or null
+  - `setActiveWorktree: (path: string | null) => void` — set the active worktree for terminal scoping
+  - `worktreesSectionCollapsed: boolean` — whether the worktrees section in the explorer is collapsed
+  - `toggleWorktreesSection: () => void` — toggle worktrees section collapsed state
+- **Worktree:** `{ name: string; branch: string }`
+- **Worktree endpoint:** `GET /api/worktrees?slug=<slug>` → `Worktree[]` — parses `git worktree list --porcelain`, filters to `.trees/`-relative entries; returns `[]` on any error
+- **useWorktrees(slug: string):** Hook exposing `{ worktrees: Worktree[], loading: boolean, error: string | null, refresh: () => void }`
+- **WorktreeTree:** Collapsible component rendered above `FileTree` in the explorer; lists worktrees with per-entry "Open Terminal" action
 - **ProjectSidebar:** Component rendering the vertical tab strip; consumes `useOpenProjects()` and `usePathname()`
 - **languageColor(language?: string): string** — Shared utility extracted to `src/lib/utils.ts`
 

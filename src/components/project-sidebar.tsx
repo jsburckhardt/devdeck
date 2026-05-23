@@ -13,38 +13,44 @@ export function ProjectSidebar() {
 
   return (
     <nav
-      className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-border bg-card/50 py-2"
+      className="flex w-44 shrink-0 flex-col gap-1 border-r border-border bg-card/50 py-2"
       aria-label="Open projects"
     >
       {/* Home button */}
       <button
         onClick={() => router.push("/")}
-        className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+        className="mx-2 flex h-9 w-full items-center gap-2 rounded-md px-2 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
         aria-label="Go to home page"
         title="Home"
       >
         <House size={20} weight="bold" />
+        <span className="text-sm font-medium">Home</span>
       </button>
 
-      <div className="mx-auto my-1 h-px w-6 bg-border" />
+      <div className="mx-2 my-1 h-px w-full bg-border" />
 
       {/* Project tabs */}
       {openProjects.map((project) => {
         const isActive = activeSlug === project.slug;
         return (
-          <div key={project.slug} className="group relative">
+          <div key={project.slug} className="group relative mx-2">
             <button
               onClick={() => router.push(projectRoute(project.slug))}
-              className={`flex h-9 w-9 items-center justify-center rounded-md text-xs font-bold text-white transition-colors ${
+              className={`flex h-9 w-full items-center gap-2 rounded-md px-2 text-xs transition-colors ${
                 isActive
-                  ? `${languageColor(project.language)} ring-2 ring-primary/60`
-                  : `${languageColor(project.language)} opacity-60 hover:opacity-100`
+                  ? "bg-primary/15 text-primary ring-2 ring-primary/60"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
               }`}
               aria-label={`Open project ${project.name}`}
               aria-current={isActive ? "page" : undefined}
               title={project.name}
             >
-              {project.name.charAt(0).toUpperCase()}
+              <span
+                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-[10px] font-bold text-white ${languageColor(project.language)}`}
+              >
+                {project.name.charAt(0).toUpperCase()}
+              </span>
+              <span className="truncate text-sm">{project.name}</span>
             </button>
 
             {/* Close button - accessible via keyboard and hover */}

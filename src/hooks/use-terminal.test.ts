@@ -736,4 +736,22 @@ describe("useTerminal", () => {
       vi.useRealTimers();
     }
   });
+
+  describe("buildWsUrl with worktree", () => {
+    it("T16: includes worktree param when provided", async () => {
+      renderHook(() => useTerminal({ slug: "demo", worktree: ".trees/feat" }));
+      const ws = await waitForWs();
+      const url = new URL(ws.url);
+      expect(url.searchParams.get("worktree")).toBe(".trees/feat");
+      expect(url.searchParams.get("slug")).toBe("demo");
+    });
+
+    it("T17: omits worktree param when undefined", async () => {
+      renderHook(() => useTerminal({ slug: "demo" }));
+      const ws = await waitForWs();
+      const url = new URL(ws.url);
+      expect(url.searchParams.has("worktree")).toBe(false);
+      expect(url.searchParams.get("slug")).toBe("demo");
+    });
+  });
 });
