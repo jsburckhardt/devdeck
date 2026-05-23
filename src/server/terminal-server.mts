@@ -104,6 +104,20 @@ function extractDimensions(req: IncomingMessage): { cols: number; rows: number }
   }
 }
 
+function extractWorktree(req: IncomingMessage): string | null {
+  try {
+    const url = new URL(req.url ?? "", `http://${req.headers.host ?? "localhost"}`);
+    const raw = url.searchParams.get("worktree");
+    if (!raw) return null;
+    if (path.isAbsolute(raw)) return null;
+    const normalized = path.normalize(raw);
+    if (normalized.startsWith("..")) return null;
+    return normalized;
+  } catch {
+    return null;
+  }
+}
+
 function sanitizeSlug(slug: string): string {
   return slug.replace(/[^a-zA-Z0-9_-]/g, "");
 }
@@ -132,6 +146,7 @@ async function resolveTerminalSetup(
   defaultCwd: string,
   shell: string,
   shellArgs: string[],
+  worktree: string | null = null,
 ): Promise<TerminalSpawnConfig> {
   if (!slug) {
     return { command: shell, args: shellArgs, cwd: defaultCwd, mode: "shell" };
@@ -152,6 +167,24 @@ async function resolveTerminalSetup(
   } catch {
     console.log(`Slug "${slug}" resolved path invalid, falling back to default CWD`);
     return { command: shell, args: shellArgs, cwd: defaultCwd, mode: "shell" };
+  }
+
+  // Worktree override — shell-only mode in worktree directory (Decision #85)
+  if (worktree) {
+    const worktreeAbsPath = path.resolve(resolvedCwd, worktree);
+    const relative = path.relative(resolvedCwd, worktreeAbsPath);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      console.log(`Worktree "${worktree}" path traversal detected, falling back to project root`);
+      return { command: shell, args: shellArgs, cwd: resolvedCwd, mode: "shell" };
+    }
+    try {
+      const worktreeStat = await fs.stat(worktreeAbsPath);
+      if (!worktreeStat.isDirectory()) throw new Error("Not a directory");
+      return { command: shell, args: shellArgs, cwd: worktreeAbsPath, mode: "shell" };
+    } catch {
+      console.log(`Worktree "${worktree}" path invalid, falling back to project root`);
+      return { command: shell, args: shellArgs, cwd: resolvedCwd, mode: "shell" };
+    }
   }
 
   // Check for tmux shared session
@@ -228,6 +261,7 @@ function handleMessage(pty: IPty, data: Buffer, isBinary: boolean): void {
 async function handleConnection(
   ws: WebSocket,
   slug: string | null,
+  worktree: string | null,
   defaultCwd: string,
   shell: string,
   shellArgs: string[],
@@ -279,7 +313,7 @@ async function handleConnection(
     handleMessage(pty, data, isBinary);
   });
 
-  const setup = await resolveTerminalSetup(slug, defaultCwd, shell, shellArgs);
+  const setup = await resolveTerminalSetup(slug, defaultCwd, shell, shellArgs, worktree);
 
   // Client may have disconnected during async setup
   if (ws.readyState !== WebSocket.OPEN) return;
@@ -476,11 +510,13 @@ export function createTerminalServer(options?: TerminalServerOptions): TerminalS
     }
 
     const slug = extractSlug(req);
+    const worktree = extractWorktree(req);
     const dimensions = extractDimensions(req);
 
     void handleConnection(
       ws,
       slug,
+      worktree,
       cwd,
       shell,
       shellArgs,

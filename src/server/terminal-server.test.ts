@@ -977,4 +977,119 @@ describe("terminal-server", () => {
     // Client should still be connected
     expect(client.readyState).toBe(WebSocket.OPEN);
   });
+
+  describe("worktree support", () => {
+    function connectClientWithWorktree(
+      port: number,
+      slug: string,
+      worktree: string,
+    ): Promise<WebSocket> {
+      return new Promise((resolve, reject) => {
+        const params = new URLSearchParams({ slug, worktree });
+        const client = new WebSocket(`ws://127.0.0.1:${port}?${params.toString()}`);
+        client.on("open", () => resolve(client));
+        client.on("error", reject);
+      });
+    }
+
+    it("T11: extractWorktree returns null for missing worktree param", async () => {
+      const projectPath = "/workspaces/demo-project";
+      mockRegistryJson = { projects: [{ slug: "demo", path: projectPath }] };
+      fsStatResults[projectPath] = { isDirectory: true, isSocket: false };
+
+      const { handle: h, port } = await createServer();
+      handle = h;
+
+      const client = await connectClientWithSlug(port, "demo");
+      clients.push(client);
+      await tick(200);
+
+      // Should connect to project root (shell mode), not a worktree
+      const { spawn } = await import("node-pty");
+      const spawnMock = vi.mocked(spawn);
+      const lastCall = spawnMock.mock.calls[spawnMock.mock.calls.length - 1];
+      expect((lastCall[2] as { cwd: string })?.cwd).toBe(projectPath);
+    });
+
+    it("T12: extractWorktree returns null for absolute path", async () => {
+      const projectPath = "/workspaces/demo-project";
+      mockRegistryJson = { projects: [{ slug: "demo", path: projectPath }] };
+      fsStatResults[projectPath] = { isDirectory: true, isSocket: false };
+
+      const { handle: h, port } = await createServer();
+      handle = h;
+
+      // Connect with absolute worktree path - should be ignored
+      const client = await connectClientWithWorktree(port, "demo", "/etc/passwd");
+      clients.push(client);
+      await tick(200);
+
+      const { spawn } = await import("node-pty");
+      const spawnMock = vi.mocked(spawn);
+      const lastCall = spawnMock.mock.calls[spawnMock.mock.calls.length - 1];
+      // Should fall back to project root since absolute path is rejected
+      expect((lastCall[2] as { cwd: string })?.cwd).toBe(projectPath);
+    });
+
+    it("T13: extractWorktree returns null for path traversal", async () => {
+      const projectPath = "/workspaces/demo-project";
+      mockRegistryJson = { projects: [{ slug: "demo", path: projectPath }] };
+      fsStatResults[projectPath] = { isDirectory: true, isSocket: false };
+
+      const { handle: h, port } = await createServer();
+      handle = h;
+
+      const client = await connectClientWithWorktree(port, "demo", "../../etc/passwd");
+      clients.push(client);
+      await tick(200);
+
+      const { spawn } = await import("node-pty");
+      const spawnMock = vi.mocked(spawn);
+      const lastCall = spawnMock.mock.calls[spawnMock.mock.calls.length - 1];
+      expect((lastCall[2] as { cwd: string })?.cwd).toBe(projectPath);
+    });
+
+    it("T14: worktree bypasses tmux and spawns shell-only", async () => {
+      const projectPath = "/workspaces/demo-project";
+      const worktreePath = `${projectPath}/.trees/feat`;
+      mockRegistryJson = { projects: [{ slug: "demo", path: projectPath }] };
+      fsStatResults[projectPath] = { isDirectory: true, isSocket: false };
+      fsStatResults[worktreePath] = { isDirectory: true, isSocket: false };
+      // Even if tmux is available, worktree should bypass it
+      tmuxHasSessionResult = true;
+
+      const { handle: h, port } = await createServer();
+      handle = h;
+
+      const client = await connectClientWithWorktree(port, "demo", ".trees/feat");
+      clients.push(client);
+      await tick(200);
+
+      const { spawn } = await import("node-pty");
+      const spawnMock = vi.mocked(spawn);
+      const lastCall = spawnMock.mock.calls[spawnMock.mock.calls.length - 1];
+      expect((lastCall[2] as { cwd: string })?.cwd).toBe(worktreePath);
+      // Should NOT be tmux
+      expect(lastCall[0]).not.toBe("tmux");
+    });
+
+    it("T15: invalid worktree path falls back to project root", async () => {
+      const projectPath = "/workspaces/demo-project";
+      mockRegistryJson = { projects: [{ slug: "demo", path: projectPath }] };
+      fsStatResults[projectPath] = { isDirectory: true, isSocket: false };
+      // .trees/nonexistent is NOT in fsStatResults, so stat will throw ENOENT
+
+      const { handle: h, port } = await createServer();
+      handle = h;
+
+      const client = await connectClientWithWorktree(port, "demo", ".trees/nonexistent");
+      clients.push(client);
+      await tick(200);
+
+      const { spawn } = await import("node-pty");
+      const spawnMock = vi.mocked(spawn);
+      const lastCall = spawnMock.mock.calls[spawnMock.mock.calls.length - 1];
+      expect((lastCall[2] as { cwd: string })?.cwd).toBe(projectPath);
+    });
+  });
 });
