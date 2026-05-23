@@ -781,6 +781,65 @@ describe("WorkspaceProvider.fileTreeError", () => {
     expect(screen.getByTestId("file-tree-error").textContent).toBe("");
   });
 
+  it("T1-ctx-7: existing error survives when a stale-slug refresh starts", async () => {
+    let resolveFetch!: (v: Response) => void;
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      () =>
+        new Promise<Response>((r) => {
+          resolveFetch = r;
+        }),
+    );
+
+    const { captured } = renderHarness({ withProject: true });
+
+    // Trigger an error on the active project
+    await act(async () => {
+      const p = captured.state!.refreshFileTree();
+      resolveFetch(new Response("server down", { status: 500 }));
+      await p;
+    });
+
+    expect(screen.getByTestId("file-tree-error").textContent).toBe("HTTP 500");
+
+    // Switch to a new project
+    await act(async () => {
+      captured.state!.setProject({
+        slug: "other",
+        name: "Other",
+        path: "/other",
+        description: "",
+        source: "auto",
+      });
+    });
+
+    // Start a stale refresh for the OLD project — should NOT clear the
+    // current (now "other") project's error state, since we haven't
+    // triggered an error or a fresh load for "other" yet.
+    // First, set an error for the active project "other"
+    await act(async () => {
+      const p = captured.state!.refreshFileTree();
+      resolveFetch(new Response("other error", { status: 502 }));
+      await p;
+    });
+
+    expect(screen.getByTestId("file-tree-error").textContent).toBe("HTTP 502");
+
+    // Now start a stale refresh for the OLD slug — it must NOT clear the error
+    await act(async () => {
+      captured.state!.refreshFileTree("test-project");
+    });
+
+    // The active project's error must still be present
+    expect(screen.getByTestId("file-tree-error").textContent).toBe("HTTP 502");
+
+    // Resolve the stale request — error must still be present
+    await act(async () => {
+      resolveFetch(new Response("stale fail", { status: 500 }));
+    });
+
+    expect(screen.getByTestId("file-tree-error").textContent).toBe("HTTP 502");
+  });
+
   it("T1-ctx-6: successful empty root response shows no error", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("[]", {

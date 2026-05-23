@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Spinner, FileCode, TerminalWindow, WarningCircle } from "@phosphor-icons/react";
@@ -128,13 +128,19 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     setProject(project);
   }, [project, setProject]);
 
+  const loadCountRef = useRef(0);
+
   const loadRootFileTree = useCallback(
     async (slug: string) => {
+      loadCountRef.current += 1;
       setFileTreeLoading(true);
       try {
         await refreshFileTree(slug);
       } finally {
-        setFileTreeLoading(false);
+        loadCountRef.current -= 1;
+        if (loadCountRef.current === 0) {
+          setFileTreeLoading(false);
+        }
       }
     },
     [refreshFileTree, setFileTreeLoading],

@@ -232,7 +232,9 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
 
     rootRefreshCountRef.current += 1;
     setFileTreeRefreshing(true);
-    setFileTreeError(null);
+    if (!currentSlugRef.current || currentSlugRef.current === targetSlug) {
+      setFileTreeError(null);
+    }
 
     const promise = (async () => {
       try {
