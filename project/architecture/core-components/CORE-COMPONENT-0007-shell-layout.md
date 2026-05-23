@@ -27,7 +27,8 @@ Define the top-level IDE shell structure that all DevDeck pages share. The shell
 - Panels MUST define a `minSize` percentage to prevent collapse below usable dimensions
 - Togglable panels that own persistent resources (WebSocket connections, server processes) MUST remain mounted at all times; use `collapsible`/`collapsedSize` with imperative `collapse()`/`expand()` to control visibility instead of conditional rendering
 - Mount animations SHOULD use `framer-motion` with subtle fade/slide (duration ≤ 300ms)
-- On project pages, a fixed-width sidebar (~48px) MUST render as a flex sibling to the left of the `Group`, outside the resizable panel tree (see CORE-COMPONENT-0008)
+- On project pages, a fixed-width sidebar (~176px) MUST render as a flex sibling to the left of the `Group`, outside the resizable panel tree (see CORE-COMPONENT-0008)
+- Each sidebar tab MUST display the project's language-color badge and the project name as a visible truncated text label
 - The sidebar MUST NOT participate in the `react-resizable-panels` layout — it is a static-width element
 
 ### Interfaces
