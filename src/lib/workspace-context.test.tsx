@@ -19,7 +19,7 @@ const cachedState: PerProjectWorkspaceState = {
   expandedFolders: ["src", "src/lib"],
   showFileViewer: false,
   showTerminal: false,
-  fileTree: [{ name: "main.ts", path: "main.ts", type: "file" }],
+  fileTree: [{ name: "main.ts", path: "main.ts", type: "file", kind: "regular-file" as const }],
 };
 
 // Consumer component to read workspace state
@@ -200,6 +200,7 @@ describe("WorkspaceProvider.refreshFileTree", () => {
           <span data-testid="refreshing">{String(ws.fileTreeRefreshing)}</span>
           <span data-testid="loading">{String(ws.fileTreeLoading)}</span>
           <span data-testid="tree-len">{ws.fileTree.length}</span>
+          <span data-testid="file-tree-error">{ws.fileTreeError ?? ""}</span>
           <span data-testid="directory-loading">{Array.from(ws.directoryLoading).join(",")}</span>
           <span data-testid="directory-errors">
             {Array.from(ws.directoryErrors.entries())
@@ -596,5 +597,264 @@ describe("WorkspaceProvider.refreshFileTree", () => {
     expect(screen.getByTestId("directory-errors").textContent).toContain("src:HTTP 500");
     expect(screen.getByTestId("selected-json").textContent).toBe("docs/readme.md");
     expect(screen.getByTestId("expanded-json").textContent).toBe("docs");
+  });
+});
+
+describe("WorkspaceProvider.fileTreeError", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  function renderHarness(opts: { withProject: boolean }) {
+    const captured: { state: ReturnType<typeof useWorkspace> | null } = { state: null };
+
+    function Probe() {
+      const ws = useWorkspace();
+      useEffect(() => {
+        captured.state = ws;
+      });
+      return (
+        <div>
+          <span data-testid="file-tree-error">{ws.fileTreeError ?? ""}</span>
+          <span data-testid="tree-len">{ws.fileTree.length}</span>
+          <span data-testid="refreshing">{String(ws.fileTreeRefreshing)}</span>
+        </div>
+      );
+    }
+
+    function ProjectSeed({ children }: { children: React.ReactNode }) {
+      const ws = useWorkspace();
+      useEffect(() => {
+        if (opts.withProject) {
+          ws.setProject({
+            slug: "demo",
+            name: "Demo",
+            path: "/demo",
+            description: "",
+            source: "auto",
+          });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, []);
+      return <>{children}</>;
+    }
+
+    const utils = render(
+      <OpenProjectsProvider>
+        <WorkspaceProvider slug={opts.withProject ? "demo" : undefined}>
+          <ProjectSeed>
+            <Probe />
+          </ProjectSeed>
+        </WorkspaceProvider>
+      </OpenProjectsProvider>,
+    );
+
+    return { ...utils, captured };
+  }
+
+  it("T1-ctx-1: sets fileTreeError on non-OK response", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("nope", { status: 500 }));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { captured } = renderHarness({ withProject: true });
+
+    await act(async () => {
+      await captured.state!.refreshFileTree();
+    });
+
+    expect(screen.getByTestId("file-tree-error").textContent).toBe("HTTP 500");
+    expect(screen.getByTestId("tree-len").textContent).toBe("0");
+  });
+
+  it("T1-ctx-2: sets fileTreeError on network rejection", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Network failure"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { captured } = renderHarness({ withProject: true });
+
+    await act(async () => {
+      await captured.state!.refreshFileTree();
+    });
+
+    expect(screen.getByTestId("file-tree-error").textContent).toBe("Network failure");
+  });
+
+  it("T1-ctx-3: clears fileTreeError on successful refresh after failure", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    fetchSpy.mockResolvedValueOnce(new Response("nope", { status: 500 }));
+
+    const { captured } = renderHarness({ withProject: true });
+
+    await act(async () => {
+      await captured.state!.refreshFileTree();
+    });
+    expect(screen.getByTestId("file-tree-error").textContent).toBe("HTTP 500");
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify([{ name: "a", path: "a", type: "file" }]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await act(async () => {
+      await captured.state!.refreshFileTree();
+    });
+
+    expect(screen.getByTestId("file-tree-error").textContent).toBe("");
+    expect(screen.getByTestId("tree-len").textContent).toBe("1");
+  });
+
+  it("T1-ctx-4: clears fileTreeError at start of new refresh", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    fetchSpy.mockResolvedValueOnce(new Response("nope", { status: 500 }));
+
+    const { captured } = renderHarness({ withProject: true });
+
+    await act(async () => {
+      await captured.state!.refreshFileTree();
+    });
+    expect(screen.getByTestId("file-tree-error").textContent).toBe("HTTP 500");
+
+    let resolveFetch: (res: Response) => void = () => {};
+    fetchSpy.mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+
+    let pending: Promise<void>;
+    act(() => {
+      pending = captured.state!.refreshFileTree();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("file-tree-error").textContent).toBe("");
+    });
+
+    await act(async () => {
+      resolveFetch(new Response("[]", { status: 200 }));
+      await pending!;
+    });
+  });
+
+  it("T1-ctx-5: does not set fileTreeError for stale project response", async () => {
+    let resolveFetch: (res: Response) => void = () => {};
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { captured } = renderHarness({ withProject: true });
+
+    let pending: Promise<void>;
+    act(() => {
+      pending = captured.state!.refreshFileTree("demo");
+    });
+    await waitFor(() => expect(screen.getByTestId("refreshing").textContent).toBe("true"));
+
+    await act(async () => {
+      captured.state!.setProject({
+        slug: "beta",
+        name: "Beta",
+        path: "/beta",
+        description: "",
+        source: "auto",
+      });
+    });
+
+    await act(async () => {
+      resolveFetch(new Response("nope", { status: 500 }));
+      await pending!;
+    });
+
+    expect(screen.getByTestId("file-tree-error").textContent).toBe("");
+  });
+
+  it("T1-ctx-7: existing error survives when a stale-slug refresh starts", async () => {
+    let resolveFetch!: (v: Response) => void;
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      () =>
+        new Promise<Response>((r) => {
+          resolveFetch = r;
+        }),
+    );
+
+    const { captured } = renderHarness({ withProject: true });
+
+    // Trigger an error on the active project
+    await act(async () => {
+      const p = captured.state!.refreshFileTree();
+      resolveFetch(new Response("server down", { status: 500 }));
+      await p;
+    });
+
+    expect(screen.getByTestId("file-tree-error").textContent).toBe("HTTP 500");
+
+    // Switch to a new project
+    await act(async () => {
+      captured.state!.setProject({
+        slug: "other",
+        name: "Other",
+        path: "/other",
+        description: "",
+        source: "auto",
+      });
+    });
+
+    // Start a stale refresh for the OLD project — should NOT clear the
+    // current (now "other") project's error state, since we haven't
+    // triggered an error or a fresh load for "other" yet.
+    // First, set an error for the active project "other"
+    await act(async () => {
+      const p = captured.state!.refreshFileTree();
+      resolveFetch(new Response("other error", { status: 502 }));
+      await p;
+    });
+
+    expect(screen.getByTestId("file-tree-error").textContent).toBe("HTTP 502");
+
+    // Now start a stale refresh for the OLD slug — it must NOT clear the error
+    await act(async () => {
+      captured.state!.refreshFileTree("test-project");
+    });
+
+    // The active project's error must still be present
+    expect(screen.getByTestId("file-tree-error").textContent).toBe("HTTP 502");
+
+    // Resolve the stale request — error must still be present
+    await act(async () => {
+      resolveFetch(new Response("stale fail", { status: 500 }));
+    });
+
+    expect(screen.getByTestId("file-tree-error").textContent).toBe("HTTP 502");
+  });
+
+  it("T1-ctx-6: successful empty root response shows no error", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("[]", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const { captured } = renderHarness({ withProject: true });
+
+    await act(async () => {
+      await captured.state!.refreshFileTree();
+    });
+
+    expect(screen.getByTestId("file-tree-error").textContent).toBe("");
+    expect(screen.getByTestId("tree-len").textContent).toBe("0");
   });
 });

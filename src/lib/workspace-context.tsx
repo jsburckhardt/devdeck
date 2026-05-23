@@ -20,6 +20,7 @@ interface WorkspaceState {
   showTerminal: boolean;
   fileTree: FileNode[];
   fileTreeLoading: boolean;
+  fileTreeError: string | null;
   directoryLoading: Set<string>;
   directoryErrors: Map<string, string>;
 }
@@ -120,6 +121,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
   const [showTerminal, setShowTerminal] = useState(cachedStateRef.current?.showTerminal ?? true);
   const [fileTree, setFileTreeState] = useState<FileNode[]>(cachedStateRef.current?.fileTree ?? []);
   const [fileTreeLoading, setFileTreeLoadingState] = useState(false);
+  const [fileTreeError, setFileTreeError] = useState<string | null>(null);
   const [fileTreeRefreshing, setFileTreeRefreshing] = useState(false);
   const [directoryLoading, setDirectoryLoading] = useState<Set<string>>(() => new Set());
   const [directoryErrors, setDirectoryErrors] = useState<Map<string, string>>(
@@ -172,6 +174,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
   const setProject = useCallback((p: Project) => {
     currentSlugRef.current = p.slug;
     setProjectState(p);
+    setFileTreeError(null);
     setRestoredFromCache((wasRestored) => {
       if (!wasRestored) {
         setSelectedFile(null);
@@ -229,6 +232,9 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
 
     rootRefreshCountRef.current += 1;
     setFileTreeRefreshing(true);
+    if (!currentSlugRef.current || currentSlugRef.current === targetSlug) {
+      setFileTreeError(null);
+    }
 
     const promise = (async () => {
       try {
@@ -236,7 +242,12 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
           cache: "no-store",
         });
         if (!res.ok) {
-          console.error("Failed to refresh file tree:", responseErrorMessage(res));
+          const activeSlug = currentSlugRef.current;
+          if (!activeSlug || activeSlug === targetSlug) {
+            const msg = responseErrorMessage(res);
+            console.error("Failed to refresh file tree:", msg);
+            setFileTreeError(msg);
+          }
           return;
         }
         const data = (await res.json()) as FileNode[];
@@ -244,7 +255,11 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
         if (activeSlug && activeSlug !== targetSlug) return;
         setFileTreeState((prev) => mergeRootTrees(data, prev));
       } catch (err) {
-        console.error("Failed to refresh file tree:", err);
+        const activeSlug = currentSlugRef.current;
+        if (!activeSlug || activeSlug === targetSlug) {
+          console.error("Failed to refresh file tree:", err);
+          setFileTreeError(err instanceof Error ? err.message : String(err));
+        }
       } finally {
         inFlightFileTreeRequests.current.delete(key);
         rootRefreshCountRef.current -= 1;
@@ -318,6 +333,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       showTerminal,
       fileTree,
       fileTreeLoading,
+      fileTreeError,
       directoryLoading,
       directoryErrors,
       fileTreeRefreshing,
@@ -339,6 +355,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       showTerminal,
       fileTree,
       fileTreeLoading,
+      fileTreeError,
       directoryLoading,
       directoryErrors,
       fileTreeRefreshing,
