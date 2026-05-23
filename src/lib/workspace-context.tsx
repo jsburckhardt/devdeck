@@ -23,6 +23,8 @@ interface WorkspaceState {
   fileTreeError: string | null;
   directoryLoading: Set<string>;
   directoryErrors: Map<string, string>;
+  activeWorktree: string | null;
+  worktreesSectionCollapsed: boolean;
 }
 
 interface WorkspaceContextValue extends WorkspaceState {
@@ -36,6 +38,8 @@ interface WorkspaceContextValue extends WorkspaceState {
   refreshFileTree: (explicitSlug?: string) => Promise<void>;
   loadDirectoryChildren: (path: string, explicitSlug?: string) => Promise<void>;
   fileTreeRefreshing: boolean;
+  setActiveWorktree: (name: string | null) => void;
+  toggleWorktreesSection: () => void;
 }
 
 const ROOT_REQUEST_PATH = "";
@@ -127,6 +131,12 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
   const [directoryErrors, setDirectoryErrors] = useState<Map<string, string>>(
     () => new Map(Object.entries(cachedStateRef.current?.directoryLoadErrors ?? {})),
   );
+  const [activeWorktree, setActiveWorktreeState] = useState<string | null>(
+    cachedStateRef.current?.activeWorktree ?? null,
+  );
+  const [worktreesSectionCollapsed, setWorktreesSectionCollapsed] = useState(
+    cachedStateRef.current?.worktreesSectionCollapsed ?? false,
+  );
 
   const currentSlugRef = useRef<string | undefined>(slug);
   const rootRefreshCountRef = useRef(0);
@@ -143,6 +153,8 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
     showTerminal,
     fileTree,
     directoryErrors,
+    activeWorktree,
+    worktreesSectionCollapsed,
   });
 
   useEffect(() => {
@@ -153,8 +165,19 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       showTerminal,
       fileTree,
       directoryErrors,
+      activeWorktree,
+      worktreesSectionCollapsed,
     };
-  }, [selectedFile, expandedFolders, showFileViewer, showTerminal, fileTree, directoryErrors]);
+  }, [
+    selectedFile,
+    expandedFolders,
+    showFileViewer,
+    showTerminal,
+    fileTree,
+    directoryErrors,
+    activeWorktree,
+    worktreesSectionCollapsed,
+  ]);
 
   useEffect(() => {
     if (!slug) return;
@@ -167,6 +190,8 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
         showTerminal: s.showTerminal,
         fileTree: s.fileTree,
         directoryLoadErrors: Object.fromEntries(s.directoryErrors),
+        activeWorktree: s.activeWorktree,
+        worktreesSectionCollapsed: s.worktreesSectionCollapsed,
       });
     };
   }, [slug, saveWorkspaceState]);
@@ -175,6 +200,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
     currentSlugRef.current = p.slug;
     setProjectState(p);
     setFileTreeError(null);
+    setActiveWorktreeState(null);
     setRestoredFromCache((wasRestored) => {
       if (!wasRestored) {
         setSelectedFile(null);
@@ -324,6 +350,14 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
     return promise;
   }, []);
 
+  const setActiveWorktree = useCallback((name: string | null) => {
+    setActiveWorktreeState(name);
+  }, []);
+
+  const toggleWorktreesSection = useCallback(() => {
+    setWorktreesSectionCollapsed((prev) => !prev);
+  }, []);
+
   const value = useMemo(
     () => ({
       project,
@@ -337,6 +371,8 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       directoryLoading,
       directoryErrors,
       fileTreeRefreshing,
+      activeWorktree,
+      worktreesSectionCollapsed,
       setProject,
       selectFile,
       toggleFolder,
@@ -346,6 +382,8 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       setFileTreeLoading,
       refreshFileTree,
       loadDirectoryChildren,
+      setActiveWorktree,
+      toggleWorktreesSection,
     }),
     [
       project,
@@ -359,6 +397,8 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       directoryLoading,
       directoryErrors,
       fileTreeRefreshing,
+      activeWorktree,
+      worktreesSectionCollapsed,
       setProject,
       selectFile,
       toggleFolder,
@@ -368,6 +408,8 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       setFileTreeLoading,
       refreshFileTree,
       loadDirectoryChildren,
+      setActiveWorktree,
+      toggleWorktreesSection,
     ],
   );
 
