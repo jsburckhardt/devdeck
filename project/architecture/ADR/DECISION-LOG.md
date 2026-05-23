@@ -15,7 +15,7 @@ This file is the single registry of all architectural decisions and core-compone
 | ID | Title | Status | Date |
 |----|-------|--------|------|
 | CORE-COMPONENT-0002 | Commit Standards | Adopted | 2026-05-05 |
-| CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2026-05-13 |
+| CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2026-05-22 |
 | CORE-COMPONENT-0004 | Theming | Adopted (updated) | 2026-05-21 |
 | CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2025-07-16 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
@@ -106,3 +106,7 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 76 | Apply terminal theme changes via `terminal.options.theme` at runtime without reconnect | CORE-COMPONENT-0004 | 2026-05-21 |
 | 77 | Require terminal theme to be independent of the app dark/light theme toggle | CORE-COMPONENT-0004 | 2026-05-21 |
 | 78 | Exempt terminal (xterm.js) from Decision #57 — terminal themes are user-controlled, not mapped from app theme | CORE-COMPONENT-0004 | 2026-05-21 |
+| 79 | Send `{ type: "setup", mode }` JSON text frame from server to client after PTY spawn | CORE-COMPONENT-0003 | 2026-05-22 |
+| 80 | Send `{ type: "setup", mode: "shell", fallback: true }` when tmux attach fails before wiring fallback PTY | CORE-COMPONENT-0003 | 2026-05-22 |
+| 81 | Require client to call `term.clear()` on fallback setup message to erase tmux error output | CORE-COMPONENT-0003 | 2026-05-22 |
+| 82 | Reset `terminalMode` to `"unknown"` and `isFallback` to `false` at start of each `connect()` attempt | CORE-COMPONENT-0003 | 2026-05-22 |
