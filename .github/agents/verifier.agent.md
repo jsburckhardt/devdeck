@@ -138,6 +138,8 @@ AGENT_CHANGES: false
 GH_AUTHENTICATED: false
 ACCEPTANCE_CRITERIA: []
 ACCEPTANCE_VERIFIED: false
+SMOKE_TEST_PASSED: false
+SMOKE_TEST_OUTPUT: ""
 </runtime>
 
 <triggers>
@@ -166,6 +168,9 @@ RUN `verify-clean`
 RUN `verify-acceptance-criteria`
 IF ACCEPTANCE_VERIFIED is false:
   RETURN: format="VERIFY_ERROR", issue_number=ISSUE_NUMBER, stage="Acceptance Criteria", error_message="Not all acceptance criteria are satisfied", details=ACCEPTANCE_CRITERIA, fix="Complete all acceptance criteria listed in the issue before shipping"
+RUN `run-smoke-test`
+IF SMOKE_TEST_PASSED is false:
+  RETURN: format="VERIFY_ERROR", issue_number=ISSUE_NUMBER, stage="Smoke Test", error_message="Application failed to start or respond", details=SMOKE_TEST_OUTPUT, fix="Fix the application so it starts and responds to requests before shipping"
 RUN `push-branch`
 RUN `create-pr`
 SET ADR_CC_LIST := <MERGED_LIST> (from "Agent Inference" using ADR_CHANGES, CC_CHANGES)
@@ -282,6 +287,19 @@ SET ACCEPTANCE_CRITERIA := <CRITERIA_LIST> (from "Agent Inference" using ISSUE_B
 SET CRITERIA_RESULTS := <RESULTS> (from "Agent Inference" using ACCEPTANCE_CRITERIA, CHANGED_FILES, VERIFICATION_RESULTS; for each criterion assess whether the implementation evidence satisfies it and produce a list of {criterion, section, satisfied, evidence} objects)
 SET ACCEPTANCE_VERIFIED := <ALL_SATISFIED> (from "Agent Inference" using CRITERIA_RESULTS; true only if every criterion is satisfied)
 SET ACCEPTANCE_CRITERIA := CRITERIA_RESULTS (from "Agent Inference")
+</process>
+
+<process id="run-smoke-test" name="Start the application locally, confirm it is ready, then shut it down">
+USE `execute/runInTerminal` where: command="<START_CMD> &" (from "Agent Inference" using VERIFICATION_COMMANDS; pick the dev/start command from verification config or infer from project files such as npm run dev, go run ., python -m app, etc.; run in background so the process does not block subsequent steps)
+CAPTURE APP_PID from `execute/runInTerminal`
+USE `execute/runInTerminal` where: command="sleep 5 && curl -sf --retry 5 --retry-delay 2 --retry-all-errors --max-time 10 http://localhost:<PORT>"
+CAPTURE HEALTH_OUTPUT from `execute/runInTerminal`
+SET APP_READY := <READY> (from "Agent Inference" using HEALTH_OUTPUT; true if the HTTP request returns a success status)
+SET SMOKE_TEST_PASSED := APP_READY
+USE `execute/runInTerminal` where: command="kill $APP_PID 2>/dev/null || true" (send SIGTERM to the background process to shut down the application)
+SET SMOKE_TEST_OUTPUT := <SUMMARY> (from "Agent Inference" using HEALTH_OUTPUT; summarize startup and health check results)
+IF SMOKE_TEST_PASSED is false:
+  SET SMOKE_TEST_OUTPUT := <ERROR_SUMMARY> (from "Agent Inference" using HEALTH_OUTPUT; summarize startup failure or health check failure)
 </process>
 
 <process id="push-branch" name="Push the feature branch to remote origin">

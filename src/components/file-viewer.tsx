@@ -277,7 +277,7 @@ function EditView({ content, onChange }: { content: string; onChange: (value: st
 }
 
 export default function FileViewer() {
-  const { project, selectedFile, fileTree, refreshFileTree } = useWorkspace();
+  const { project, selectedFile, fileTree, refreshFileTree, showFileViewer } = useWorkspace();
   const [fileContent, setFileContent] = useState<FileContent | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<PreviewErrorState | null>(null);
@@ -315,9 +315,11 @@ export default function FileViewer() {
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [selectedFile]);
 
-  // Fetch file content
+  // Fetch file content — skip when the panel is collapsed to avoid wasted
+  // network/CPU while the preview is hidden.
   useEffect(() => {
-    if (!project || !selectedFile) {
+    if (!project || !selectedFile || !showFileViewer) {
+      if (!showFileViewer) return; // keep stale content so re-expand doesn't flash blank
       // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting state when deps clear is the standard pattern
       setFileContent(null);
       return;
@@ -369,7 +371,7 @@ export default function FileViewer() {
     return () => {
       cancelled = true;
     };
-  }, [project, selectedFile]);
+  }, [project, selectedFile, showFileViewer]);
 
   // Fetch diff when switching to changes tab
   useEffect(() => {

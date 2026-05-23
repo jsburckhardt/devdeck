@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import dynamic from "next/dynamic";
-import { Group, Panel, Separator } from "react-resizable-panels";
+import { Group, Panel, Separator, type PanelImperativeHandle } from "react-resizable-panels";
 import { Spinner, FileCode, TerminalWindow, WarningCircle } from "@phosphor-icons/react";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { FileTree } from "@/components/file-tree";
@@ -97,15 +97,6 @@ function ExplorerContent({
   );
 }
 
-/**
- * Builds the panel layout key based on which panels are visible.
- * Changing the key forces a full remount of the Group, ensuring the layout
- * constraints are recomputed correctly for the current panel combination.
- */
-function layoutKey(showFileViewer: boolean, showTerminal: boolean): string {
-  return `layout-${showFileViewer ? "f" : ""}-${showTerminal ? "t" : ""}`;
-}
-
 interface WorkspaceLayoutProps {
   project: Project;
 }
@@ -123,6 +114,9 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     toggleFileViewer,
     toggleTerminal,
   } = useWorkspace();
+
+  const fileViewerPanelRef = useRef<PanelImperativeHandle>(null);
+  const terminalPanelRef = useRef<PanelImperativeHandle>(null);
 
   useEffect(() => {
     setProject(project);
@@ -169,10 +163,24 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     void loadRootFileTree(project.slug);
   }, [loadRootFileTree, project.slug]);
 
-  // Compute panel sizes based on which panels are visible
-  const rightPanelCount = (showFileViewer ? 1 : 0) + (showTerminal ? 1 : 0);
-  const explorerSize = rightPanelCount === 0 ? 100 : 20;
-  const remainingSize = 100 - explorerSize;
+  // Collapse/expand panels imperatively to preserve component lifecycle
+  // across visibility toggles (Decision #84). useLayoutEffect prevents a
+  // one-frame flash where the panel renders at defaultSize before collapsing.
+  useLayoutEffect(() => {
+    if (showFileViewer) {
+      fileViewerPanelRef.current?.expand();
+    } else {
+      fileViewerPanelRef.current?.collapse();
+    }
+  }, [showFileViewer]);
+
+  useLayoutEffect(() => {
+    if (showTerminal) {
+      terminalPanelRef.current?.expand();
+    } else {
+      terminalPanelRef.current?.collapse();
+    }
+  }, [showTerminal]);
 
   return (
     <div className="flex h-full flex-col">
@@ -192,17 +200,12 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
         />
       </div>
 
-      {/* Key forces remount when panel visibility changes, ensuring correct layout */}
-      <Group
-        key={layoutKey(showFileViewer, showTerminal)}
-        orientation="horizontal"
-        className="min-h-0 flex-1"
-      >
+      <Group orientation="horizontal" className="min-h-0 flex-1">
         {/* File Explorer — always visible. Spinner is gated SOLELY by
             `fileTreeLoading` (initial-load). `fileTreeRefreshing` is
             intentionally NOT surfaced here so background refreshes after
             in-portal edits stay silent (Decision #62). */}
-        <Panel defaultSize={explorerSize} minSize={12}>
+        <Panel defaultSize={20} minSize={12}>
           <ExplorerContent
             loading={fileTreeLoading}
             error={fileTreeError}
@@ -211,27 +214,43 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
           />
         </Panel>
 
-        {showFileViewer && (
-          <>
-            <Separator className="w-1 bg-border transition-colors hover:bg-primary/40" />
-            <Panel defaultSize={showTerminal ? remainingSize * 0.6 : remainingSize} minSize={20}>
-              <ErrorBoundary>
-                <FileViewer />
-              </ErrorBoundary>
-            </Panel>
-          </>
-        )}
+        <Separator
+          className={cn(
+            "w-1 bg-border transition-colors hover:bg-primary/40",
+            !showFileViewer && "hidden",
+          )}
+          disabled={!showFileViewer}
+        />
+        <Panel
+          panelRef={fileViewerPanelRef}
+          collapsible
+          collapsedSize={0}
+          defaultSize={48}
+          minSize={20}
+        >
+          <ErrorBoundary>
+            <FileViewer />
+          </ErrorBoundary>
+        </Panel>
 
-        {showTerminal && (
-          <>
-            <Separator className="w-1 bg-border transition-colors hover:bg-primary/40" />
-            <Panel defaultSize={showFileViewer ? remainingSize * 0.4 : remainingSize} minSize={15}>
-              <ErrorBoundary>
-                <TerminalPanel slug={project.slug} />
-              </ErrorBoundary>
-            </Panel>
-          </>
-        )}
+        <Separator
+          className={cn(
+            "w-1 bg-border transition-colors hover:bg-primary/40",
+            !showTerminal && "hidden",
+          )}
+          disabled={!showTerminal}
+        />
+        <Panel
+          panelRef={terminalPanelRef}
+          collapsible
+          collapsedSize={0}
+          defaultSize={32}
+          minSize={15}
+        >
+          <ErrorBoundary>
+            <TerminalPanel slug={project.slug} />
+          </ErrorBoundary>
+        </Panel>
       </Group>
     </div>
   );

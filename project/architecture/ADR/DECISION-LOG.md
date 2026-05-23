@@ -111,3 +111,4 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 81 | Require client to call `term.clear()` on fallback setup message to erase tmux error output | CORE-COMPONENT-0003 | 2026-05-22 |
 | 82 | Reset `terminalMode` to `"unknown"` and `isFallback` to `false` at start of each `connect()` attempt | CORE-COMPONENT-0003 | 2026-05-22 |
 | 83 | Surface root file-tree load errors via `fileTreeError` state and render error+retry UI in `ExplorerContent` when tree is empty | CORE-COMPONENT-0008 | 2026-05-22 |
+| 84 | Togglable panels that own persistent resources MUST remain mounted; use `collapsible`/`collapsedSize` with imperative `collapse()`/`expand()` instead of conditional rendering | CORE-COMPONENT-0007 | 2026-05-23 |

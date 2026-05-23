@@ -61,14 +61,18 @@ vi.mock("@xterm/addon-clipboard", () => ({
 }));
 vi.mock("@xterm/xterm/css/xterm.css", () => ({}));
 
-// Mock ResizeObserver
+// Mock ResizeObserver — capture callback so tests can trigger resize events
 const mockRODisconnect = vi.fn();
+let resizeObserverCallback: (() => void) | null = null;
 vi.stubGlobal(
   "ResizeObserver",
   class MockResizeObserver {
     observe = vi.fn();
     unobserve = vi.fn();
     disconnect = mockRODisconnect;
+    constructor(cb: () => void) {
+      resizeObserverCallback = cb;
+    }
   },
 );
 
@@ -644,6 +648,90 @@ describe("useTerminal", () => {
       // After reconnect, mode should be reset
       expect(result.current.terminalMode).toBe("unknown");
       expect(result.current.isFallback).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("T30: ResizeObserver skips fit() when container has zero dimensions", async () => {
+    vi.useFakeTimers();
+    try {
+      const container = document.createElement("div");
+
+      // Set container ref before rendering so ResizeObserver gets wired up on connect
+      const { result } = renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+
+      // Advance timer to allow WS creation (fake timers block waitFor)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(50);
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (result.current.containerRef as any).current = container;
+
+      // Trigger retry to wire ResizeObserver with the container
+      wsInstances = [];
+      await act(async () => {
+        result.current.retry();
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(50);
+      });
+
+      const ws = getLatestWs();
+      await act(async () => {
+        ws.onopen?.();
+      });
+
+      fakeFitAddon.fit.mockClear();
+
+      // Simulate collapsed panel (0×0 dimensions)
+      vi.spyOn(container, "getBoundingClientRect").mockReturnValue({
+        width: 0,
+        height: 0,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      });
+
+      // Trigger ResizeObserver callback
+      expect(resizeObserverCallback).not.toBeNull();
+      resizeObserverCallback!();
+
+      // Advance past the 150ms debounce timer
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200);
+      });
+
+      // fit() should NOT have been called (zero dimensions)
+      expect(fakeFitAddon.fit).not.toHaveBeenCalled();
+
+      // Now simulate non-zero dimensions
+      vi.spyOn(container, "getBoundingClientRect").mockReturnValue({
+        width: 800,
+        height: 400,
+        top: 0,
+        left: 0,
+        right: 800,
+        bottom: 400,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      });
+
+      resizeObserverCallback!();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200);
+      });
+
+      // fit() SHOULD be called with valid dimensions
+      expect(fakeFitAddon.fit).toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }

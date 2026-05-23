@@ -23,7 +23,25 @@ vi.mock("@/components/file-viewer", () => ({
 
 vi.mock("react-resizable-panels", () => ({
   Group: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
-  Panel: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
+  Panel: ({
+    children,
+    panelRef,
+  }: React.PropsWithChildren<{
+    panelRef?: React.Ref<unknown>;
+    collapsible?: boolean;
+    collapsedSize?: number;
+  }>) => {
+    // Expose a minimal imperative handle so collapse/expand calls don't throw
+    if (panelRef && typeof panelRef === "object" && panelRef !== null) {
+      (panelRef as React.MutableRefObject<unknown>).current = {
+        collapse: () => {},
+        expand: () => {},
+        isCollapsed: () => false,
+        getSize: () => ({ asPercentage: 50, inPixels: 500 }),
+      };
+    }
+    return <div>{children}</div>;
+  },
   Separator: () => <div />,
 }));
 
@@ -202,5 +220,46 @@ describe("WorkspaceLayout", () => {
 
     expect(screen.getByTestId("file-tree")).toBeInTheDocument();
     expect(screen.queryByText("Failed to load files")).not.toBeInTheDocument();
+  });
+
+  it("T9: TerminalPanel stays mounted when showTerminal toggles off and back on", () => {
+    const ctx = makeContext({ showTerminal: true });
+    mockUseWorkspace.mockReturnValue(ctx);
+
+    const { rerender } = render(<WorkspaceLayout project={project} />);
+    expect(screen.getByTestId("terminal-panel")).toBeInTheDocument();
+
+    // Toggle terminal off
+    mockUseWorkspace.mockReturnValue(makeContext({ showTerminal: false }));
+    rerender(<WorkspaceLayout project={project} />);
+
+    // TerminalPanel should still be in the DOM (collapsed, not unmounted)
+    expect(screen.getByTestId("terminal-panel")).toBeInTheDocument();
+
+    // Toggle terminal back on
+    mockUseWorkspace.mockReturnValue(makeContext({ showTerminal: true }));
+    rerender(<WorkspaceLayout project={project} />);
+
+    expect(screen.getByTestId("terminal-panel")).toBeInTheDocument();
+  });
+
+  it("T10: FileViewer stays mounted when showFileViewer toggles off and back on", () => {
+    mockUseWorkspace.mockReturnValue(makeContext({ showFileViewer: true }));
+
+    const { rerender } = render(<WorkspaceLayout project={project} />);
+    expect(screen.getByTestId("file-viewer")).toBeInTheDocument();
+
+    // Toggle file viewer off
+    mockUseWorkspace.mockReturnValue(makeContext({ showFileViewer: false }));
+    rerender(<WorkspaceLayout project={project} />);
+
+    // FileViewer should still be in the DOM (collapsed, not unmounted)
+    expect(screen.getByTestId("file-viewer")).toBeInTheDocument();
+
+    // Toggle file viewer back on
+    mockUseWorkspace.mockReturnValue(makeContext({ showFileViewer: true }));
+    rerender(<WorkspaceLayout project={project} />);
+
+    expect(screen.getByTestId("file-viewer")).toBeInTheDocument();
   });
 });
