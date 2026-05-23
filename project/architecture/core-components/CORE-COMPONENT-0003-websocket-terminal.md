@@ -45,7 +45,7 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 ### Interfaces
 - **WebSocket endpoint:** `/api/terminal?token=<bearer>&slug=<project-slug>&cols=<N>&rows=<N>` — accepts WebSocket upgrade requests with valid token (via query param or cookie); `slug` is optional and selects per-project CWD and tmux session; `cols`/`rows` are optional initial dimensions (clamped server-side, defaults to 80×24)
 - **Token handshake:** On upgrade, server extracts `token` from query string or `devdeck_token` cookie, validates via `crypto.timingSafeEqual`, rejects with close code 4401 if invalid
-- **Frontend hook:** `useTerminal(ref)` — manages xterm.js instance, WebSocket connection, token injection, addon lifecycle, and exposes `terminalMode` and `isFallback` state
+- **Frontend hook:** `useTerminal(options?: { slug?, wsUrl?, theme? })` — manages xterm.js instance, WebSocket connection, token injection, addon lifecycle, and exposes `containerRef`, `terminalMode`, and `isFallback` state
 - **Message format:** Raw binary data (ArrayBuffer) for terminal I/O; JSON for control messages (resize, ping)
 - **Setup message (server → client):** `{ type: "setup", mode: "tmux" | "shell", fallback?: true, reason?: string }` — sent as a JSON text frame immediately after PTY spawn and on any session mode transition (e.g., tmux fallback to shell)
 
