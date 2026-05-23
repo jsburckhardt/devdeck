@@ -166,6 +166,8 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
             if (resizeTimer) clearTimeout(resizeTimer);
             resizeTimer = setTimeout(() => {
               try {
+                const rect = containerRef.current?.getBoundingClientRect();
+                if (!rect || rect.width <= 0 || rect.height <= 0) return;
                 fitAddonRef.current?.fit();
               } catch {
                 // ignore fit errors during rapid resize
