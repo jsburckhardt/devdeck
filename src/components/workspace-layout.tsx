@@ -164,7 +164,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
   }, [loadRootFileTree, project.slug]);
 
   // Collapse/expand panels imperatively to preserve component lifecycle
-  // across visibility toggles (Decision #83).
+  // across visibility toggles (Decision #84).
   useEffect(() => {
     if (showFileViewer) {
       fileViewerPanelRef.current?.expand();

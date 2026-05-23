@@ -25,6 +25,7 @@ Define the top-level IDE shell structure that all DevDeck pages share. The shell
 - Panel components MUST be client components (marked with `"use client"`) since they depend on browser APIs
 - The header MUST contain the application title ("DevDeck") and a theme toggle button
 - Panels MUST define a `minSize` percentage to prevent collapse below usable dimensions
+- Togglable panels that own persistent resources (WebSocket connections, server processes) MUST remain mounted at all times; use `collapsible`/`collapsedSize` with imperative `collapse()`/`expand()` to control visibility instead of conditional rendering
 - Mount animations SHOULD use `framer-motion` with subtle fade/slide (duration ≤ 300ms)
 - On project pages, a fixed-width sidebar (~48px) MUST render as a flex sibling to the left of the `Group`, outside the resizable panel tree (see CORE-COMPONENT-0008)
 - The sidebar MUST NOT participate in the `react-resizable-panels` layout — it is a static-width element
