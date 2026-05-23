@@ -197,10 +197,13 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
   }, [slug, saveWorkspaceState]);
 
   const setProject = useCallback((p: Project) => {
+    const slugChanged = currentSlugRef.current !== p.slug;
     currentSlugRef.current = p.slug;
     setProjectState(p);
     setFileTreeError(null);
-    setActiveWorktreeState(null);
+    if (slugChanged) {
+      setActiveWorktreeState(null);
+    }
     setRestoredFromCache((wasRestored) => {
       if (!wasRestored) {
         setSelectedFile(null);

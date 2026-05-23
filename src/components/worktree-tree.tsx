@@ -21,27 +21,26 @@ export function WorktreeTree({ slug }: WorktreeTreeProps) {
   return (
     <div data-testid="worktree-tree" className="border-b border-border">
       {/* Section header */}
-      <button
-        onClick={toggleWorktreesSection}
-        className="flex h-7 w-full items-center gap-1 px-3 text-xs font-medium text-muted-foreground hover:bg-accent/50"
-        aria-label="Toggle worktrees section"
-        aria-expanded={!worktreesSectionCollapsed}
-      >
-        {worktreesSectionCollapsed ? <CaretRight size={12} /> : <CaretDown size={12} />}
-        <GitBranch size={14} />
-        <span className="flex-1 text-left">Worktrees</span>
+      <div className="flex h-7 w-full items-center gap-1 px-3 text-xs font-medium text-muted-foreground">
+        <button
+          onClick={toggleWorktreesSection}
+          className="flex flex-1 items-center gap-1 hover:bg-accent/50"
+          aria-label="Toggle worktrees section"
+          aria-expanded={!worktreesSectionCollapsed}
+        >
+          {worktreesSectionCollapsed ? <CaretRight size={12} /> : <CaretDown size={12} />}
+          <GitBranch size={14} />
+          <span className="flex-1 text-left">Worktrees</span>
+        </button>
         {loading && <Spinner size={12} className="animate-spin" />}
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            refresh();
-          }}
+          onClick={refresh}
           className="rounded p-0.5 hover:bg-accent"
           aria-label="Refresh worktrees"
         >
           <ArrowClockwise size={12} />
         </button>
-      </button>
+      </div>
 
       {/* Content */}
       {!worktreesSectionCollapsed && (

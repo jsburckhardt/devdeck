@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { execFile } from "child_process";
 import { promisify } from "util";
+import path from "path";
 import { resolveProjectPath } from "@/lib/registry";
 import type { Worktree } from "@/lib/types";
 
 const execFileAsync = promisify(execFile);
 
-function parseWorktreePorcelain(output: string): Worktree[] {
-  const treesMarker = "/.trees/";
+function parseWorktreePorcelain(output: string, projectRoot: string): Worktree[] {
+  const treesDir = path.join(projectRoot, ".trees");
   const blocks = output.split("\n\n").filter((b) => b.trim());
   const worktrees: Worktree[] = [];
 
@@ -26,12 +27,14 @@ function parseWorktreePorcelain(output: string): Worktree[] {
       }
     }
 
-    // Only include entries whose path contains /.trees/
-    if (!worktreePath || !worktreePath.includes(treesMarker)) continue;
+    if (!worktreePath) continue;
 
-    // Derive name as the basename after .trees/
-    const treesIdx = worktreePath.lastIndexOf(treesMarker);
-    const name = worktreePath.slice(treesIdx + treesMarker.length);
+    // Only include entries within the project's .trees/ directory
+    const relative = path.relative(treesDir, worktreePath);
+    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) continue;
+
+    // Name is the relative path from .trees/ (typically a single segment)
+    const name = relative;
     if (!name) continue;
 
     worktrees.push({
@@ -68,7 +71,7 @@ export async function GET(request: NextRequest) {
     const { stdout } = await execFileAsync("git", ["worktree", "list", "--porcelain"], {
       cwd: root,
     });
-    const worktrees = parseWorktreePorcelain(stdout);
+    const worktrees = parseWorktreePorcelain(stdout, root);
     return NextResponse.json(worktrees, {
       headers: { "Cache-Control": "private, max-age=5, stale-while-revalidate=10" },
     });

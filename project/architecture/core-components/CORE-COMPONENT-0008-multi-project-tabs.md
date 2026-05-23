@@ -111,7 +111,7 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
   - `setActiveWorktree: (path: string | null) => void` — set the active worktree for terminal scoping
   - `worktreesSectionCollapsed: boolean` — whether the worktrees section in the explorer is collapsed
   - `toggleWorktreesSection: () => void` — toggle worktrees section collapsed state
-- **Worktree:** `{ path: string; branch: string; commit: string; name: string; isMain: boolean }`
+- **Worktree:** `{ name: string; branch: string }`
 - **Worktree endpoint:** `GET /api/worktrees?slug=<slug>` → `Worktree[]` — parses `git worktree list --porcelain`, filters to `.trees/`-relative entries; returns `[]` on any error
 - **useWorktrees(slug: string):** Hook exposing `{ worktrees: Worktree[], loading: boolean, error: string | null, refresh: () => void }`
 - **WorktreeTree:** Collapsible component rendered above `FileTree` in the explorer; lists worktrees with per-entry "Open Terminal" action
