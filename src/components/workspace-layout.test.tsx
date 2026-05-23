@@ -14,11 +14,17 @@ vi.mock("@/components/file-tree", () => ({
 }));
 
 vi.mock("@/components/terminal-panel", () => ({
-  TerminalPanel: () => <div data-testid="terminal-panel" />,
+  TerminalPanel: ({ worktree }: { slug?: string; worktree?: string }) => (
+    <div data-testid="terminal-panel" data-worktree={worktree ?? ""} />
+  ),
 }));
 
 vi.mock("@/components/file-viewer", () => ({
   default: () => <div data-testid="file-viewer" />,
+}));
+
+vi.mock("@/components/worktree-tree", () => ({
+  WorktreeTree: ({ slug }: { slug: string }) => <div data-testid="worktree-tree">{slug}</div>,
 }));
 
 vi.mock("react-resizable-panels", () => ({
@@ -69,6 +75,8 @@ function makeContext(overrides: Record<string, unknown> = {}) {
     fileTreeLoading: false,
     fileTreeError: null,
     fileTreeRefreshing: false,
+    activeWorktree: null,
+    worktreesSectionCollapsed: false,
     setProject: vi.fn(),
     selectFile: vi.fn(),
     toggleFolder: vi.fn(),
@@ -77,6 +85,11 @@ function makeContext(overrides: Record<string, unknown> = {}) {
     setFileTree: vi.fn(),
     setFileTreeLoading: vi.fn(),
     refreshFileTree: vi.fn().mockResolvedValue(undefined),
+    loadDirectoryChildren: vi.fn().mockResolvedValue(undefined),
+    directoryLoading: new Set<string>(),
+    directoryErrors: new Map<string, string>(),
+    setActiveWorktree: vi.fn(),
+    toggleWorktreesSection: vi.fn(),
     ...overrides,
   } as unknown as ReturnType<typeof useWorkspace>;
 }
@@ -261,5 +274,51 @@ describe("WorkspaceLayout", () => {
     rerender(<WorkspaceLayout project={project} />);
 
     expect(screen.getByTestId("file-viewer")).toBeInTheDocument();
+  });
+
+  it("T22: WorktreeTree appears above FileTree in explorer panel", () => {
+    mockUseWorkspace.mockReturnValue(
+      makeContext({
+        fileTreeLoading: false,
+        fileTree: [{ name: "a", path: "a", type: "file" }],
+      }),
+    );
+
+    render(<WorkspaceLayout project={project} />);
+
+    const worktreeTree = screen.getByTestId("worktree-tree");
+    const fileTree = screen.getByTestId("file-tree");
+    expect(worktreeTree).toBeInTheDocument();
+    expect(fileTree).toBeInTheDocument();
+
+    // Verify worktree-tree comes before file-tree in DOM order
+    const position = worktreeTree.compareDocumentPosition(fileTree);
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("T23: terminal receives worktree prop when activeWorktree is set", () => {
+    mockUseWorkspace.mockReturnValue(
+      makeContext({
+        activeWorktree: ".trees/feat",
+      }),
+    );
+
+    render(<WorkspaceLayout project={project} />);
+
+    const terminal = screen.getByTestId("terminal-panel");
+    expect(terminal).toHaveAttribute("data-worktree", ".trees/feat");
+  });
+
+  it("T23: terminal receives empty worktree when activeWorktree is null", () => {
+    mockUseWorkspace.mockReturnValue(
+      makeContext({
+        activeWorktree: null,
+      }),
+    );
+
+    render(<WorkspaceLayout project={project} />);
+
+    const terminal = screen.getByTestId("terminal-panel");
+    expect(terminal).toHaveAttribute("data-worktree", "");
   });
 });

@@ -16,9 +16,10 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 
 interface TerminalPanelProps {
   slug?: string;
+  worktree?: string;
 }
 
-export function TerminalPanel({ slug }: TerminalPanelProps) {
+export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
   const { themeId, theme, setThemeId, themes } = useTerminalTheme();
   const {
     containerRef,
@@ -30,7 +31,7 @@ export function TerminalPanel({ slug }: TerminalPanelProps) {
     retry,
     terminalMode,
     isFallback,
-  } = useTerminal({ slug, theme: theme.colors });
+  } = useTerminal({ slug, worktree, theme: theme.colors });
 
   const isUnauthorized = error?.toLowerCase().includes("unauthorized");
 
@@ -55,7 +56,9 @@ export function TerminalPanel({ slug }: TerminalPanelProps) {
     >
       <div className="flex h-8 shrink-0 items-center justify-between border-b border-border bg-card/50 px-3">
         <div className="flex items-center gap-1.5">
-          <span className="font-mono text-xs text-muted-foreground">Terminal</span>
+          <span className="font-mono text-xs text-muted-foreground">
+            Terminal{worktree ? ` · ${worktree.replace(/^\.trees\//, "")}` : ""}
+          </span>
           <ThemePicker themes={themes} activeThemeId={themeId} onSelect={setThemeId} />
         </div>
         <div className="flex items-center gap-1.5">

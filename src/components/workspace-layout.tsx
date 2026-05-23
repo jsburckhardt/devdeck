@@ -7,6 +7,7 @@ import { Spinner, FileCode, TerminalWindow, WarningCircle } from "@phosphor-icon
 import { ErrorBoundary } from "@/components/error-boundary";
 import { FileTree } from "@/components/file-tree";
 import { TerminalPanel } from "@/components/terminal-panel";
+import { WorktreeTree } from "@/components/worktree-tree";
 
 const FileViewer = dynamic(() => import("@/components/file-viewer"), {
   ssr: false,
@@ -49,11 +50,13 @@ function PanelToggle({
 }
 
 function ExplorerContent({
+  slug,
   loading,
   error,
   nodes,
   onRetry,
 }: {
+  slug: string;
   loading: boolean;
   error: string | null;
   nodes: import("@/lib/types").FileNode[];
@@ -65,6 +68,7 @@ function ExplorerContent({
         <span className="font-mono text-xs font-medium text-muted-foreground">Explorer</span>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
+        <WorktreeTree slug={slug} />
         <ErrorBoundary>
           {loading ? (
             <div className="flex h-full items-center justify-center">
@@ -113,6 +117,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     showTerminal,
     toggleFileViewer,
     toggleTerminal,
+    activeWorktree,
   } = useWorkspace();
 
   const fileViewerPanelRef = useRef<PanelImperativeHandle>(null);
@@ -207,6 +212,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
             in-portal edits stay silent (Decision #62). */}
         <Panel defaultSize={20} minSize={12}>
           <ExplorerContent
+            slug={project.slug}
             loading={fileTreeLoading}
             error={fileTreeError}
             nodes={fileTree}
@@ -248,7 +254,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
           minSize={15}
         >
           <ErrorBoundary>
-            <TerminalPanel slug={project.slug} />
+            <TerminalPanel slug={project.slug} worktree={activeWorktree ?? undefined} />
           </ErrorBoundary>
         </Panel>
       </Group>
