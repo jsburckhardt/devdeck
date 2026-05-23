@@ -10,8 +10,8 @@ Terminal sessions restart when toggling File Preview or Terminal panels because 
 
 ## Root Cause
 
-1. **`layoutKey` on `<Group>`** (`workspace-layout.tsx:83-85,155-156`): Changes the React key when panel visibility toggles, forcing a full subtree remount.
-2. **Conditional `{showTerminal && ...}`** (`workspace-layout.tsx:179-188`): Unmounts `TerminalPanel` when hidden, triggering cleanup in `use-terminal.ts:304-326` (WebSocket close + xterm dispose).
+1. **`layoutKey` on `<Group>`** (`workspace-layout.tsx`): Changes the React key when panel visibility toggles, forcing a full subtree remount.
+2. **Conditional `{showTerminal && ...}`** (`workspace-layout.tsx`): Unmounts `TerminalPanel` when hidden, triggering cleanup in `use-terminal.ts` (WebSocket close + xterm dispose).
 
 ## Affected Files
 
@@ -33,4 +33,4 @@ Terminal sessions restart when toggling File Preview or Terminal panels because 
 ## ADR/Core-Component Changes
 
 - **CORE-COMPONENT-0007** — Update: add rule about togglable panels preserving lifecycle
-- **DECISION-LOG** — New decision #79
+- **DECISION-LOG** — New decision #84

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import { Group, Panel, Separator, type PanelImperativeHandle } from "react-resizable-panels";
 import { Spinner, FileCode, TerminalWindow, WarningCircle } from "@phosphor-icons/react";
@@ -164,8 +164,9 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
   }, [loadRootFileTree, project.slug]);
 
   // Collapse/expand panels imperatively to preserve component lifecycle
-  // across visibility toggles (Decision #84).
-  useEffect(() => {
+  // across visibility toggles (Decision #84). useLayoutEffect prevents a
+  // one-frame flash where the panel renders at defaultSize before collapsing.
+  useLayoutEffect(() => {
     if (showFileViewer) {
       fileViewerPanelRef.current?.expand();
     } else {
@@ -173,7 +174,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     }
   }, [showFileViewer]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (showTerminal) {
       terminalPanelRef.current?.expand();
     } else {

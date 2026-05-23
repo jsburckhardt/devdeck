@@ -290,17 +290,16 @@ SET ACCEPTANCE_CRITERIA := CRITERIA_RESULTS (from "Agent Inference")
 </process>
 
 <process id="run-smoke-test" name="Start the application locally, confirm it is ready, then shut it down">
-USE `execute/runInTerminal` where: command=<START_CMD> (from "Agent Inference" using VERIFICATION_COMMANDS; pick the dev/start command from verification config or infer from project files such as npm run dev, go run ., python -m app, etc.)
-CAPTURE APP_OUTPUT from `execute/runInTerminal`
-SET APP_READY := <READY> (from "Agent Inference" using APP_OUTPUT; true if the application emits a listening/ready message or binds to a port)
-IF APP_READY is true:
-  USE `execute/runInTerminal` where: command="curl -sf --max-time 10 http://localhost:<PORT>"
-  CAPTURE HEALTH_OUTPUT from `execute/runInTerminal`
-  SET SMOKE_TEST_PASSED := <RESULT> (from "Agent Inference" using HEALTH_OUTPUT; true if the HTTP request returns a success status)
-USE `execute/runInTerminal` where: command=<STOP_CMD> (from "Agent Inference"; send SIGTERM/SIGINT to the running process or use the appropriate stop command to shut down the application)
-SET SMOKE_TEST_OUTPUT := <SUMMARY> (from "Agent Inference" using APP_OUTPUT, HEALTH_OUTPUT; summarize startup and health check results)
+USE `execute/runInTerminal` where: command="<START_CMD> &" (from "Agent Inference" using VERIFICATION_COMMANDS; pick the dev/start command from verification config or infer from project files such as npm run dev, go run ., python -m app, etc.; run in background so the process does not block subsequent steps)
+CAPTURE APP_PID from `execute/runInTerminal`
+USE `execute/runInTerminal` where: command="sleep 5 && curl -sf --retry 5 --retry-delay 2 --retry-all-errors --max-time 10 http://localhost:<PORT>"
+CAPTURE HEALTH_OUTPUT from `execute/runInTerminal`
+SET APP_READY := <READY> (from "Agent Inference" using HEALTH_OUTPUT; true if the HTTP request returns a success status)
+SET SMOKE_TEST_PASSED := APP_READY
+USE `execute/runInTerminal` where: command="kill $APP_PID 2>/dev/null || true" (send SIGTERM to the background process to shut down the application)
+SET SMOKE_TEST_OUTPUT := <SUMMARY> (from "Agent Inference" using HEALTH_OUTPUT; summarize startup and health check results)
 IF SMOKE_TEST_PASSED is false:
-  SET SMOKE_TEST_OUTPUT := <ERROR_SUMMARY> (from "Agent Inference" using APP_OUTPUT; summarize startup failure or health check failure)
+  SET SMOKE_TEST_OUTPUT := <ERROR_SUMMARY> (from "Agent Inference" using HEALTH_OUTPUT; summarize startup failure or health check failure)
 </process>
 
 <process id="push-branch" name="Push the feature branch to remote origin">
