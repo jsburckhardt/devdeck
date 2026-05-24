@@ -3,12 +3,13 @@
 import { useRouter, usePathname } from "next/navigation";
 import { House, X } from "@phosphor-icons/react";
 import { closeNavigationTarget, projectRoute, useOpenProjects } from "@/lib/open-projects-context";
+import type { CopilotCliState } from "@/lib/types";
 import { languageColor } from "@/lib/utils";
 
 export function ProjectSidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const { openProjects, closeProject } = useOpenProjects();
+  const { openProjects, closeProject, getCopilotStatus } = useOpenProjects();
   const activeSlug = openProjects.find((project) => pathname === projectRoute(project.slug))?.slug;
 
   return (
@@ -32,6 +33,7 @@ export function ProjectSidebar() {
       {/* Project tabs */}
       {openProjects.map((project) => {
         const isActive = activeSlug === project.slug;
+        const copilotStatus: CopilotCliState = getCopilotStatus(project.slug);
         return (
           <div key={project.slug} className="group relative mx-2">
             <button
@@ -45,10 +47,13 @@ export function ProjectSidebar() {
               aria-current={isActive ? "page" : undefined}
               title={project.name}
             >
-              <span
-                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-[10px] font-bold text-white ${languageColor(project.language)}`}
-              >
-                {project.name.charAt(0).toUpperCase()}
+              <span className="relative">
+                <span
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-[10px] font-bold text-white ${languageColor(project.language)}`}
+                >
+                  {project.name.charAt(0).toUpperCase()}
+                </span>
+                {copilotStatus !== "idle" && <CopilotStatusIndicator status={copilotStatus} />}
               </span>
               <span className="truncate text-sm">{project.name}</span>
             </button>
@@ -76,5 +81,21 @@ export function ProjectSidebar() {
         );
       })}
     </nav>
+  );
+}
+
+function CopilotStatusIndicator({ status }: { status: CopilotCliState }) {
+  const label = status === "running" ? "Copilot CLI running" : "Copilot CLI waiting for input";
+  return (
+    <span
+      className={`absolute -top-0.5 -right-0.5 block h-1.5 w-1.5 rounded-full ${
+        status === "running"
+          ? "animate-pulse bg-[oklch(0.72_0.19_142)]"
+          : "bg-[oklch(0.75_0.18_55)]"
+      }`}
+      aria-label={label}
+      title={label}
+      role="status"
+    />
   );
 }

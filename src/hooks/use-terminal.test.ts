@@ -754,4 +754,131 @@ describe("useTerminal", () => {
       expect(url.searchParams.get("slug")).toBe("demo");
     });
   });
+
+  describe("copilotStatus", () => {
+    it("T6: defaults to idle", () => {
+      const { result } = renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+      expect(result.current.copilotStatus).toBe("idle");
+    });
+
+    it("T7: updates on receiving status frame", async () => {
+      const { result } = renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+      const ws = await waitForWs();
+
+      await act(async () => {
+        ws.onopen?.();
+      });
+
+      await act(async () => {
+        ws.onmessage?.({
+          data: JSON.stringify({ type: "status", copilotState: "running" }),
+        });
+      });
+      expect(result.current.copilotStatus).toBe("running");
+
+      await act(async () => {
+        ws.onmessage?.({
+          data: JSON.stringify({ type: "status", copilotState: "waiting" }),
+        });
+      });
+      expect(result.current.copilotStatus).toBe("waiting");
+    });
+
+    it("T8: resets to idle on reconnect", async () => {
+      vi.useFakeTimers();
+      try {
+        const { result } = renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+
+        await vi.advanceTimersByTimeAsync(10);
+        const ws = getLatestWs();
+
+        await act(async () => {
+          ws.onopen?.();
+        });
+
+        await act(async () => {
+          ws.onmessage?.({
+            data: JSON.stringify({ type: "status", copilotState: "running" }),
+          });
+        });
+        expect(result.current.copilotStatus).toBe("running");
+
+        // Trigger reconnect (non-4401 close)
+        await act(async () => {
+          ws._triggerClose(1006, "abnormal");
+        });
+
+        // Advance past reconnect delay (1s for first attempt)
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(1100);
+        });
+
+        // After reconnect starts, copilotStatus should reset to idle
+        expect(result.current.copilotStatus).toBe("idle");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("T8b: resets to idle immediately on ws.onclose (before reconnect)", async () => {
+      vi.useFakeTimers();
+      try {
+        const { result } = renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+
+        await vi.advanceTimersByTimeAsync(10);
+        const ws = getLatestWs();
+
+        await act(async () => {
+          ws.onopen?.();
+        });
+
+        await act(async () => {
+          ws.onmessage?.({
+            data: JSON.stringify({ type: "status", copilotState: "running" }),
+          });
+        });
+        expect(result.current.copilotStatus).toBe("running");
+
+        // Trigger close — copilotStatus should reset immediately
+        await act(async () => {
+          ws._triggerClose(1006, "abnormal");
+        });
+
+        expect(result.current.copilotStatus).toBe("idle");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("T8c: resets to idle on unauthorized close (4401)", async () => {
+      vi.useFakeTimers();
+      try {
+        const { result } = renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+
+        await vi.advanceTimersByTimeAsync(10);
+        const ws = getLatestWs();
+
+        await act(async () => {
+          ws.onopen?.();
+        });
+
+        await act(async () => {
+          ws.onmessage?.({
+            data: JSON.stringify({ type: "status", copilotState: "waiting" }),
+          });
+        });
+        expect(result.current.copilotStatus).toBe("waiting");
+
+        // Trigger unauthorized close — copilotStatus should reset
+        await act(async () => {
+          ws._triggerClose(4401, "Unauthorized");
+        });
+
+        expect(result.current.copilotStatus).toBe("idle");
+        expect(result.current.status).toBe("failed");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
 });

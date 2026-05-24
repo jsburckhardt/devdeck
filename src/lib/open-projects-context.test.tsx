@@ -290,3 +290,94 @@ describe("useOpenProjects", () => {
     spy.mockRestore();
   });
 });
+
+describe("Copilot status methods", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      json: () => Promise.resolve([]),
+      ok: true,
+    } as Response);
+  });
+
+  it("T9: getCopilotStatus returns idle for unknown slug", () => {
+    let ctx: ReturnType<typeof useOpenProjects>;
+    render(
+      <OpenProjectsProvider>
+        <TestConsumer
+          onContext={(c) => {
+            ctx = c;
+          }}
+        />
+      </OpenProjectsProvider>,
+    );
+
+    expect(ctx!.getCopilotStatus("nonexistent-slug")).toBe("idle");
+  });
+
+  it("T10: updateCopilotStatus and getCopilotStatus round-trip", async () => {
+    let ctx: ReturnType<typeof useOpenProjects>;
+    render(
+      <OpenProjectsProvider>
+        <TestConsumer
+          onContext={(c) => {
+            ctx = c;
+          }}
+        />
+      </OpenProjectsProvider>,
+    );
+
+    await act(async () => {
+      ctx!.updateCopilotStatus("my-project", "running");
+    });
+
+    expect(ctx!.getCopilotStatus("my-project")).toBe("running");
+  });
+
+  it("T11: closeProject clears copilot status", async () => {
+    let ctx: ReturnType<typeof useOpenProjects>;
+    render(
+      <OpenProjectsProvider>
+        <TestConsumer
+          onContext={(c) => {
+            ctx = c;
+          }}
+        />
+      </OpenProjectsProvider>,
+    );
+
+    await act(async () => {
+      ctx!.openProject(projA);
+    });
+    await act(async () => {
+      ctx!.updateCopilotStatus("proj-a", "waiting");
+    });
+    await act(async () => {
+      ctx!.closeProject("proj-a");
+    });
+
+    expect(ctx!.getCopilotStatus("proj-a")).toBe("idle");
+  });
+
+  it("T12: multiple projects maintain independent copilot statuses", async () => {
+    let ctx: ReturnType<typeof useOpenProjects>;
+    render(
+      <OpenProjectsProvider>
+        <TestConsumer
+          onContext={(c) => {
+            ctx = c;
+          }}
+        />
+      </OpenProjectsProvider>,
+    );
+
+    await act(async () => {
+      ctx!.updateCopilotStatus("project-a", "running");
+      ctx!.updateCopilotStatus("project-b", "waiting");
+    });
+
+    expect(ctx!.getCopilotStatus("project-a")).toBe("running");
+    expect(ctx!.getCopilotStatus("project-b")).toBe("waiting");
+  });
+});

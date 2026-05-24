@@ -79,6 +79,8 @@ export interface Worktree {
   branch: string; // Git branch name (fallback: directory name)
 }
 
+export type CopilotCliState = "idle" | "running" | "waiting";
+
 export interface PerProjectWorkspaceState {
   selectedFile: string | null;
   expandedFolders: string[];
@@ -89,4 +91,5 @@ export interface PerProjectWorkspaceState {
   loadedDirectories?: string[];
   activeWorktree?: string | null;
   worktreesSectionCollapsed?: boolean;
+  copilotStatus?: CopilotCliState;
 }

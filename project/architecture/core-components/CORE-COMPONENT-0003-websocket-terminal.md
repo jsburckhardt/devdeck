@@ -46,6 +46,14 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - The server MUST reject `worktree` paths containing `..` segments or resolving outside the project root; on rejection, fall back to the project root shell
 - An `extractWorktree(req: IncomingMessage): string | null` function MUST be added to `terminal-server.mts` to extract and sanitize the `worktree` query param before it reaches `resolveTerminalSetup`
 - Worktree terminal sessions MUST always result in `{ type: "setup", mode: "shell" }` sent to the client
+- The server MAY send `{ type: "status", copilotState: CopilotCliState }` JSON text frames to communicate Copilot CLI state changes detected via PTY output pattern matching (see ADR-0005)
+- A pure function `detectCopilotState(strippedOutput: string): CopilotCliState | null` MUST be implemented in `terminal-server.mts` to detect Copilot CLI state from PTY output
+- `detectCopilotState()` MUST strip ANSI escape sequences from PTY output before pattern matching
+- The server MUST only emit a `"status"` frame when the detected state differs from the current per-connection `copilotState`
+- The server MUST maintain a per-connection idle timeout (default 30 seconds) that reverts `copilotState` to `"idle"` when no Copilot CLI output pattern is matched within the timeout window
+- The server MUST reset the idle timer on every `onData` call that matches a Copilot CLI pattern
+- The `useTerminal` hook MUST handle `"status"` messages in its `onmessage` dispatch and expose `copilotStatus: CopilotCliState` on its return type
+- The `useTerminal` hook MUST reset `copilotStatus` to `"idle"` at the start of each `connect()` attempt
 
 ### Interfaces
 - **WebSocket endpoint:** `/api/terminal?token=<bearer>&slug=<project-slug>&worktree=<relative-path>&cols=<N>&rows=<N>` — accepts WebSocket upgrade requests with valid token (via query param or cookie); `slug` is optional and selects per-project CWD and tmux session; `worktree` is optional and, when combined with `slug`, overrides CWD to the worktree directory in shell-only mode; `cols`/`rows` are optional initial dimensions (clamped server-side, defaults to 80×24)
@@ -53,6 +61,9 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - **Frontend hook:** `useTerminal(options?: { slug?, worktree?, wsUrl?, theme? })` — manages xterm.js instance, WebSocket connection, token injection, addon lifecycle, and exposes `containerRef`, `terminalMode`, and `isFallback` state; when `worktree` is provided, the WebSocket URL includes it as a query parameter
 - **Message format:** Raw binary data (ArrayBuffer) for terminal I/O; JSON for control messages (resize, ping)
 - **Setup message (server → client):** `{ type: "setup", mode: "tmux" | "shell", fallback?: true, reason?: string }` — sent as a JSON text frame immediately after PTY spawn and on any session mode transition (e.g., tmux fallback to shell)
+- **Status message (server → client):** `{ type: "status", copilotState: "idle" | "running" | "waiting" }` — sent as a JSON text frame whenever the server detects a Copilot CLI state change via PTY output pattern matching
+- **CopilotCliState type:** `"idle" | "running" | "waiting"` — inlined in `terminal-server.mts` (no `@/` imports) and exported from `src/lib/types.ts` for client-side use
+- **Frontend hook (extended):** `useTerminal(options?)` additionally returns `copilotStatus: CopilotCliState` (`"idle"` by default, updated on `"status"` frames)
 
 ### Expectations
 - Terminal input/output latency MUST be under 50ms on localhost
@@ -115,3 +126,4 @@ wss.on('connection', (ws, req) => {
 
 - [ADR-0002-tech-stack](../ADR/ADR-0002-tech-stack.md)
 - [ADR-0004-token-authentication](../ADR/ADR-0004-token-authentication.md)
+- [ADR-0005-copilot-cli-status-detection-strategy](../ADR/ADR-0005-copilot-cli-status-detection-strategy.md)

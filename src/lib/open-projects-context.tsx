@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { PerProjectWorkspaceState, Project } from "./types";
+import type { CopilotCliState, PerProjectWorkspaceState, Project } from "./types";
 
 interface OpenProjectsContextValue {
   openProjects: Project[];
@@ -17,6 +17,8 @@ interface OpenProjectsContextValue {
   closeProject: (slug: string) => void;
   saveWorkspaceState: (slug: string, state: PerProjectWorkspaceState) => void;
   restoreWorkspaceState: (slug: string) => PerProjectWorkspaceState | undefined;
+  updateCopilotStatus: (slug: string, status: CopilotCliState) => void;
+  getCopilotStatus: (slug: string) => CopilotCliState;
 }
 
 const STORAGE_KEY = "devdeck-open-projects";
@@ -68,6 +70,7 @@ function writeSlugsToStorage(slugs: string[]): void {
 export function OpenProjectsProvider({ children }: { children: React.ReactNode }) {
   const [openProjects, setOpenProjects] = useState<Project[]>([]);
   const workspaceCache = useRef<Map<string, PerProjectWorkspaceState>>(new Map());
+  const [copilotStatuses, setCopilotStatuses] = useState<Map<string, CopilotCliState>>(new Map());
   const hydrated = useRef(false);
 
   // Hydrate from localStorage + API on mount, merging with any projects opened during fetch
@@ -125,6 +128,12 @@ export function OpenProjectsProvider({ children }: { children: React.ReactNode }
 
   const closeProject = useCallback((slug: string) => {
     workspaceCache.current.delete(slug);
+    setCopilotStatuses((prev) => {
+      if (!prev.has(slug)) return prev;
+      const next = new Map(prev);
+      next.delete(slug);
+      return next;
+    });
     setOpenProjects((prev) => prev.filter((p) => p.slug !== slug));
   }, []);
 
@@ -139,6 +148,22 @@ export function OpenProjectsProvider({ children }: { children: React.ReactNode }
     [],
   );
 
+  const updateCopilotStatus = useCallback((slug: string, status: CopilotCliState) => {
+    setCopilotStatuses((prev) => {
+      if (prev.get(slug) === status) return prev;
+      const next = new Map(prev);
+      next.set(slug, status);
+      return next;
+    });
+  }, []);
+
+  const getCopilotStatus = useCallback(
+    (slug: string): CopilotCliState => {
+      return copilotStatuses.get(slug) ?? "idle";
+    },
+    [copilotStatuses],
+  );
+
   const value = useMemo(
     () => ({
       openProjects,
@@ -146,8 +171,18 @@ export function OpenProjectsProvider({ children }: { children: React.ReactNode }
       closeProject,
       saveWorkspaceState,
       restoreWorkspaceState,
+      updateCopilotStatus,
+      getCopilotStatus,
     }),
-    [openProjects, openProject, closeProject, saveWorkspaceState, restoreWorkspaceState],
+    [
+      openProjects,
+      openProject,
+      closeProject,
+      saveWorkspaceState,
+      restoreWorkspaceState,
+      updateCopilotStatus,
+      getCopilotStatus,
+    ],
   );
 
   return <OpenProjectsContext.Provider value={value}>{children}</OpenProjectsContext.Provider>;

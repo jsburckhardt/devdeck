@@ -87,13 +87,22 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - `WorkspaceContext` MUST expose `activeWorktree: string | null` and `setActiveWorktree(path: string | null)` for worktree terminal scoping
 - `WorkspaceContext` MUST expose `worktreesSectionCollapsed: boolean` and `toggleWorktreesSection()`
 - `PerProjectWorkspaceState` MUST include `activeWorktree: string | null` and `worktreesSectionCollapsed: boolean` for per-project cache persistence
+- `PerProjectWorkspaceState` MUST include `copilotStatus?: CopilotCliState` for per-project Copilot CLI status caching
+- `OpenProjectsContextValue` MUST expose `updateCopilotStatus(slug: string, status: CopilotCliState): void` to update the cached Copilot status for a project
+- `OpenProjectsContextValue` MUST expose `getCopilotStatus(slug: string): CopilotCliState` to read the cached Copilot status for a project (returns `"idle"` if not set)
+- `closeProject(slug)` MUST clear the cached `copilotStatus` for that slug by explicitly deleting the entry from the separate `copilotStatuses` Map
+- Direct URL navigation and cold-start sidebar hydration MUST display `"idle"` until a fresh `"status"` frame is received
+- Sidebar tabs MUST render a Copilot CLI status indicator adjacent to the project language badge
+- The status indicator MUST use theme-aware CSS custom properties (CORE-COMPONENT-0004) and MUST NOT rely on color alone for semantics — `aria-label` and `title` attributes MUST convey the state
+- The status indicator MUST be hidden (not rendered) when `copilotStatus` is `"idle"`
+- The status indicator MUST be hidden when the terminal WebSocket is not connected (status is only meaningful with a live connection)
 - `WorktreeTree` MUST be rendered above `FileTree` inside `ExplorerContent`, always mounted per Decision #84, hidden via CSS when the worktree list is empty
 - Worktree data MUST be fetched via `GET /api/worktrees?slug=<slug>` returning `Worktree[]`; an empty array MUST be returned (not a server error) when `.trees/` is absent or git is unavailable
 - A `useWorktrees(slug: string)` hook MUST be provided exposing `{ worktrees: Worktree[], loading: boolean, error: string | null, refresh: () => void }`
 
 ### Interfaces
 
-- **OpenProjectsProvider:** React context providing `openProjects`, `openProject()`, `closeProject()`, `saveWorkspaceState()`, `restoreWorkspaceState()`
+- **OpenProjectsProvider:** React context providing `openProjects`, `openProject()`, `closeProject()`, `saveWorkspaceState()`, `restoreWorkspaceState()`, `updateCopilotStatus()`, `getCopilotStatus()`
 - **useOpenProjects():** Hook to consume the context; throws if used outside provider
 - **PerProjectWorkspaceState:** `{ selectedFile: string | null; expandedFolders: string[]; showFileViewer: boolean; showTerminal: boolean; fileTree: FileNode[]; directoryLoadErrors?: Record<string, string>; loadedDirectories?: string[]; activeWorktree: string | null; worktreesSectionCollapsed: boolean }`
 - **FileNode lazy metadata:** `hasChildren?: boolean; childrenLoaded?: boolean; children?: FileNode[]; unreadable?: boolean; truncated?: boolean; truncatedReason?: "max-depth" | "entry-limit"`
@@ -250,6 +259,7 @@ async function handleDirectoryClick(node: FileNode) {
 
 - [ADR-0002-tech-stack](../ADR/ADR-0002-tech-stack.md)
 - [ADR-0003-project-registry-persistence](../ADR/ADR-0003-project-registry-persistence.md)
+- [ADR-0005-copilot-cli-status-detection-strategy](../ADR/ADR-0005-copilot-cli-status-detection-strategy.md)
 - [CORE-COMPONENT-0004-theming](CORE-COMPONENT-0004-theming.md)
 - [CORE-COMPONENT-0005-error-handling](CORE-COMPONENT-0005-error-handling.md)
 - [CORE-COMPONENT-0006-development-standards](CORE-COMPONENT-0006-development-standards.md)

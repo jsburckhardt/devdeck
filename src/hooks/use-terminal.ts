@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { ITheme } from "@xterm/xterm";
+import type { CopilotCliState } from "@/lib/types";
 import { TERMINAL_THEMES } from "./use-terminal-theme";
 
 export type TerminalStatus =
@@ -30,6 +31,7 @@ export interface UseTerminalReturn {
   retry: () => void;
   terminalMode: TerminalMode;
   isFallback: boolean;
+  copilotStatus: CopilotCliState;
 }
 
 const MAX_RECONNECT_ATTEMPTS = 3;
@@ -57,6 +59,7 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const [terminalMode, setTerminalMode] = useState<TerminalMode>("unknown");
   const [isFallback, setIsFallback] = useState(false);
+  const [copilotStatus, setCopilotStatus] = useState<CopilotCliState>("idle");
 
   const baseWsUrl = options?.wsUrl ?? buildWsUrl(options?.slug, options?.worktree);
 
@@ -83,6 +86,7 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
     setError(null);
     setTerminalMode("unknown");
     setIsFallback(false);
+    setCopilotStatus("idle");
 
     try {
       const { Terminal } = await import("@xterm/xterm");
@@ -238,6 +242,7 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
               mode?: "tmux" | "shell";
               fallback?: boolean;
               reason?: string;
+              copilotState?: string;
             };
             if (msg.type === "error") {
               setError(msg.message ?? "Unknown error");
@@ -247,6 +252,11 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
                 setIsFallback(true);
                 term.clear();
               }
+            } else if (msg.type === "status") {
+              const state = msg.copilotState;
+              setCopilotStatus(
+                state === "running" || state === "waiting" || state === "idle" ? state : "idle",
+              );
             }
           } catch {
             // ignore
@@ -256,6 +266,9 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
 
       ws.onclose = (event: CloseEvent) => {
         if (gen !== generationRef.current) return;
+
+        // Clear copilot status on any close path — stale running/waiting is misleading
+        setCopilotStatus("idle");
 
         // Unauthorized — do not reconnect
         if (event.code === WS_CLOSE_UNAUTHORIZED) {
@@ -366,5 +379,6 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
     retry,
     terminalMode,
     isFallback,
+    copilotStatus,
   };
 }

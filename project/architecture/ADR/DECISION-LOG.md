@@ -9,18 +9,19 @@ This file is the single registry of all architectural decisions and core-compone
 | ADR-0002 | Next.js + xterm.js + node-pty Tech Stack | Accepted | 2026-05-06 |
 | ADR-0003 | Project Registry & Persistence Strategy | Accepted | 2025-07-15 |
 | ADR-0004 | Token-Based Authentication | Accepted | 2025-07-16 |
+| ADR-0005 | Copilot CLI Status Detection Strategy | Accepted | 2025-07-28 |
 
 ## Core-Components
 
 | ID | Title | Status | Date |
 |----|-------|--------|------|
 | CORE-COMPONENT-0002 | Commit Standards | Adopted | 2026-05-05 |
-| CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2026-05-23 |
+| CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2025-07-28 |
 | CORE-COMPONENT-0004 | Theming | Adopted (updated) | 2026-05-21 |
 | CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2025-07-16 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
 | CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-05-23 |
-| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-05-23 |
+| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2025-07-28 |
 
 ## Decisions
 
@@ -122,3 +123,12 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 92 | Include `activeWorktree` and `worktreesSectionCollapsed` in `PerProjectWorkspaceState` for per-project cache persistence | CORE-COMPONENT-0008 | 2026-05-23 |
 | 93 | Fetch worktree data via `GET /api/worktrees?slug=<slug>` returning `Worktree[]`; return empty array (not HTTP error) when `.trees/` is absent or git is unavailable | CORE-COMPONENT-0008 | 2026-05-23 |
 | 94 | Render `WorktreeTree` above `FileTree` inside `ExplorerContent`, always mounted per Decision #84, hidden via CSS when the worktree list is empty | CORE-COMPONENT-0008 | 2026-05-23 |
+| 95 | Use PTY output pattern matching for Copilot CLI state detection, rejecting process inspection | ADR-0005 | 2025-07-28 |
+| 96 | Extend WebSocket JSON text frame protocol with `{ type: "status", copilotState }` for Copilot CLI status | ADR-0005 | 2025-07-28 |
+| 97 | Define CopilotCliState as `"idle" \| "running" \| "waiting"` with conservative idle fallback | ADR-0005 | 2025-07-28 |
+| 98 | Revert copilotState to `"idle"` after 30-second idle timeout with no matching PTY output | ADR-0005 | 2025-07-28 |
+| 99 | Require `detectCopilotState()` to strip ANSI codes before pattern matching in terminal-server.mts | CORE-COMPONENT-0003 | 2025-07-28 |
+| 100 | Require `useTerminal` hook to expose `copilotStatus: CopilotCliState` and reset to `"idle"` on connect | CORE-COMPONENT-0003 | 2025-07-28 |
+| 101 | Expose `updateCopilotStatus()` and `getCopilotStatus()` on OpenProjectsContextValue | CORE-COMPONENT-0008 | 2025-07-28 |
+| 102 | Render sidebar Copilot status indicator only when status is not `"idle"` and terminal is connected | CORE-COMPONENT-0008 | 2025-07-28 |
+| 103 | Require sidebar status indicator to use aria-label and title for non-color semantics | CORE-COMPONENT-0008 | 2025-07-28 |

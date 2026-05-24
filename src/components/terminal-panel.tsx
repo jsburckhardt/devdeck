@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useTerminal } from "@/hooks/use-terminal";
 import { useTerminalTheme } from "@/hooks/use-terminal-theme";
 import type { TerminalThemeDefinition } from "@/hooks/use-terminal-theme";
+import { useOpenProjects } from "@/lib/open-projects-context";
 import {
   WarningCircle,
   Spinner,
@@ -31,7 +32,16 @@ export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
     retry,
     terminalMode,
     isFallback,
+    copilotStatus,
   } = useTerminal({ slug, worktree, theme: theme.colors });
+  const { updateCopilotStatus } = useOpenProjects();
+
+  useEffect(() => {
+    if (slug) {
+      // Only propagate copilotStatus when terminal is connected; force "idle" otherwise
+      updateCopilotStatus(slug, isConnected ? copilotStatus : "idle");
+    }
+  }, [slug, copilotStatus, isConnected, updateCopilotStatus]);
 
   const isUnauthorized = error?.toLowerCase().includes("unauthorized");
 
