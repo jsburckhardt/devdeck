@@ -90,7 +90,7 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - `PerProjectWorkspaceState` MUST include `copilotStatus?: CopilotCliState` for per-project Copilot CLI status caching
 - `OpenProjectsContextValue` MUST expose `updateCopilotStatus(slug: string, status: CopilotCliState): void` to update the cached Copilot status for a project
 - `OpenProjectsContextValue` MUST expose `getCopilotStatus(slug: string): CopilotCliState` to read the cached Copilot status for a project (returns `"idle"` if not set)
-- `closeProject(slug)` MUST clear the cached `copilotStatus` for that slug (already handled by deleting the workspace cache entry)
+- `closeProject(slug)` MUST clear the cached `copilotStatus` for that slug by explicitly deleting the entry from the separate `copilotStatuses` Map
 - Direct URL navigation and cold-start sidebar hydration MUST display `"idle"` until a fresh `"status"` frame is received
 - Sidebar tabs MUST render a Copilot CLI status indicator adjacent to the project language badge
 - The status indicator MUST use theme-aware CSS custom properties (CORE-COMPONENT-0004) and MUST NOT rely on color alone for semantics — `aria-label` and `title` attributes MUST convey the state

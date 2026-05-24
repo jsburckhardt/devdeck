@@ -267,6 +267,9 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
       ws.onclose = (event: CloseEvent) => {
         if (gen !== generationRef.current) return;
 
+        // Clear copilot status on any close path — stale running/waiting is misleading
+        setCopilotStatus("idle");
+
         // Unauthorized — do not reconnect
         if (event.code === WS_CLOSE_UNAUTHORIZED) {
           setStatus("failed");

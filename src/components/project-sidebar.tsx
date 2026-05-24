@@ -89,7 +89,9 @@ function CopilotStatusIndicator({ status }: { status: CopilotCliState }) {
   return (
     <span
       className={`absolute -top-0.5 -right-0.5 block h-1.5 w-1.5 rounded-full ${
-        status === "running" ? "animate-pulse bg-green-500" : "bg-amber-500"
+        status === "running"
+          ? "animate-pulse bg-[oklch(0.72_0.19_142)]"
+          : "bg-[oklch(0.75_0.18_55)]"
       }`}
       aria-label={label}
       title={label}

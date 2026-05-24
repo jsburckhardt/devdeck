@@ -123,16 +123,29 @@ describe("TerminalPanel", () => {
   });
 
   it("T16: propagates copilotStatus to context via updateCopilotStatus", () => {
-    mockUseTerminal.mockReturnValue(defaultMockReturn({ copilotStatus: "running" }));
+    mockUseTerminal.mockReturnValue(
+      defaultMockReturn({ copilotStatus: "running", isConnected: true }),
+    );
     render(<TerminalPanel slug="test-project" />);
 
     expect(mockUpdateCopilotStatus).toHaveBeenCalledWith("test-project", "running");
   });
 
   it("T17: does not propagate copilotStatus when slug is undefined", () => {
-    mockUseTerminal.mockReturnValue(defaultMockReturn({ copilotStatus: "running" }));
+    mockUseTerminal.mockReturnValue(
+      defaultMockReturn({ copilotStatus: "running", isConnected: true }),
+    );
     render(<TerminalPanel />);
 
     expect(mockUpdateCopilotStatus).not.toHaveBeenCalled();
+  });
+
+  it("T17b: forces idle status when terminal is disconnected", () => {
+    mockUseTerminal.mockReturnValue(
+      defaultMockReturn({ copilotStatus: "running", isConnected: false, status: "failed" }),
+    );
+    render(<TerminalPanel slug="test-project" />);
+
+    expect(mockUpdateCopilotStatus).toHaveBeenCalledWith("test-project", "idle");
   });
 });

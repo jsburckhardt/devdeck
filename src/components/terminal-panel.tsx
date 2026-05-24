@@ -38,9 +38,10 @@ export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
 
   useEffect(() => {
     if (slug) {
-      updateCopilotStatus(slug, copilotStatus);
+      // Only propagate copilotStatus when terminal is connected; force "idle" otherwise
+      updateCopilotStatus(slug, isConnected ? copilotStatus : "idle");
     }
-  }, [slug, copilotStatus, updateCopilotStatus]);
+  }, [slug, copilotStatus, isConnected, updateCopilotStatus]);
 
   const isUnauthorized = error?.toLowerCase().includes("unauthorized");
 

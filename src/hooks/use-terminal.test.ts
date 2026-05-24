@@ -819,5 +819,66 @@ describe("useTerminal", () => {
         vi.useRealTimers();
       }
     });
+
+    it("T8b: resets to idle immediately on ws.onclose (before reconnect)", async () => {
+      vi.useFakeTimers();
+      try {
+        const { result } = renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+
+        await vi.advanceTimersByTimeAsync(10);
+        const ws = getLatestWs();
+
+        await act(async () => {
+          ws.onopen?.();
+        });
+
+        await act(async () => {
+          ws.onmessage?.({
+            data: JSON.stringify({ type: "status", copilotState: "running" }),
+          });
+        });
+        expect(result.current.copilotStatus).toBe("running");
+
+        // Trigger close — copilotStatus should reset immediately
+        await act(async () => {
+          ws._triggerClose(1006, "abnormal");
+        });
+
+        expect(result.current.copilotStatus).toBe("idle");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("T8c: resets to idle on unauthorized close (4401)", async () => {
+      vi.useFakeTimers();
+      try {
+        const { result } = renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+
+        await vi.advanceTimersByTimeAsync(10);
+        const ws = getLatestWs();
+
+        await act(async () => {
+          ws.onopen?.();
+        });
+
+        await act(async () => {
+          ws.onmessage?.({
+            data: JSON.stringify({ type: "status", copilotState: "waiting" }),
+          });
+        });
+        expect(result.current.copilotStatus).toBe("waiting");
+
+        // Trigger unauthorized close — copilotStatus should reset
+        await act(async () => {
+          ws._triggerClose(4401, "Unauthorized");
+        });
+
+        expect(result.current.copilotStatus).toBe("idle");
+        expect(result.current.status).toBe("failed");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });
