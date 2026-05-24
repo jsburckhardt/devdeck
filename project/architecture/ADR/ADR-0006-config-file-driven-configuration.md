@@ -77,7 +77,8 @@ Token rules:
 - Optional `name` and `description` are trimmed before use; blank optional metadata is omitted.
 - Slugs are derived from `path.basename(path.resolve(entry.path)).replace(/[^a-zA-Z0-9_-]/g, "")`.
 - Entries are skipped when the slug is empty, the slug already exists, the normalized path already
-  exists, the slug matches an auto-discovered project, or the path is not an existing directory.
+  exists, the slug matches an auto-discovered project under the resolved `projectsDir`, or the path
+  is not an existing directory.
 - Valid new entries are added as manual registry projects, including trimmed `name` and
   `description` when provided.
 - Seeding never overwrites or mutates existing registry entries.

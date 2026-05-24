@@ -186,14 +186,15 @@ describe("startDev", () => {
         terminalHost: "env",
       },
     });
+    const seedInitialProjects = vi.fn(async () => {
+      order.push("seed");
+      return { seeded: ["project"], skipped: [] };
+    });
 
     await startDev({
       spawn,
       loadConfig: vi.fn().mockResolvedValue(cfg),
-      seedInitialProjects: vi.fn(async () => {
-        order.push("seed");
-        return { seeded: ["project"], skipped: [] };
-      }),
+      seedInitialProjects,
       log: (message: unknown) => logs.push(String(message ?? "")),
       registerSignalHandlers: false,
       exit: vi.fn() as never,
@@ -205,5 +206,9 @@ describe("startDev", () => {
     expect(output).toContain("Projects: /projects (config)");
     expect(output).toContain("HTTP:    0.0.0.0:8070 (config/env)");
     expect(output).toContain("Terminal: 127.0.0.1:3100 (env/default)");
+    expect(seedInitialProjects).toHaveBeenCalledWith(cfg.initialProjects, {
+      log: expect.any(Function),
+      projectsDir: "/projects",
+    });
   });
 });

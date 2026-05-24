@@ -79,7 +79,10 @@ export async function startDev(deps: StartDevDeps = {}): Promise<StartDevHandle>
   const exit = deps.exit ?? process.exit;
   const config = await load({ env: baseEnv, warn: (message) => log(message) });
 
-  await seed(config.initialProjects, { log: (message) => log(message) });
+  await seed(config.initialProjects, {
+    log: (message) => log(message),
+    projectsDir: config.projectsDir,
+  });
   printBanner(config, log);
 
   const env = buildChildEnv(baseEnv, config);

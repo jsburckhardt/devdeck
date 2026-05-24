@@ -233,6 +233,20 @@ describe("seedInitialProjects", () => {
     expect(mockFs.writeFile).not.toHaveBeenCalled();
   });
 
+  it("uses the resolved projectsDir option for auto-discovery", async () => {
+    process.env.DEVDECK_PROJECTS_DIR = "/env/projects";
+    mockFs.readFile.mockResolvedValue(emptyRegistry);
+    mockFs.readdir.mockResolvedValue([dirent("app")] as unknown as never);
+
+    await seedInitialProjects([{ path: "/seed/app" }], {
+      log: vi.fn(),
+      projectsDir: "/config/projects",
+    });
+
+    expect(mockFs.readdir).toHaveBeenCalledWith("/config/projects", { withFileTypes: true });
+    expect(mockFs.readdir).not.toHaveBeenCalledWith("/env/projects", { withFileTypes: true });
+  });
+
   it("skips nonexistent paths", async () => {
     mockFs.readFile.mockResolvedValue(emptyRegistry);
     mockFs.readdir.mockResolvedValue([] as unknown as never);

@@ -85,11 +85,12 @@ export interface SeedInitialProjectsResult {
 
 export interface SeedInitialProjectsOptions {
   log?: (message: string) => void;
+  projectsDir?: string;
 }
 
-async function getAutoDiscoveredSlugs(): Promise<Set<string>> {
+async function getAutoDiscoveredSlugs(projectsDir: string): Promise<Set<string>> {
   try {
-    const entries = await fs.readdir(getProjectsDir(), { withFileTypes: true });
+    const entries = await fs.readdir(projectsDir, { withFileTypes: true });
     return new Set(entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name));
   } catch {
     return new Set();
@@ -101,11 +102,12 @@ export async function seedInitialProjects(
   options: SeedInitialProjectsOptions = {},
 ): Promise<SeedInitialProjectsResult> {
   const log = options.log ?? console.info;
+  const projectsDir = options.projectsDir ?? getProjectsDir();
   const result: SeedInitialProjectsResult = { seeded: [], skipped: [] };
   if (initialProjects.length === 0) return result;
 
   const registry = await loadRegistry();
-  const autoSlugs = await getAutoDiscoveredSlugs();
+  const autoSlugs = await getAutoDiscoveredSlugs(projectsDir);
   const additions: ProjectRegistry["projects"] = [];
 
   const skip = (projectPath: string, reason: string) => {

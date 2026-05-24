@@ -154,3 +154,4 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 122 | Amend ADR-0004 token generation so generated tokens persist to config and non-generated tokens are masked in startup output | ADR-0004 | 2026-05-24 |
 | 123 | Forward resolved config to `src/server/terminal-server.mts` through env vars; prohibit importing the config loader into the standalone `.mts` server | CORE-COMPONENT-0003 | 2026-05-24 |
 | 124 | Persist trimmed `initialProjects` name and description on new manual registry entries | ADR-0006 | 2026-05-24 |
+| 125 | Use the resolved `projectsDir` for `initialProjects` auto-discovery collision checks during startup seeding | ADR-0006 | 2026-05-24 |
