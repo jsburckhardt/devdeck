@@ -210,6 +210,7 @@ describe("WorkspaceProvider.refreshFileTree", () => {
           <span data-testid="tree-json">{JSON.stringify(ws.fileTree)}</span>
           <span data-testid="selected-json">{ws.selectedFile ?? ""}</span>
           <span data-testid="expanded-json">{Array.from(ws.expandedFolders).join(",")}</span>
+          <span data-testid="active-worktree">{ws.activeWorktree ?? "root"}</span>
         </div>
       );
     }
@@ -597,6 +598,163 @@ describe("WorkspaceProvider.refreshFileTree", () => {
     expect(screen.getByTestId("directory-errors").textContent).toContain("src:HTTP 500");
     expect(screen.getByTestId("selected-json").textContent).toBe("docs/readme.md");
     expect(screen.getByTestId("expanded-json").textContent).toBe("docs");
+  });
+
+  it("Issue #52: root and directory request keys include activeWorktree", async () => {
+    const resolvers: Array<(res: Response) => void> = [];
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolvers.push(resolve);
+        }),
+    );
+    const { captured } = renderHarness({ withProject: true });
+
+    await act(async () => {
+      captured.state!.setActiveWorktree(".trees/feat");
+    });
+
+    let firstRoot!: Promise<void>;
+    let duplicateRoot!: Promise<void>;
+    act(() => {
+      firstRoot = captured.state!.refreshFileTree();
+      duplicateRoot = captured.state!.refreshFileTree();
+    });
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+    expect(fetchSpy).toHaveBeenCalledWith("/api/files?slug=demo&worktree=.trees%2Ffeat", {
+      cache: "no-store",
+    });
+
+    await act(async () => {
+      resolvers[0](new Response("[]", { status: 200 }));
+      await firstRoot;
+      await duplicateRoot;
+    });
+
+    await act(async () => {
+      captured.state!.setFileTree([
+        { name: "src", path: "src", type: "directory", kind: "directory", hasChildren: true },
+      ]);
+    });
+
+    let child!: Promise<void>;
+    act(() => {
+      child = captured.state!.loadDirectoryChildren("src");
+      void captured.state!.loadDirectoryChildren("src");
+    });
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
+    expect(fetchSpy).toHaveBeenLastCalledWith(
+      "/api/files?slug=demo&path=src&worktree=.trees%2Ffeat",
+      { cache: "no-store" },
+    );
+    await act(async () => {
+      resolvers[1](new Response("[]", { status: 200 }));
+      await child;
+    });
+  });
+
+  it("Issue #52: duplicate paths dedupe separately per worktree", async () => {
+    const resolvers: Array<(res: Response) => void> = [];
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolvers.push(resolve);
+        }),
+    );
+    const { captured } = renderHarness({ withProject: true });
+
+    act(() => {
+      void captured.state!.refreshFileTree();
+    });
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      captured.state!.setActiveWorktree(".trees/feat");
+    });
+    act(() => {
+      void captured.state!.refreshFileTree();
+    });
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      resolvers[0](new Response("[]", { status: 200 }));
+      resolvers[1](new Response("[]", { status: 200 }));
+    });
+  });
+
+  it("Issue #52: ignores stale worktree responses", async () => {
+    let resolveFetch: (res: Response) => void = () => {};
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const { captured } = renderHarness({ withProject: true });
+
+    await act(async () => {
+      captured.state!.setActiveWorktree(".trees/a");
+    });
+    let pending!: Promise<void>;
+    act(() => {
+      pending = captured.state!.refreshFileTree();
+    });
+    await waitFor(() => expect(screen.getByTestId("refreshing").textContent).toBe("true"));
+
+    await act(async () => {
+      captured.state!.setActiveWorktree(".trees/b");
+    });
+    await act(async () => {
+      resolveFetch(
+        new Response(
+          JSON.stringify([{ name: "stale", path: "stale", type: "file", kind: "regular-file" }]),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+      await pending;
+    });
+
+    expect(screen.getByTestId("tree-json").textContent).not.toContain("stale");
+  });
+
+  it("Issue #52: saves and restores file-tree state per project root and worktree", async () => {
+    const { captured } = renderHarness({ withProject: true });
+
+    await act(async () => {
+      captured.state!.setFileTree([
+        { name: "root.ts", path: "root.ts", type: "file", kind: "regular-file" },
+      ]);
+      captured.state!.selectFile("root.ts");
+      captured.state!.toggleFolder("root-folder");
+    });
+
+    await act(async () => {
+      captured.state!.setActiveWorktree(".trees/a");
+    });
+    expect(screen.getByTestId("tree-json").textContent).toBe("[]");
+
+    await act(async () => {
+      captured.state!.setFileTree([
+        { name: "worktree.ts", path: "worktree.ts", type: "file", kind: "regular-file" },
+      ]);
+      captured.state!.selectFile("worktree.ts");
+      captured.state!.toggleFolder("worktree-folder");
+    });
+
+    await act(async () => {
+      captured.state!.setActiveWorktree(null);
+    });
+    expect(screen.getByTestId("tree-json").textContent).toContain("root.ts");
+    expect(screen.getByTestId("selected-json").textContent).toBe("root.ts");
+    expect(screen.getByTestId("expanded-json").textContent).toBe("root-folder");
+
+    await act(async () => {
+      captured.state!.setActiveWorktree(".trees/a");
+    });
+    expect(screen.getByTestId("tree-json").textContent).toContain("worktree.ts");
+    expect(screen.getByTestId("selected-json").textContent).toBe("worktree.ts");
+    expect(screen.getByTestId("expanded-json").textContent).toBe("worktree-folder");
   });
 });
 

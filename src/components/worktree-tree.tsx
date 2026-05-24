@@ -1,6 +1,16 @@
 "use client";
 
-import { GitBranch, CaretRight, CaretDown, ArrowClockwise, Spinner } from "@phosphor-icons/react";
+import { useEffect, useRef } from "react";
+import {
+  GitBranch,
+  CaretRight,
+  CaretDown,
+  ArrowClockwise,
+  Spinner,
+  FolderOpen,
+  Tree,
+} from "@phosphor-icons/react";
+import { toast } from "sonner";
 import { useWorktrees } from "@/hooks/use-worktrees";
 import { useWorkspace } from "@/lib/workspace-context";
 
@@ -12,6 +22,24 @@ export function WorktreeTree({ slug }: WorktreeTreeProps) {
   const { worktrees, loading, error, refresh } = useWorktrees(slug);
   const { activeWorktree, worktreesSectionCollapsed, setActiveWorktree, toggleWorktreesSection } =
     useWorkspace();
+  const lastMissingNoticeRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (loading || error || !activeWorktree) return;
+
+    const stillExists = worktrees.some((worktree) => `.trees/${worktree.name}` === activeWorktree);
+    if (stillExists) {
+      lastMissingNoticeRef.current = null;
+      return;
+    }
+
+    const noticeKey = `${slug}:${activeWorktree}`;
+    if (lastMissingNoticeRef.current !== noticeKey) {
+      toast.warning("Worktree no longer exists; showing project root instead.");
+      lastMissingNoticeRef.current = noticeKey;
+    }
+    setActiveWorktree(null);
+  }, [activeWorktree, error, loading, setActiveWorktree, slug, worktrees]);
 
   // Render nothing visible when worktree list is empty (stays mounted per Decision #84)
   if (worktrees.length === 0 && !loading && !error) {
@@ -61,17 +89,18 @@ export function WorktreeTree({ slug }: WorktreeTreeProps) {
           {/* Project root entry */}
           <button
             onClick={() => setActiveWorktree(null)}
-            className={`flex w-full items-center gap-1.5 px-3 py-1 text-xs transition-colors hover:bg-accent/30 ${
-              activeWorktree === null ? "bg-accent/50 font-medium" : ""
+            className={`flex w-full items-center gap-1.5 px-3 py-1 font-mono text-xs transition-colors hover:bg-accent/30 ${
+              activeWorktree === null ? "bg-accent/50 font-semibold ring-1 ring-border" : ""
             }`}
             aria-label="Switch to project root"
             aria-current={activeWorktree === null ? "true" : undefined}
           >
-            <GitBranch size={12} className="shrink-0 text-muted-foreground" />
+            <CaretDown size={12} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+            <FolderOpen size={12} className="shrink-0 text-muted-foreground" aria-hidden="true" />
             <span className="truncate">Project root</span>
           </button>
 
-          {/* Worktree entries */}
+          {/* Worktree selector nodes (selector-only; no nested file trees). */}
           {worktrees.map((wt) => {
             const worktreePath = `.trees/${wt.name}`;
             const isActive = activeWorktree === worktreePath;
@@ -79,14 +108,20 @@ export function WorktreeTree({ slug }: WorktreeTreeProps) {
               <button
                 key={wt.name}
                 onClick={() => setActiveWorktree(worktreePath)}
-                className={`flex w-full items-center gap-1.5 px-3 py-1 text-xs transition-colors hover:bg-accent/30 ${
-                  isActive ? "bg-accent/50 font-medium" : ""
+                className={`flex w-full items-center gap-1.5 py-1 pr-3 font-mono text-xs transition-colors hover:bg-accent/30 ${
+                  isActive ? "bg-accent/50 font-semibold ring-1 ring-border" : ""
                 }`}
+                style={{ paddingLeft: "1.75rem" }}
                 aria-label={`Switch to worktree ${wt.name}`}
                 aria-current={isActive ? "true" : undefined}
               >
-                <GitBranch size={12} className="shrink-0 text-muted-foreground" />
-                <span className="truncate">{wt.name}</span>
+                <CaretRight
+                  size={12}
+                  className="shrink-0 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <Tree size={12} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+                <span className="truncate text-left">{wt.name}</span>
                 {wt.branch !== wt.name && (
                   <span className="ml-auto shrink-0 truncate text-[10px] text-muted-foreground">
                     {wt.branch}

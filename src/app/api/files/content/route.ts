@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
-import { resolveProjectPath } from "@/lib/registry";
+import {
+  resolveWorktreeRoot,
+  WorktreeResolutionError,
+  worktreeResolutionErrorResponse,
+} from "@/lib/worktree-utils";
 import { getLanguageFromFilename, isBinaryFile } from "@/lib/file-utils";
 import type { FileContent, FileKind } from "@/lib/types";
 
@@ -110,6 +114,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const slug = searchParams.get("slug");
   const filePath = searchParams.get("path");
+  const worktree = searchParams.get("worktree");
 
   if (!slug || !filePath) {
     return NextResponse.json(
@@ -118,7 +123,18 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const root = await resolveProjectPath(slug);
+  let root: string;
+  try {
+    root = await resolveWorktreeRoot(slug, worktree);
+  } catch (error) {
+    if (error instanceof WorktreeResolutionError) {
+      return worktreeResolutionErrorResponse(error);
+    }
+    return NextResponse.json(
+      { error: "Project not found", code: "PROJECT_NOT_FOUND" },
+      { status: 404 },
+    );
+  }
   const fullPath = path.resolve(root, filePath);
 
   // Prevent path traversal — resolved path must remain under root
@@ -187,20 +203,37 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  let body: { slug?: string; path?: string; content?: string; mtime?: number };
+  let body: {
+    slug?: string;
+    path?: string;
+    content?: string;
+    mtime?: number;
+    worktree?: string | null;
+  };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { slug, path: filePath, content, mtime } = body;
+  const { slug, path: filePath, content, mtime, worktree } = body;
 
   if (!slug || !filePath || content === undefined || content === null) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  const root = await resolveProjectPath(slug);
+  let root: string;
+  try {
+    root = await resolveWorktreeRoot(slug, worktree);
+  } catch (error) {
+    if (error instanceof WorktreeResolutionError) {
+      return worktreeResolutionErrorResponse(error);
+    }
+    return NextResponse.json(
+      { error: "Project not found", code: "PROJECT_NOT_FOUND" },
+      { status: 404 },
+    );
+  }
   const fullPath = path.resolve(root, filePath);
 
   const relative = path.relative(root, fullPath);

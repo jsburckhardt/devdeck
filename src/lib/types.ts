@@ -81,6 +81,14 @@ export interface Worktree {
 
 export type CopilotCliState = "idle" | "running" | "waiting";
 
+export interface WorktreeFileTreeState {
+  selectedFile: string | null;
+  expandedFolders: string[];
+  fileTree: FileNode[];
+  directoryLoadErrors?: Record<string, string>;
+  loadedDirectories?: string[];
+}
+
 export interface PerProjectWorkspaceState {
   selectedFile: string | null;
   expandedFolders: string[];
@@ -92,4 +100,5 @@ export interface PerProjectWorkspaceState {
   activeWorktree?: string | null;
   worktreesSectionCollapsed?: boolean;
   copilotStatus?: CopilotCliState;
+  worktreeFileTreeStates?: Record<string, WorktreeFileTreeState>;
 }

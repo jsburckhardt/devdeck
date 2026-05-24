@@ -23,10 +23,6 @@ vi.mock("@/components/file-viewer", () => ({
   default: () => <div data-testid="file-viewer" />,
 }));
 
-vi.mock("@/components/worktree-tree", () => ({
-  WorktreeTree: ({ slug }: { slug: string }) => <div data-testid="worktree-tree">{slug}</div>,
-}));
-
 vi.mock("react-resizable-panels", () => ({
   Group: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
   Panel: ({
@@ -147,6 +143,47 @@ describe("WorkspaceLayout", () => {
 
     // FileTree rendered (no spinner gating from refreshing flag).
     expect(screen.getByTestId("file-tree")).toBeInTheDocument();
+  });
+
+  it("does not render the worktree selector inside the file explorer", () => {
+    mockUseWorkspace.mockReturnValue(makeContext());
+
+    render(<WorkspaceLayout project={project} />);
+
+    expect(screen.queryByTestId("worktree-tree")).not.toBeInTheDocument();
+  });
+
+  it("Issue #52: reloads the root file tree when activeWorktree changes", async () => {
+    const refreshFileTree = vi.fn().mockResolvedValue(undefined);
+    const setFileTreeLoading = vi.fn();
+
+    mockUseWorkspace.mockReturnValue(
+      makeContext({
+        activeWorktree: null,
+        refreshFileTree,
+        setFileTreeLoading,
+      }),
+    );
+
+    const { rerender } = render(<WorkspaceLayout project={project} />);
+
+    await waitFor(() => {
+      expect(refreshFileTree).toHaveBeenCalledTimes(1);
+    });
+
+    mockUseWorkspace.mockReturnValue(
+      makeContext({
+        activeWorktree: ".trees/feat",
+        refreshFileTree,
+        setFileTreeLoading,
+      }),
+    );
+    rerender(<WorkspaceLayout project={project} />);
+
+    await waitFor(() => {
+      expect(refreshFileTree).toHaveBeenCalledTimes(2);
+    });
+    expect(refreshFileTree).toHaveBeenLastCalledWith(project.slug);
   });
 
   it("T2-layout-1: shows error+retry when root load fails and tree is empty", () => {
@@ -276,7 +313,7 @@ describe("WorkspaceLayout", () => {
     expect(screen.getByTestId("file-viewer")).toBeInTheDocument();
   });
 
-  it("T22: WorktreeTree appears above FileTree in explorer panel", () => {
+  it("T22: file explorer renders FileTree without the project-panel WorktreeTree", () => {
     mockUseWorkspace.mockReturnValue(
       makeContext({
         fileTreeLoading: false,
@@ -286,14 +323,9 @@ describe("WorkspaceLayout", () => {
 
     render(<WorkspaceLayout project={project} />);
 
-    const worktreeTree = screen.getByTestId("worktree-tree");
     const fileTree = screen.getByTestId("file-tree");
-    expect(worktreeTree).toBeInTheDocument();
     expect(fileTree).toBeInTheDocument();
-
-    // Verify worktree-tree comes before file-tree in DOM order
-    const position = worktreeTree.compareDocumentPosition(fileTree);
-    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByTestId("worktree-tree")).not.toBeInTheDocument();
   });
 
   it("T23: terminal receives worktree prop when activeWorktree is set", () => {

@@ -96,6 +96,10 @@ function setupWorkspace(overrides: Record<string, unknown> = {}) {
     refreshFileTree: vi.fn().mockResolvedValue(undefined),
     loadDirectoryChildren: vi.fn().mockResolvedValue(undefined),
     fileTreeError: null,
+    activeWorktree: null,
+    worktreesSectionCollapsed: false,
+    setActiveWorktree: vi.fn(),
+    toggleWorktreesSection: vi.fn(),
     directoryLoading: new Set<string>(),
     directoryErrors: new Map<string, string>(),
   };
@@ -121,6 +125,128 @@ beforeEach(() => {
 });
 
 describe("FileViewer", () => {
+  describe("Issue #52 worktree requests", () => {
+    it("content GET and diff GET include activeWorktree when set", async () => {
+      setupWorkspace({
+        selectedFile: "src/index.ts",
+        activeWorktree: ".trees/feat",
+        fileTree: [{ name: "index.ts", path: "src/index.ts", type: "file", status: "modified" }],
+      });
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+      fetchSpy.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            content: "const x = 1;",
+            language: "typescript",
+            size: 12,
+            isBinary: false,
+            path: "src/index.ts",
+            name: "index.ts",
+            mtime: 1000,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+
+      render(<FileViewer />);
+      const user = userEvent.setup();
+
+      await waitFor(() => expect(screen.getByText("Changes")).toBeInTheDocument());
+      expect(String(fetchSpy.mock.calls[0][0])).toBe(
+        "/api/files/content?slug=test-project&path=src%2Findex.ts&worktree=.trees%2Ffeat",
+      );
+
+      fetchSpy.mockResolvedValueOnce(
+        new Response(JSON.stringify({ diff: "diff" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+      await user.click(screen.getByText("Changes"));
+
+      await waitFor(() => expect(screen.getByTestId("diff-view")).toBeInTheDocument());
+      expect(String(fetchSpy.mock.calls[1][0])).toBe(
+        "/api/files/diff?slug=test-project&path=src%2Findex.ts&worktree=.trees%2Ffeat",
+      );
+    });
+
+    it("save PUT body includes activeWorktree and refreshes current context", async () => {
+      const refreshFileTree = vi.fn().mockResolvedValue(undefined);
+      setupWorkspace({
+        selectedFile: "src/index.ts",
+        activeWorktree: ".trees/feat",
+        refreshFileTree,
+      });
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+      fetchSpy.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            content: "const x = 1;",
+            language: "typescript",
+            size: 12,
+            isBinary: false,
+            path: "src/index.ts",
+            name: "index.ts",
+            mtime: 1000,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+
+      render(<FileViewer />);
+      const user = userEvent.setup();
+      await waitFor(() => expect(screen.getByLabelText("Edit file")).toBeInTheDocument());
+      await user.click(screen.getByLabelText("Edit file"));
+      await user.type(screen.getByLabelText("File editor"), " ");
+
+      fetchSpy.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            content: "const x = 1; ",
+            language: "typescript",
+            size: 13,
+            isBinary: false,
+            path: "src/index.ts",
+            name: "index.ts",
+            mtime: 2000,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+
+      await user.click(screen.getByLabelText("Save file"));
+
+      await waitFor(() => expect(refreshFileTree).toHaveBeenCalledTimes(1));
+      const putInit = fetchSpy.mock.calls[1][1] as RequestInit;
+      expect(JSON.parse(String(putInit.body))).toMatchObject({ worktree: ".trees/feat" });
+    });
+
+    it("omits worktree from requests when activeWorktree is null", async () => {
+      setupWorkspace({ selectedFile: "src/index.ts", activeWorktree: null });
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+      fetchSpy.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            content: "const x = 1;",
+            language: "typescript",
+            size: 12,
+            isBinary: false,
+            path: "src/index.ts",
+            name: "index.ts",
+            mtime: 1000,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+
+      render(<FileViewer />);
+
+      await waitFor(() => expect(screen.getByText("src/index.ts")).toBeInTheDocument());
+      expect(String(fetchSpy.mock.calls[0][0])).toBe(
+        "/api/files/content?slug=test-project&path=src%2Findex.ts",
+      );
+    });
+  });
   it("shows placeholder when no file is selected", () => {
     setupWorkspace({ selectedFile: null });
     render(<FileViewer />);

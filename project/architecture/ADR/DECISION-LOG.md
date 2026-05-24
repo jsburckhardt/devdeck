@@ -21,7 +21,7 @@ This file is the single registry of all architectural decisions and core-compone
 | CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2025-07-16 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
 | CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-05-23 |
-| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2025-07-28 |
+| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-05-24 |
 
 ## Decisions
 
@@ -122,7 +122,7 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 91 | Expose `worktreesSectionCollapsed: boolean` and `toggleWorktreesSection()` on WorkspaceContext | CORE-COMPONENT-0008 | 2026-05-23 |
 | 92 | Include `activeWorktree` and `worktreesSectionCollapsed` in `PerProjectWorkspaceState` for per-project cache persistence | CORE-COMPONENT-0008 | 2026-05-23 |
 | 93 | Fetch worktree data via `GET /api/worktrees?slug=<slug>` returning `Worktree[]`; return empty array (not HTTP error) when `.trees/` is absent or git is unavailable | CORE-COMPONENT-0008 | 2026-05-23 |
-| 94 | Render `WorktreeTree` above `FileTree` inside `ExplorerContent`, always mounted per Decision #84, hidden via CSS when the worktree list is empty | CORE-COMPONENT-0008 | 2026-05-23 |
+| 94 | Render `WorktreeTree` above `FileTree` inside `ExplorerContent`, always mounted per Decision #84, hidden via CSS when the worktree list is empty (Superseded by #114) | CORE-COMPONENT-0008 | 2026-05-23 |
 | 95 | Use PTY output pattern matching for Copilot CLI state detection, rejecting process inspection | ADR-0005 | 2025-07-28 |
 | 96 | Extend WebSocket JSON text frame protocol with `{ type: "status", copilotState }` for Copilot CLI status | ADR-0005 | 2025-07-28 |
 | 97 | Define CopilotCliState as `"idle" \| "running" \| "waiting"` with conservative idle fallback | ADR-0005 | 2025-07-28 |
@@ -132,3 +132,14 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 101 | Expose `updateCopilotStatus()` and `getCopilotStatus()` on OpenProjectsContextValue | CORE-COMPONENT-0008 | 2025-07-28 |
 | 102 | Render sidebar Copilot status indicator only when status is not `"idle"` and terminal is connected | CORE-COMPONENT-0008 | 2025-07-28 |
 | 103 | Require sidebar status indicator to use aria-label and title for non-color semantics | CORE-COMPONENT-0008 | 2025-07-28 |
+| 104 | Require file-tree requests to key by slug, activeWorktree, and path | CORE-COMPONENT-0008 | 2026-05-24 |
+| 105 | Preserve root and worktree file-tree state separately within each project | CORE-COMPONENT-0008 | 2026-05-24 |
+| 106 | Guard file-tree responses against stale slug and activeWorktree contexts | CORE-COMPONENT-0008 | 2026-05-24 |
+| 107 | Accept optional worktree parameters on HTTP file APIs | CORE-COMPONENT-0008 | 2026-05-24 |
+| 108 | Resolve HTTP worktree roots with fs.realpath symlink-escape protection | CORE-COMPONENT-0008 | 2026-05-24 |
+| 109 | Return worktree FileNode paths relative to the active worktree root | CORE-COMPONENT-0008 | 2026-05-24 |
+| 110 | Pass activeWorktree on FileViewer content, save, and diff requests | CORE-COMPONENT-0008 | 2026-05-24 |
+| 111 | Render WorktreeTree as filesystem-style selector nodes, not nested file trees | CORE-COMPONENT-0008 | 2026-05-24 |
+| 112 | Render `.trees` directory nodes with the Tree icon in FileTree | CORE-COMPONENT-0008 | 2026-05-24 |
+| 113 | Reset missing restored activeWorktree values to project root with a non-fatal notice | CORE-COMPONENT-0008 | 2026-05-24 |
+| 114 | Supersede Decision #94: render WorktreeTree in the active project sidebar panel, not inside ExplorerContent | CORE-COMPONENT-0008 | 2026-05-24 |

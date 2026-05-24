@@ -55,6 +55,10 @@ function setupWorkspace(overrides: Record<string, unknown> = {}) {
     refreshFileTree: vi.fn().mockResolvedValue(undefined),
     loadDirectoryChildren: vi.fn().mockResolvedValue(undefined),
     fileTreeError: null,
+    activeWorktree: null,
+    worktreesSectionCollapsed: false,
+    setActiveWorktree: vi.fn(),
+    toggleWorktreesSection: vi.fn(),
   };
   const context = { ...defaults, ...overrides } as ReturnType<typeof useWorkspace>;
   mockUseWorkspace.mockReturnValue(context);
@@ -150,6 +154,54 @@ describe("FileTree", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Retry loading failed" }));
     expect(context.loadDirectoryChildren).toHaveBeenCalledWith("failed");
+  });
+
+  it("Issue #52 renders .trees directory with Tree icon when collapsed", () => {
+    setupWorkspace();
+    const nodes: FileNode[] = [
+      {
+        name: ".trees",
+        path: ".trees",
+        type: "directory",
+        kind: "directory",
+        hasChildren: true,
+        childrenLoaded: false,
+      },
+    ];
+
+    render(<FileTree nodes={nodes} />);
+
+    expect(screen.getByTestId("file-tree-tree-icon-collapsed")).toBeInTheDocument();
+  });
+
+  it("Issue #52 renders .trees directory with Tree icon when expanded", () => {
+    setupWorkspace({ expandedFolders: new Set<string>([".trees"]) });
+    const nodes: FileNode[] = [
+      {
+        name: ".trees",
+        path: ".trees",
+        type: "directory",
+        kind: "directory",
+        hasChildren: false,
+        childrenLoaded: true,
+        children: [],
+      },
+    ];
+
+    render(<FileTree nodes={nodes} />);
+
+    expect(screen.getByTestId("file-tree-tree-icon-expanded")).toBeInTheDocument();
+  });
+
+  it("Issue #52 preserves regular folder icons for other directories", () => {
+    setupWorkspace();
+    const nodes: FileNode[] = [
+      { name: "src", path: "src", type: "directory", kind: "directory", children: [] },
+    ];
+
+    render(<FileTree nodes={nodes} />);
+
+    expect(screen.queryByTestId(/file-tree-tree-icon/)).not.toBeInTheDocument();
   });
 
   it("TP10 renders regular nodes unchanged and selects files", async () => {

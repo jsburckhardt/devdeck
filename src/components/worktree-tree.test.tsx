@@ -2,6 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { WorktreeTree } from "./worktree-tree";
+import { toast } from "sonner";
+
+vi.mock("sonner", () => ({
+  toast: {
+    warning: vi.fn(),
+  },
+}));
 
 const mockRefresh = vi.fn();
 const mockSetActiveWorktree = vi.fn();
@@ -84,6 +91,58 @@ describe("WorktreeTree", () => {
 
     const worktreeButton = screen.getByRole("button", { name: "Switch to worktree feat" });
     expect(worktreeButton).toHaveAttribute("aria-current", "true");
+  });
+
+  it("resets a missing persisted active worktree to project root with a non-fatal notice", () => {
+    mockWorktrees = [{ name: "feat", branch: "feat" }];
+    mockActiveWorktree = ".trees/deleted";
+
+    render(<WorktreeTree slug="demo" />);
+
+    expect(mockSetActiveWorktree).toHaveBeenCalledWith(null);
+    expect(toast.warning).toHaveBeenCalledWith(
+      "Worktree no longer exists; showing project root instead.",
+    );
+  });
+
+  it("does not reset active worktree while worktree refresh is loading", () => {
+    mockLoading = true;
+    mockActiveWorktree = ".trees/deleted";
+
+    render(<WorktreeTree slug="demo" />);
+
+    expect(mockSetActiveWorktree).not.toHaveBeenCalled();
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it("renders nested worktree names as selector-style filesystem nodes", () => {
+    mockWorktrees = [{ name: "feature/login", branch: "feature/login" }];
+
+    render(<WorktreeTree slug="demo" />);
+
+    const node = screen.getByRole("button", { name: "Switch to worktree feature/login" });
+    expect(node).toHaveClass("font-mono");
+    expect(screen.getByText("feature/login")).toBeInTheDocument();
+  });
+
+  it("active state uses non-color affordances", () => {
+    mockWorktrees = [{ name: "feat", branch: "feat" }];
+    mockActiveWorktree = ".trees/feat";
+
+    render(<WorktreeTree slug="demo" />);
+
+    const worktreeButton = screen.getByRole("button", { name: "Switch to worktree feat" });
+    expect(worktreeButton).toHaveClass("bg-accent/50");
+    expect(worktreeButton).toHaveClass("font-semibold");
+  });
+
+  it("does not render nested inline file tree contents under worktree entries", () => {
+    mockWorktrees = [{ name: "feat", branch: "feat" }];
+
+    render(<WorktreeTree slug="demo" />);
+
+    expect(screen.queryByRole("tree")).not.toBeInTheDocument();
+    expect(screen.queryByText("src")).not.toBeInTheDocument();
   });
 
   it("T20: renders nothing visible when worktree list is empty", () => {

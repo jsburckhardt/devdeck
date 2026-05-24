@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { FileNode, Project } from "./types";
+import type { FileNode, PerProjectWorkspaceState, Project, WorktreeFileTreeState } from "./types";
 import { useOpenProjects } from "./open-projects-context";
 
 interface WorkspaceState {
@@ -43,6 +43,7 @@ interface WorkspaceContextValue extends WorkspaceState {
 }
 
 const ROOT_REQUEST_PATH = "";
+const ROOT_SCOPE_KEY = "__project-root__";
 const WorkspaceContext = createContext<WorkspaceContextValue | undefined>(undefined);
 
 interface WorkspaceProviderProps {
@@ -50,8 +51,34 @@ interface WorkspaceProviderProps {
   children: React.ReactNode;
 }
 
-function requestKey(slug: string, relativePath: string): string {
-  return `${slug}:${relativePath}`;
+function scopeKey(activeWorktree: string | null | undefined): string {
+  return activeWorktree ?? ROOT_SCOPE_KEY;
+}
+
+function requestKey(slug: string, activeWorktree: string | null, relativePath: string): string {
+  return `${slug}:${activeWorktree ?? "root"}:${relativePath}`;
+}
+
+function apiFileTreeUrl(slug: string, relativePath: string, activeWorktree: string | null): string {
+  const params = new URLSearchParams({ slug });
+  if (relativePath) params.set("path", relativePath);
+  if (activeWorktree) params.set("worktree", activeWorktree);
+  return `/api/files?${params.toString()}`;
+}
+
+function collectLoadedDirectories(nodes: FileNode[]): string[] {
+  const loaded: string[] = [];
+  for (const node of nodes) {
+    if (node.type === "directory") {
+      if (node.childrenLoaded || Array.isArray(node.children)) {
+        loaded.push(node.path);
+      }
+      if (node.children) {
+        loaded.push(...collectLoadedDirectories(node.children));
+      }
+    }
+  }
+  return loaded;
 }
 
 function mergeRootTrees(nextRoot: FileNode[], previousRoot: FileNode[]): FileNode[] {
@@ -107,9 +134,34 @@ function responseErrorMessage(response: Response): string {
   return `HTTP ${response.status}`;
 }
 
+function scopedStateFromCache(
+  cachedState: PerProjectWorkspaceState | undefined,
+): Map<string, WorktreeFileTreeState> {
+  const states = new Map<string, WorktreeFileTreeState>();
+  if (!cachedState) return states;
+
+  for (const [key, value] of Object.entries(cachedState.worktreeFileTreeStates ?? {})) {
+    states.set(key, value);
+  }
+
+  states.set(scopeKey(cachedState.activeWorktree), {
+    selectedFile: cachedState.selectedFile,
+    expandedFolders: cachedState.expandedFolders,
+    fileTree: cachedState.fileTree,
+    directoryLoadErrors: cachedState.directoryLoadErrors ?? {},
+    loadedDirectories:
+      cachedState.loadedDirectories ?? collectLoadedDirectories(cachedState.fileTree),
+  });
+
+  return states;
+}
+
 export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
   const { saveWorkspaceState, restoreWorkspaceState } = useOpenProjects();
   const cachedStateRef = useRef(slug ? restoreWorkspaceState(slug) : undefined);
+  const scopedStatesRef = useRef<Map<string, WorktreeFileTreeState>>(
+    scopedStateFromCache(cachedStateRef.current),
+  );
 
   const [, setRestoredFromCache] = useState(() => !!cachedStateRef.current);
   const [project, setProjectState] = useState<Project | null>(null);
@@ -139,6 +191,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
   );
 
   const currentSlugRef = useRef<string | undefined>(slug);
+  const currentWorktreeRef = useRef<string | null>(cachedStateRef.current?.activeWorktree ?? null);
   const rootRefreshCountRef = useRef(0);
   const inFlightFileTreeRequests = useRef<Map<string, Promise<void>>>(new Map());
 
@@ -179,10 +232,47 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
     worktreesSectionCollapsed,
   ]);
 
+  const saveVisibleScope = useCallback((worktree: string | null) => {
+    const s = stateRef.current;
+    scopedStatesRef.current.set(scopeKey(worktree), {
+      selectedFile: s.selectedFile,
+      expandedFolders: Array.from(s.expandedFolders),
+      fileTree: s.fileTree,
+      directoryLoadErrors: Object.fromEntries(s.directoryErrors),
+      loadedDirectories: collectLoadedDirectories(s.fileTree),
+    });
+  }, []);
+
+  const restoreVisibleScope = useCallback((worktree: string | null) => {
+    const cached = scopedStatesRef.current.get(scopeKey(worktree));
+    const nextSelectedFile = cached?.selectedFile ?? null;
+    const nextExpandedFolders = new Set(cached?.expandedFolders ?? []);
+    const nextFileTree = cached?.fileTree ?? [];
+    const nextDirectoryErrors = new Map(Object.entries(cached?.directoryLoadErrors ?? {}));
+
+    stateRef.current = {
+      ...stateRef.current,
+      selectedFile: nextSelectedFile,
+      expandedFolders: nextExpandedFolders,
+      fileTree: nextFileTree,
+      directoryErrors: nextDirectoryErrors,
+      activeWorktree: worktree,
+    };
+
+    setSelectedFile(nextSelectedFile);
+    setExpandedFolders(nextExpandedFolders);
+    setFileTreeState(nextFileTree);
+    setDirectoryErrors(nextDirectoryErrors);
+    setDirectoryLoading(new Set());
+    setFileTreeError(null);
+  }, []);
+
   useEffect(() => {
     if (!slug) return;
     return () => {
+      saveVisibleScope(currentWorktreeRef.current);
       const s = stateRef.current;
+      const worktreeFileTreeStates = Object.fromEntries(scopedStatesRef.current);
       saveWorkspaceState(slug, {
         selectedFile: s.selectedFile,
         expandedFolders: Array.from(s.expandedFolders),
@@ -190,11 +280,13 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
         showTerminal: s.showTerminal,
         fileTree: s.fileTree,
         directoryLoadErrors: Object.fromEntries(s.directoryErrors),
-        activeWorktree: s.activeWorktree,
+        loadedDirectories: collectLoadedDirectories(s.fileTree),
+        activeWorktree: currentWorktreeRef.current,
         worktreesSectionCollapsed: s.worktreesSectionCollapsed,
+        worktreeFileTreeStates,
       });
     };
-  }, [slug, saveWorkspaceState]);
+  }, [slug, saveVisibleScope, saveWorkspaceState]);
 
   const setProject = useCallback((p: Project) => {
     const slugChanged = currentSlugRef.current !== p.slug;
@@ -202,6 +294,8 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
     setProjectState(p);
     setFileTreeError(null);
     if (slugChanged) {
+      scopedStatesRef.current = new Map();
+      currentWorktreeRef.current = null;
       setActiveWorktreeState(null);
     }
     setRestoredFromCache((wasRestored) => {
@@ -253,39 +347,42 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
 
   const refreshFileTree = useCallback(async (explicitSlug?: string) => {
     const targetSlug = explicitSlug ?? currentSlugRef.current;
+    const targetWorktree = currentWorktreeRef.current;
     if (!targetSlug) return;
 
-    const key = requestKey(targetSlug, ROOT_REQUEST_PATH);
+    const key = requestKey(targetSlug, targetWorktree, ROOT_REQUEST_PATH);
     const inFlight = inFlightFileTreeRequests.current.get(key);
     if (inFlight) return inFlight;
 
     rootRefreshCountRef.current += 1;
     setFileTreeRefreshing(true);
-    if (!currentSlugRef.current || currentSlugRef.current === targetSlug) {
+    if (
+      (!currentSlugRef.current || currentSlugRef.current === targetSlug) &&
+      currentWorktreeRef.current === targetWorktree
+    ) {
       setFileTreeError(null);
     }
 
     const promise = (async () => {
       try {
-        const res = await fetch(`/api/files?slug=${encodeURIComponent(targetSlug)}`, {
+        const res = await fetch(apiFileTreeUrl(targetSlug, ROOT_REQUEST_PATH, targetWorktree), {
           cache: "no-store",
         });
+        const activeSlug = currentSlugRef.current;
+        const activeWorktree = currentWorktreeRef.current;
+        if (activeSlug && (activeSlug !== targetSlug || activeWorktree !== targetWorktree)) return;
         if (!res.ok) {
-          const activeSlug = currentSlugRef.current;
-          if (!activeSlug || activeSlug === targetSlug) {
-            const msg = responseErrorMessage(res);
-            console.error("Failed to refresh file tree:", msg);
-            setFileTreeError(msg);
-          }
+          const msg = responseErrorMessage(res);
+          console.error("Failed to refresh file tree:", msg);
+          setFileTreeError(msg);
           return;
         }
         const data = (await res.json()) as FileNode[];
-        const activeSlug = currentSlugRef.current;
-        if (activeSlug && activeSlug !== targetSlug) return;
         setFileTreeState((prev) => mergeRootTrees(data, prev));
       } catch (err) {
         const activeSlug = currentSlugRef.current;
-        if (!activeSlug || activeSlug === targetSlug) {
+        const activeWorktree = currentWorktreeRef.current;
+        if (!activeSlug || (activeSlug === targetSlug && activeWorktree === targetWorktree)) {
           console.error("Failed to refresh file tree:", err);
           setFileTreeError(err instanceof Error ? err.message : String(err));
         }
@@ -304,9 +401,10 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
 
   const loadDirectoryChildren = useCallback(async (relativePath: string, explicitSlug?: string) => {
     const targetSlug = explicitSlug ?? currentSlugRef.current;
+    const targetWorktree = currentWorktreeRef.current;
     if (!targetSlug || !relativePath) return;
 
-    const key = requestKey(targetSlug, relativePath);
+    const key = requestKey(targetSlug, targetWorktree, relativePath);
     const inFlight = inFlightFileTreeRequests.current.get(key);
     if (inFlight) return inFlight;
 
@@ -319,16 +417,19 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
 
     const promise = (async () => {
       try {
-        const params = new URLSearchParams({ slug: targetSlug, path: relativePath });
-        const res = await fetch(`/api/files?${params.toString()}`, { cache: "no-store" });
+        const res = await fetch(apiFileTreeUrl(targetSlug, relativePath, targetWorktree), {
+          cache: "no-store",
+        });
         if (!res.ok) throw new Error(responseErrorMessage(res));
         const data = (await res.json()) as FileNode[];
         const activeSlug = currentSlugRef.current;
-        if (activeSlug && activeSlug !== targetSlug) return;
+        const activeWorktree = currentWorktreeRef.current;
+        if (activeSlug && (activeSlug !== targetSlug || activeWorktree !== targetWorktree)) return;
         setFileTreeState((prev) => mergeDirectoryChildren(prev, relativePath, data));
       } catch (err) {
         const activeSlug = currentSlugRef.current;
-        if (!activeSlug || activeSlug === targetSlug) {
+        const activeWorktree = currentWorktreeRef.current;
+        if (!activeSlug || (activeSlug === targetSlug && activeWorktree === targetWorktree)) {
           console.error(`Failed to load directory children for ${relativePath}:`, err);
           setDirectoryErrors((prev) => {
             const next = new Map(prev);
@@ -339,7 +440,8 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       } finally {
         inFlightFileTreeRequests.current.delete(key);
         const activeSlug = currentSlugRef.current;
-        if (!activeSlug || activeSlug === targetSlug) {
+        const activeWorktree = currentWorktreeRef.current;
+        if (!activeSlug || (activeSlug === targetSlug && activeWorktree === targetWorktree)) {
           setDirectoryLoading((prev) => {
             const next = new Set(prev);
             next.delete(relativePath);
@@ -353,9 +455,18 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
     return promise;
   }, []);
 
-  const setActiveWorktree = useCallback((name: string | null) => {
-    setActiveWorktreeState(name);
-  }, []);
+  const setActiveWorktree = useCallback(
+    (name: string | null) => {
+      const nextWorktree = name ?? null;
+      const previousWorktree = currentWorktreeRef.current;
+      if (previousWorktree === nextWorktree) return;
+      saveVisibleScope(previousWorktree);
+      currentWorktreeRef.current = nextWorktree;
+      setActiveWorktreeState(nextWorktree);
+      restoreVisibleScope(nextWorktree);
+    },
+    [restoreVisibleScope, saveVisibleScope],
+  );
 
   const toggleWorktreesSection = useCallback(() => {
     setWorktreesSectionCollapsed((prev) => !prev);

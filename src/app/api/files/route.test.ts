@@ -53,10 +53,11 @@ function dirent(name: string) {
   return { name };
 }
 
-function request(slug?: string, relativePath?: string): NextRequest {
+function request(slug?: string, relativePath?: string, worktree?: string): NextRequest {
   const url = new URL("http://localhost:3000/api/files");
   if (slug) url.searchParams.set("slug", slug);
   if (relativePath !== undefined) url.searchParams.set("path", relativePath);
+  if (worktree !== undefined) url.searchParams.set("worktree", worktree);
   return new NextRequest(url);
 }
 
@@ -64,9 +65,57 @@ beforeEach(() => {
   vi.resetAllMocks();
   mockResolveProjectPath.mockResolvedValue("/workspaces/test-project");
   mockFs.access.mockResolvedValue(undefined);
+  mockFs.realpath.mockImplementation(async (target) => String(target));
+  mockFs.stat.mockResolvedValue(stat("directory") as never);
 });
 
 describe("GET /api/files", () => {
+  it("lists direct children under a worktree root and returns paths relative to that root", async () => {
+    mockFs.realpath
+      .mockResolvedValueOnce("/workspaces/test-project" as never)
+      .mockResolvedValueOnce("/workspaces/test-project/.trees/feat" as never);
+    mockFs.readdir.mockImplementation(async (fullPath) => {
+      const text = String(fullPath);
+      if (text === "/workspaces/test-project/.trees/feat") return [dirent("src")] as never;
+      if (text === "/workspaces/test-project/.trees/feat/src") return [dirent("index.ts")] as never;
+      throw new Error(`unexpected readdir ${text}`);
+    });
+    mockFs.lstat.mockResolvedValue(stat("directory") as never);
+
+    const res = await GET(request("test", undefined, ".trees/feat"));
+
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as Array<{ name: string; path: string }>;
+    expect(data).toMatchObject([{ name: "src", path: "src" }]);
+  });
+
+  it("lists direct children under worktree subdirectories", async () => {
+    mockFs.realpath
+      .mockResolvedValueOnce("/workspaces/test-project" as never)
+      .mockResolvedValueOnce("/workspaces/test-project/.trees/feat" as never);
+    mockFs.stat.mockResolvedValue(stat("directory") as never);
+    mockFs.readdir.mockResolvedValueOnce([dirent("index.ts")] as never);
+    mockFs.lstat.mockResolvedValue(stat("file") as never);
+
+    const res = await GET(request("test", "src", "feat"));
+
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as Array<{ path: string }>;
+    expect(data[0].path).toBe("src/index.ts");
+  });
+
+  it("returns structured worktree errors", async () => {
+    const invalid = await GET(request("test", undefined, "../bad"));
+    expect(invalid.status).toBe(400);
+    await expect(invalid.json()).resolves.toMatchObject({ code: "INVALID_WORKTREE" });
+
+    mockFs.realpath
+      .mockResolvedValueOnce("/workspaces/test-project" as never)
+      .mockRejectedValueOnce(Object.assign(new Error("missing"), { code: "ENOENT" }) as never);
+    const missing = await GET(request("test", undefined, "missing"));
+    expect(missing.status).toBe(404);
+    await expect(missing.json()).resolves.toMatchObject({ code: "WORKTREE_NOT_FOUND" });
+  });
   it("TP1 returns root direct children only with lazy directory metadata", async () => {
     mockFs.readdir.mockImplementation(async (fullPath) => {
       const text = String(fullPath);
