@@ -43,13 +43,15 @@ src/app/layout.tsx                                             — Next.js root 
 src/app/page.tsx                                               — Next.js home page
 src/app/globals.css                                            — Global styles and CSS custom properties
 src/middleware.ts                                              — Next.js middleware for token-based HTTP auth
-src/lib/auth.ts                                                — Token generation, validation (timingSafeEqual), cookie parsing
+src/lib/auth.ts                                                — Env-driven token access, validation (timingSafeEqual), cookie parsing
+src/lib/config.ts                                              — Node-only config loader for $DEVDECK_DATA_DIR/config.json; validates env-over-config-over-default values, persists generated tokens, masks token display, and normalizes object-based initialProjects entries
 src/lib/types.ts                                               — Shared TypeScript types (FileContent, FileNode, per-worktree workspace state, DiffHunk, DiffLine, etc.)
+src/lib/registry.ts                                          — Project registry persistence plus idempotent initialProjects seeding with metadata persistence and slug/path/auto-discovery duplicate checks
 src/lib/file-utils.ts                                          — Language detection and binary file identification
 src/lib/worktree-utils.ts                                      — Shared symlink-safe HTTP worktree root resolver for file APIs
 src/lib/diff-parser.ts                                         — Unified diff parser utility (parseDiff)
 src/lib/workspace-context.tsx                                  — Workspace state provider (project, worktree-aware file tree, selection)
-src/server/start-dev.mts                                       — Dev startup script: generates token, starts Next.js + terminal server
+src/server/start-dev.mts                                       — Dev startup script: loads config, seeds initial projects, prints source-aware auth banner, forwards resolved env, starts Next.js + terminal server
 src/server/terminal-server.mts                                 — WebSocket terminal server with token auth, per-project CWD via slug, optional tmux session attachment
 src/hooks/use-terminal.ts                                      — React hook for terminal WebSocket connection with slug param and 4401 handling
 src/app/project/layout.tsx                                     — Project route layout; wraps sidebar and workspace in WorkspaceProvider for shared worktree state
