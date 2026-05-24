@@ -12,6 +12,7 @@ import {
   resolveProjectPath,
   detectLanguage,
   readPackageJson,
+  seedInitialProjects,
 } from "./registry";
 
 const mockFs = vi.mocked(fs);
@@ -148,5 +149,217 @@ describe("readPackageJson", () => {
     mockFs.readFile.mockRejectedValue(new Error("ENOENT"));
     const result = await readPackageJson("/test");
     expect(result).toEqual({});
+  });
+});
+
+describe("seedInitialProjects", () => {
+  const dirent = (name: string, directory = true) => ({
+    name,
+    isDirectory: () => directory,
+  });
+  const directoryStat = { isDirectory: () => true };
+  const fileStat = { isDirectory: () => false };
+  const emptyRegistry = JSON.stringify({ version: 1, projects: [] });
+
+  beforeEach(() => {
+    mockFs.mkdir.mockResolvedValue(undefined);
+    mockFs.writeFile.mockResolvedValue(undefined);
+    mockFs.rename.mockResolvedValue(undefined);
+  });
+
+  it("treats empty initialProjects as a no-op", async () => {
+    const result = await seedInitialProjects([], { log: vi.fn() });
+
+    expect(result).toEqual({ seeded: [], skipped: [] });
+    expect(mockFs.readFile).not.toHaveBeenCalled();
+    expect(mockFs.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("adds a valid directory as a manual registry entry", async () => {
+    mockFs.readFile.mockResolvedValue(emptyRegistry);
+    mockFs.readdir.mockResolvedValue([] as unknown as never);
+    mockFs.stat.mockResolvedValue(directoryStat as never);
+    const log = vi.fn();
+
+    const result = await seedInitialProjects([{ path: "/repos/my-app" }], { log });
+
+    expect(result.seeded).toEqual(["my-app"]);
+    expect(mockFs.writeFile).toHaveBeenCalledTimes(1);
+    const saved = mockFs.writeFile.mock.calls[0][1] as string;
+    expect(saved).toContain('"source": "manual"');
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("Seeded initial project my-app"));
+  });
+
+  it("skips duplicate slugs", async () => {
+    mockFs.readFile.mockResolvedValue(
+      JSON.stringify({
+        version: 1,
+        projects: [{ slug: "app", path: "/old/app", source: "manual" }],
+      }),
+    );
+    mockFs.readdir.mockResolvedValue([] as unknown as never);
+    const log = vi.fn();
+
+    const result = await seedInitialProjects([{ path: "/new/app" }], { log });
+
+    expect(result.skipped[0].reason).toBe("duplicate-slug");
+    expect(mockFs.writeFile).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("duplicate-slug"));
+  });
+
+  it("skips duplicate normalized paths", async () => {
+    mockFs.readFile.mockResolvedValue(
+      JSON.stringify({
+        version: 1,
+        projects: [{ slug: "existing", path: path.resolve("/new/app"), source: "manual" }],
+      }),
+    );
+    mockFs.readdir.mockResolvedValue([] as unknown as never);
+
+    const result = await seedInitialProjects([{ path: "/new/app" }], { log: vi.fn() });
+
+    expect(result.skipped[0].reason).toBe("duplicate-path");
+    expect(mockFs.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("skips slugs that match auto-discovered directories", async () => {
+    mockFs.readFile.mockResolvedValue(emptyRegistry);
+    mockFs.readdir.mockResolvedValue([dirent("app")] as unknown as never);
+
+    const result = await seedInitialProjects([{ path: "/seed/app" }], { log: vi.fn() });
+
+    expect(result.skipped[0].reason).toBe("auto-discovered-slug");
+    expect(mockFs.stat).not.toHaveBeenCalled();
+    expect(mockFs.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("skips nonexistent paths", async () => {
+    mockFs.readFile.mockResolvedValue(emptyRegistry);
+    mockFs.readdir.mockResolvedValue([] as unknown as never);
+    mockFs.stat.mockRejectedValue(new Error("missing"));
+
+    const result = await seedInitialProjects([{ path: "/missing/app" }], { log: vi.fn() });
+
+    expect(result.skipped[0].reason).toBe("path-not-found");
+    expect(mockFs.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("skips file paths", async () => {
+    mockFs.readFile.mockResolvedValue(emptyRegistry);
+    mockFs.readdir.mockResolvedValue([] as unknown as never);
+    mockFs.stat.mockResolvedValue(fileStat as never);
+
+    const result = await seedInitialProjects([{ path: "/files/app" }], { log: vi.fn() });
+
+    expect(result.skipped[0].reason).toBe("not-directory");
+    expect(mockFs.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("accepts symlinked directories via stat", async () => {
+    mockFs.readFile.mockResolvedValue(emptyRegistry);
+    mockFs.readdir.mockResolvedValue([] as unknown as never);
+    mockFs.stat.mockResolvedValue(directoryStat as never);
+
+    const result = await seedInitialProjects([{ path: "/links/app" }], { log: vi.fn() });
+
+    expect(result.seeded).toEqual(["app"]);
+  });
+
+  it("skips paths with empty sanitized slugs", async () => {
+    mockFs.readFile.mockResolvedValue(emptyRegistry);
+    mockFs.readdir.mockResolvedValue([] as unknown as never);
+
+    const result = await seedInitialProjects([{ path: "/!!!" }], { log: vi.fn() });
+
+    expect(result.skipped[0].reason).toBe("empty-slug");
+    expect(mockFs.stat).not.toHaveBeenCalled();
+    expect(mockFs.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("seeds only valid entries from mixed inputs and writes once", async () => {
+    mockFs.readFile.mockResolvedValue(emptyRegistry);
+    mockFs.readdir.mockResolvedValue([] as unknown as never);
+    mockFs.stat.mockImplementation(async (projectPath) => {
+      if (String(projectPath).includes("missing")) throw new Error("missing");
+      return directoryStat as never;
+    });
+
+    const result = await seedInitialProjects(
+      [{ path: "/repos/valid-one" }, { path: "/repos/missing" }, { path: "/repos/valid-two" }],
+      {
+        log: vi.fn(),
+      },
+    );
+
+    expect(result.seeded).toEqual(["valid-one", "valid-two"]);
+    expect(result.skipped.map((entry) => entry.reason)).toEqual(["path-not-found"]);
+    expect(mockFs.writeFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("is idempotent across repeated seeding", async () => {
+    mockFs.readFile.mockResolvedValueOnce(emptyRegistry);
+    mockFs.readdir.mockResolvedValue([] as unknown as never);
+    mockFs.stat.mockResolvedValue(directoryStat as never);
+
+    const first = await seedInitialProjects([{ path: "/repos/app" }], { log: vi.fn() });
+    const savedRegistry = mockFs.writeFile.mock.calls[0][1] as string;
+    mockFs.readFile.mockResolvedValueOnce(savedRegistry);
+    mockFs.writeFile.mockClear();
+
+    const second = await seedInitialProjects([{ path: "/repos/app" }], { log: vi.fn() });
+
+    expect(first.seeded).toEqual(["app"]);
+    expect(second.skipped[0].reason).toBe("duplicate-slug");
+    expect(mockFs.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("sanitizes slugs the same way as project creation", async () => {
+    mockFs.readFile.mockResolvedValue(emptyRegistry);
+    mockFs.readdir.mockResolvedValue([] as unknown as never);
+    mockFs.stat.mockResolvedValue(directoryStat as never);
+
+    const result = await seedInitialProjects([{ path: "/repos/my app!" }], { log: vi.fn() });
+
+    expect(result.seeded).toEqual(["myapp"]);
+  });
+
+  it("persists trimmed metadata for seeded manual entries", async () => {
+    mockFs.readFile.mockResolvedValue(emptyRegistry);
+    mockFs.readdir.mockResolvedValue([] as unknown as never);
+    mockFs.stat.mockResolvedValue(directoryStat as never);
+
+    await seedInitialProjects(
+      [{ path: "/repos/my-app", name: " My App ", description: "  A configured app  " }],
+      { log: vi.fn() },
+    );
+
+    const saved = mockFs.writeFile.mock.calls[0][1] as string;
+    expect(JSON.parse(saved)).toMatchObject({
+      projects: [
+        {
+          slug: "my-app",
+          path: path.resolve("/repos/my-app"),
+          source: "manual",
+          name: "My App",
+          description: "A configured app",
+        },
+      ],
+    });
+  });
+
+  it("omits blank metadata for seeded manual entries", async () => {
+    mockFs.readFile.mockResolvedValue(emptyRegistry);
+    mockFs.readdir.mockResolvedValue([] as unknown as never);
+    mockFs.stat.mockResolvedValue(directoryStat as never);
+
+    await seedInitialProjects([{ path: "/repos/my-app", name: " ", description: "" }], {
+      log: vi.fn(),
+    });
+
+    const saved = JSON.parse(mockFs.writeFile.mock.calls[0][1] as string) as {
+      projects: Array<{ name?: string; description?: string }>;
+    };
+    expect(saved.projects[0]).not.toHaveProperty("name");
+    expect(saved.projects[0]).not.toHaveProperty("description");
   });
 });

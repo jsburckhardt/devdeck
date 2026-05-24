@@ -2,8 +2,15 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import type { ProjectRegistry } from "@/lib/types";
+import type { InitialProjectConfig } from "./config";
 
-const PROJECTS_DIR = process.env.DEVDECK_PROJECTS_DIR ?? "/workspaces";
+function getProjectsDir(): string {
+  return process.env.DEVDECK_PROJECTS_DIR ?? "/workspaces";
+}
+
+function slugFromProjectPath(projectPath: string): string {
+  return path.basename(projectPath).replace(/[^a-zA-Z0-9_-]/g, "");
+}
 
 export function getDataDir(): string {
   return process.env.DEVDECK_DATA_DIR ?? path.join(os.homedir(), ".config", "devdeck");
@@ -41,7 +48,7 @@ export async function resolveProjectPath(slug: string): Promise<string> {
   const entry = registry.projects.find((p) => p.slug === slug);
   if (entry) return entry.path;
   const sanitized = slug.replace(/[^a-zA-Z0-9_-]/g, "");
-  return path.resolve(PROJECTS_DIR, sanitized);
+  return path.resolve(getProjectsDir(), sanitized);
 }
 
 export async function detectLanguage(projectPath: string): Promise<string> {
@@ -69,4 +76,99 @@ export async function readPackageJson(
   } catch {
     return {};
   }
+}
+
+export interface SeedInitialProjectsResult {
+  seeded: string[];
+  skipped: Array<{ path: string; reason: string }>;
+}
+
+export interface SeedInitialProjectsOptions {
+  log?: (message: string) => void;
+}
+
+async function getAutoDiscoveredSlugs(): Promise<Set<string>> {
+  try {
+    const entries = await fs.readdir(getProjectsDir(), { withFileTypes: true });
+    return new Set(entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name));
+  } catch {
+    return new Set();
+  }
+}
+
+export async function seedInitialProjects(
+  initialProjects: readonly InitialProjectConfig[],
+  options: SeedInitialProjectsOptions = {},
+): Promise<SeedInitialProjectsResult> {
+  const log = options.log ?? console.info;
+  const result: SeedInitialProjectsResult = { seeded: [], skipped: [] };
+  if (initialProjects.length === 0) return result;
+
+  const registry = await loadRegistry();
+  const autoSlugs = await getAutoDiscoveredSlugs();
+  const additions: ProjectRegistry["projects"] = [];
+
+  const skip = (projectPath: string, reason: string) => {
+    result.skipped.push({ path: projectPath, reason });
+    log("Skipped initial project " + projectPath + ": " + reason);
+  };
+
+  for (const entry of initialProjects) {
+    const projectPath = entry.path;
+    const normalizedPath = path.resolve(projectPath);
+    const slug = slugFromProjectPath(normalizedPath);
+
+    if (!slug) {
+      skip(projectPath, "empty-slug");
+      continue;
+    }
+
+    if (registry.projects.some((p) => p.slug === slug) || additions.some((p) => p.slug === slug)) {
+      skip(normalizedPath, "duplicate-slug");
+      continue;
+    }
+
+    if (
+      registry.projects.some((p) => path.resolve(p.path) === normalizedPath && !p.hidden) ||
+      additions.some((p) => path.resolve(p.path) === normalizedPath && !p.hidden)
+    ) {
+      skip(normalizedPath, "duplicate-path");
+      continue;
+    }
+
+    if (autoSlugs.has(slug)) {
+      skip(normalizedPath, "auto-discovered-slug");
+      continue;
+    }
+
+    try {
+      const stat = await fs.stat(normalizedPath);
+      if (!stat.isDirectory()) {
+        skip(normalizedPath, "not-directory");
+        continue;
+      }
+    } catch {
+      skip(normalizedPath, "path-not-found");
+      continue;
+    }
+
+    const name = entry.name?.trim();
+    const description = entry.description?.trim();
+    additions.push({
+      slug,
+      path: normalizedPath,
+      source: "manual",
+      ...(name ? { name } : {}),
+      ...(description ? { description } : {}),
+    });
+    result.seeded.push(slug);
+    log("Seeded initial project " + slug + ": " + normalizedPath);
+  }
+
+  if (additions.length > 0) {
+    registry.projects.push(...additions);
+    await saveRegistry(registry);
+  }
+
+  return result;
 }
