@@ -141,3 +141,4 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 110 | Pass activeWorktree on FileViewer content, save, and diff requests | CORE-COMPONENT-0008 | 2026-05-24 |
 | 111 | Render WorktreeTree as filesystem-style selector nodes, not nested file trees | CORE-COMPONENT-0008 | 2026-05-24 |
 | 112 | Render `.trees` directory nodes with the Tree icon in FileTree | CORE-COMPONENT-0008 | 2026-05-24 |
+| 113 | Reset missing restored activeWorktree values to project root with a non-fatal notice | CORE-COMPONENT-0008 | 2026-05-24 |
