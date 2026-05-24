@@ -277,7 +277,8 @@ function EditView({ content, onChange }: { content: string; onChange: (value: st
 }
 
 export default function FileViewer() {
-  const { project, selectedFile, fileTree, refreshFileTree, showFileViewer } = useWorkspace();
+  const { project, selectedFile, fileTree, refreshFileTree, showFileViewer, activeWorktree } =
+    useWorkspace();
   const [fileContent, setFileContent] = useState<FileContent | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<PreviewErrorState | null>(null);
@@ -313,7 +314,7 @@ export default function FileViewer() {
     setEditContent("");
     setOriginalContent("");
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [selectedFile]);
+  }, [selectedFile, activeWorktree]);
 
   // Fetch file content — skip when the panel is collapsed to avoid wasted
   // network/CPU while the preview is hidden.
@@ -329,9 +330,10 @@ export default function FileViewer() {
     setLoading(true);
     setError(null);
 
-    fetch(
-      `/api/files/content?slug=${encodeURIComponent(project.slug)}&path=${encodeURIComponent(selectedFile)}`,
-    )
+    const params = new URLSearchParams({ slug: project.slug, path: selectedFile });
+    if (activeWorktree) params.set("worktree", activeWorktree);
+
+    fetch(`/api/files/content?${params.toString()}`)
       .then(async (res) => {
         if (!res.ok) {
           const data = (await res.json().catch(() => ({}))) as PreviewErrorResponse;
@@ -371,7 +373,7 @@ export default function FileViewer() {
     return () => {
       cancelled = true;
     };
-  }, [project, selectedFile, showFileViewer]);
+  }, [project, selectedFile, showFileViewer, activeWorktree]);
 
   // Fetch diff when switching to changes tab
   useEffect(() => {
@@ -382,9 +384,10 @@ export default function FileViewer() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- setting loading state before async fetch is the standard pattern
     setDiffLoading(true);
 
-    fetch(
-      `/api/files/diff?slug=${encodeURIComponent(project.slug)}&path=${encodeURIComponent(selectedFile)}`,
-    )
+    const params = new URLSearchParams({ slug: project.slug, path: selectedFile });
+    if (activeWorktree) params.set("worktree", activeWorktree);
+
+    fetch(`/api/files/diff?${params.toString()}`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load diff");
         return res.json();
@@ -406,7 +409,7 @@ export default function FileViewer() {
     return () => {
       cancelled = true;
     };
-  }, [viewMode, project, selectedFile, diffContent]);
+  }, [viewMode, project, selectedFile, diffContent, activeWorktree]);
 
   const handleEdit = useCallback(() => {
     if (!fileContent) return;
@@ -435,6 +438,7 @@ export default function FileViewer() {
           path: selectedFile,
           content: editContent,
           mtime: fileContent.mtime,
+          ...(activeWorktree ? { worktree: activeWorktree } : {}),
         }),
       });
 
@@ -466,7 +470,7 @@ export default function FileViewer() {
     } finally {
       setSaving(false);
     }
-  }, [project, selectedFile, fileContent, editContent, refreshFileTree]);
+  }, [project, selectedFile, fileContent, editContent, refreshFileTree, activeWorktree]);
 
   if (!selectedFile) {
     return (

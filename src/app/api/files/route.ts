@@ -3,7 +3,11 @@ import fs from "fs/promises";
 import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { resolveProjectPath } from "@/lib/registry";
+import {
+  resolveWorktreeRoot,
+  WorktreeResolutionError,
+  worktreeResolutionErrorResponse,
+} from "@/lib/worktree-utils";
 import type { FileKind, FileNode } from "@/lib/types";
 
 const execFileAsync = promisify(execFile);
@@ -221,6 +225,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const slug = searchParams.get("slug");
   const requestedPath = searchParams.get("path");
+  const worktree = searchParams.get("worktree");
 
   if (!slug) {
     return NextResponse.json(
@@ -229,11 +234,16 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const root = await resolveProjectPath(slug);
-
+  let root: string;
   try {
-    await fs.access(root);
-  } catch {
+    root = await resolveWorktreeRoot(slug, worktree);
+    if (!worktree) {
+      await fs.access(root);
+    }
+  } catch (error) {
+    if (error instanceof WorktreeResolutionError) {
+      return worktreeResolutionErrorResponse(error);
+    }
     return NextResponse.json(
       { error: "Project not found", code: "PROJECT_NOT_FOUND" },
       { status: 404 },

@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { resolveProjectPath } from "@/lib/registry";
+import {
+  resolveWorktreeRoot,
+  WorktreeResolutionError,
+  worktreeResolutionErrorResponse,
+} from "@/lib/worktree-utils";
 
 const execFileAsync = promisify(execFile);
 
@@ -29,12 +33,24 @@ export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const slug = searchParams.get("slug");
   const filePath = searchParams.get("path");
+  const worktree = searchParams.get("worktree");
 
   if (!slug || !filePath) {
     return NextResponse.json({ error: "Missing 'slug' or 'path' parameter" }, { status: 400 });
   }
 
-  const root = await resolveProjectPath(slug);
+  let root: string;
+  try {
+    root = await resolveWorktreeRoot(slug, worktree);
+  } catch (error) {
+    if (error instanceof WorktreeResolutionError) {
+      return worktreeResolutionErrorResponse(error);
+    }
+    return NextResponse.json(
+      { error: "Project not found", code: "PROJECT_NOT_FOUND" },
+      { status: 404 },
+    );
+  }
   const fullPath = path.resolve(root, filePath);
 
   const relative = path.relative(root, fullPath);

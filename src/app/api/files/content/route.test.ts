@@ -58,9 +58,38 @@ function makePutRequest(body: Record<string, unknown>): NextRequest {
 beforeEach(() => {
   vi.clearAllMocks();
   mockResolveProjectPath.mockResolvedValue("/workspaces/test-project");
+  mockFs.realpath.mockImplementation(async (target) => String(target));
 });
 
 describe("GET /api/files/content", () => {
+  it("reads from the worktree root when worktree is present", async () => {
+    mockFs.realpath
+      .mockResolvedValueOnce("/workspaces/test-project" as never)
+      .mockResolvedValueOnce("/workspaces/test-project/.trees/feat" as never);
+    mockFs.lstat.mockResolvedValue(stat("file") as never);
+    mockFs.readFile.mockResolvedValue("worktree content" as never);
+
+    const res = await GET(
+      makeGetRequest({ slug: "test", path: "src/index.ts", worktree: ".trees/feat" }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockFs.lstat).toHaveBeenCalledWith("/workspaces/test-project/.trees/feat/src/index.ts");
+    await expect(res.json()).resolves.toMatchObject({ content: "worktree content" });
+  });
+
+  it("returns structured worktree errors for GET", async () => {
+    const invalid = await GET(makeGetRequest({ slug: "test", path: "a.ts", worktree: "../bad" }));
+    expect(invalid.status).toBe(400);
+    await expect(invalid.json()).resolves.toMatchObject({ code: "INVALID_WORKTREE" });
+
+    mockFs.realpath
+      .mockResolvedValueOnce("/workspaces/test-project" as never)
+      .mockRejectedValueOnce(Object.assign(new Error("missing"), { code: "ENOENT" }) as never);
+    const missing = await GET(makeGetRequest({ slug: "test", path: "a.ts", worktree: "missing" }));
+    expect(missing.status).toBe(404);
+    await expect(missing.json()).resolves.toMatchObject({ code: "WORKTREE_NOT_FOUND" });
+  });
   it("TP7 returns regular text file content with existing shape", async () => {
     mockFs.lstat.mockResolvedValue(stat("file") as never);
     mockFs.readFile.mockResolvedValue("file content" as never);
@@ -132,6 +161,32 @@ describe("GET /api/files/content", () => {
 });
 
 describe("PUT /api/files/content", () => {
+  it("writes to the worktree root when worktree is present", async () => {
+    mockFs.realpath
+      .mockResolvedValueOnce("/workspaces/test-project" as never)
+      .mockResolvedValueOnce("/workspaces/test-project/.trees/feat" as never);
+    mockFs.stat.mockResolvedValueOnce({ size: 100, mtimeMs: 1000 } as never);
+    mockFs.writeFile.mockResolvedValue(undefined);
+    mockFs.rename.mockResolvedValue(undefined);
+    mockFs.stat.mockResolvedValueOnce({ size: 3, mtimeMs: 2000 } as never);
+
+    const res = await PUT(
+      makePutRequest({
+        slug: "test",
+        path: "src/file.ts",
+        content: "new",
+        mtime: 1000,
+        worktree: ".trees/feat",
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockFs.writeFile).toHaveBeenCalledWith(
+      expect.stringContaining("/workspaces/test-project/.trees/feat/src/file.ts.tmp."),
+      "new",
+      "utf-8",
+    );
+  });
   it("3.1 — returns 400 for missing required fields", async () => {
     const res1 = await PUT(makePutRequest({ slug: "test", path: "file.ts" }));
     expect(res1.status).toBe(400);

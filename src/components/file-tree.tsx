@@ -7,6 +7,7 @@ import {
   PencilSimple,
   Trash,
   WarningCircle,
+  Tree,
 } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useWorkspace } from "@/lib/workspace-context";
@@ -17,6 +18,7 @@ import type { FileNode } from "@/lib/types";
 // Declared as a stable component to satisfy react-hooks/static-components
 const FolderIcon = Folder;
 const FolderOpenIcon = FolderOpen;
+const TreeIcon = Tree;
 
 function FileNodeIcon({
   name,
@@ -30,6 +32,19 @@ function FileNodeIcon({
   unreadable?: boolean;
 }) {
   if (isDirectory) {
+    if (name === ".trees") {
+      return (
+        <span data-testid={`file-tree-tree-icon-${isExpanded ? "expanded" : "collapsed"}`}>
+          <TreeIcon
+            size={16}
+            weight="duotone"
+            className={cn("flex-shrink-0 text-primary", unreadable && "text-amber-500")}
+            aria-hidden="true"
+          />
+        </span>
+      );
+    }
+
     return isExpanded
       ? React.createElement(FolderOpenIcon, {
           size: 16,
@@ -141,7 +156,7 @@ const FileTreeItem = React.memo(function FileTreeItem({
     void loadDirectoryChildren(node.path);
   }, [loadDirectoryChildren, node.path]);
 
-  const fileIconName = isDirectory ? (isExpanded ? "folderOpen" : "folder") : node.name;
+  const fileIconName = isDirectory ? node.name : node.name;
   const unreadableTitle = node.unreadable
     ? `${node.path} — cannot preview/read ${node.kind.replace(/-/g, " ")}`
     : node.path;

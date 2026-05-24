@@ -86,6 +86,36 @@ describe("WorktreeTree", () => {
     expect(worktreeButton).toHaveAttribute("aria-current", "true");
   });
 
+  it("renders nested worktree names as selector-style filesystem nodes", () => {
+    mockWorktrees = [{ name: "feature/login", branch: "feature/login" }];
+
+    render(<WorktreeTree slug="demo" />);
+
+    const node = screen.getByRole("button", { name: "Switch to worktree feature/login" });
+    expect(node).toHaveClass("font-mono");
+    expect(screen.getByText("feature/login")).toBeInTheDocument();
+  });
+
+  it("active state uses non-color affordances", () => {
+    mockWorktrees = [{ name: "feat", branch: "feat" }];
+    mockActiveWorktree = ".trees/feat";
+
+    render(<WorktreeTree slug="demo" />);
+
+    const worktreeButton = screen.getByRole("button", { name: "Switch to worktree feat" });
+    expect(worktreeButton).toHaveClass("bg-accent/50");
+    expect(worktreeButton).toHaveClass("font-semibold");
+  });
+
+  it("does not render nested inline file tree contents under worktree entries", () => {
+    mockWorktrees = [{ name: "feat", branch: "feat" }];
+
+    render(<WorktreeTree slug="demo" />);
+
+    expect(screen.queryByRole("tree")).not.toBeInTheDocument();
+    expect(screen.queryByText("src")).not.toBeInTheDocument();
+  });
+
   it("T20: renders nothing visible when worktree list is empty", () => {
     mockWorktrees = [];
 
