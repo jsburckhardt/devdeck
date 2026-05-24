@@ -9,6 +9,29 @@ import type { IncomingMessage } from "http";
 
 const MAX_CONTROL_MESSAGE_BYTES = 1024;
 
+// Inlined from src/lib/types.ts — cannot use @/ path aliases in standalone .mts
+type CopilotCliState = "idle" | "running" | "waiting";
+
+const COPILOT_IDLE_TIMEOUT_MS = 30_000;
+
+const ANSI_RE = /[\u001b\u009b][\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><~]/g;
+
+export function stripAnsi(text: string): string {
+  return text.replace(ANSI_RE, "");
+}
+
+const BRAILLE_SPINNERS = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/;
+const WAITING_PROMPT = /(?:^|\n)(?:\? |.*> $|.*\[y\/N\])/m;
+const SHELL_PROMPT = /(?:\$|%|#|❯)\s*$/m;
+
+export function detectCopilotState(strippedOutput: string): CopilotCliState | null {
+  if (!strippedOutput) return null;
+  if (BRAILLE_SPINNERS.test(strippedOutput)) return "running";
+  if (WAITING_PROMPT.test(strippedOutput)) return "waiting";
+  if (SHELL_PROMPT.test(strippedOutput)) return "idle";
+  return null;
+}
+
 const LOGIN_SHELL_SUPPORTED = new Set(["bash", "zsh", "fish", "sh"]);
 
 const PROJECTS_DIR = process.env.DEVDECK_PROJECTS_DIR ?? "/workspaces";
@@ -278,6 +301,8 @@ async function handleConnection(
   let wsHandlersRegistered = false;
   let initialCols = urlDimensions?.cols ?? 80;
   let initialRows = urlDimensions?.rows ?? 24;
+  let copilotState: CopilotCliState = "idle";
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Register message handler immediately to capture early resize/input
   ws.on("message", (data: Buffer, isBinary: boolean) => {
@@ -327,6 +352,10 @@ async function handleConnection(
   function cleanupPty(reason: string) {
     if (cleaned) return;
     cleaned = true;
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+      idleTimer = null;
+    }
     if (pty) {
       console.log(`Cleaning up PTY (pid: ${pty.pid}, reason: ${reason})`);
       activePtys.delete(pty);
@@ -368,6 +397,31 @@ async function handleConnection(
           ws.send(Buffer.from(data, "utf8"));
         } catch {
           // send failed
+        }
+
+        // Copilot CLI status detection (ADR-0005)
+        const detected = detectCopilotState(stripAnsi(data));
+        if (detected !== null) {
+          if (idleTimer) clearTimeout(idleTimer);
+          idleTimer = setTimeout(() => {
+            if (copilotState !== "idle" && ws.readyState === WebSocket.OPEN) {
+              copilotState = "idle";
+              try {
+                ws.send(JSON.stringify({ type: "status", copilotState: "idle" }));
+              } catch {
+                // send failed
+              }
+            }
+          }, COPILOT_IDLE_TIMEOUT_MS);
+
+          if (detected !== copilotState) {
+            copilotState = detected;
+            try {
+              ws.send(JSON.stringify({ type: "status", copilotState }));
+            } catch {
+              // send failed
+            }
+          }
         }
       }
     });
