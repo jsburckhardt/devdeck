@@ -117,6 +117,7 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - `WorktreeTree` MUST render filesystem-style selector nodes with icons, indentation, keyboard-accessible buttons, `aria-current` on the active entry, and active-state affordances that do not rely on color alone
 - `WorktreeTree` MUST remain a selector only; it MUST NOT render nested inline file trees under each worktree
 - The project-root selector in `WorktreeTree` MUST clear `activeWorktree`; worktree selectors MUST set `activeWorktree` to the corresponding `.trees/<name>` relative path
+- If a restored or active worktree is no longer returned by `GET /api/worktrees`, `WorktreeTree` MUST reset `activeWorktree` to project root and show a non-fatal notice
 - `FileTree` directory nodes named `.trees` MUST render a `Tree` icon from `@phosphor-icons/react` in both expanded and collapsed states
 
 ### Interfaces
@@ -283,6 +284,7 @@ async function handleDirectoryClick(node: FileNode) {
 - [ ] Automated checks: Context tests must assert request keys include active worktree, stale worktree responses are ignored, and root/worktree state is saved and restored on active worktree changes
 - [ ] Automated checks: FileViewer tests must assert content GET, save PUT, and diff GET include active worktree context when set
 - [ ] Automated checks: WorktreeTree tests must assert filesystem-style selector nodes, project-root clearing, nested worktree names, keyboard accessibility, and `aria-current`
+- [ ] Automated checks: WorktreeTree tests must assert missing restored worktrees reset to project root with a non-fatal notice
 - [ ] Automated checks: FileTree tests must assert `.trees` directory nodes render the `Tree` icon in expanded and collapsed states
 - [ ] Test coverage requirements: Verification must include `npm run lint`, `npm run format:check`, `npm run build`, and `npm run test`
 

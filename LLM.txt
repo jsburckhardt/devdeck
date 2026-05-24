@@ -55,6 +55,8 @@ src/hooks/use-terminal.ts                                      — React hook fo
 src/components/terminal-panel.tsx                              — Terminal panel UI with slug prop forwarding and auth error state
 src/components/diff-view.tsx                                   — Diff view component: renders unified diff with colored lines and dual line numbers
 src/components/file-viewer.tsx                                 — Worktree-aware file viewer with markdown preview (including mermaid diagram rendering), raw toggle, diff tabs, edit mode
+src/components/worktree-tree.tsx                               — Worktree selector tree; resets missing restored active worktrees to project root with notice
+src/components/workspace-layout.tsx                            — Project workspace shell; reloads file tree on project and active worktree changes
 src/app/api/files/route.ts                                     — GET /api/files — worktree-aware file tree with git status
 src/app/api/files/content/route.ts                             — /api/files/content GET/PUT worktree-aware read and write file content with mtime 
 src/app/api/files/diff/route.ts                                — GET /api/files/diff — worktree-aware git diff for a single file (handles untracked, staged, modified)

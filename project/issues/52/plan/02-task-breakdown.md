@@ -91,9 +91,10 @@
 - Active state uses background and font weight, not color alone.
 - Active entry has `aria-current="true"`.
 - Component remains mounted and CSS-hidden when no worktrees exist.
+- Missing restored active worktrees reset to project root with a non-fatal notice.
 - No nested inline file trees are rendered.
 
-**Test Coverage:** Component tests cover selector behavior, nested names, active state, accessibility, and empty hidden state.
+**Test Coverage:** Component tests cover selector behavior, nested names, active state, accessibility, empty hidden state, and missing restored worktree reset behavior.
 
 ## T52-7 - Rendering `.trees/` with Tree icon
 
