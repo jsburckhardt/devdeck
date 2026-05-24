@@ -141,7 +141,7 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
   - `retryDirectoryChildren: (path: string) => Promise<void>` MAY be exposed as an alias or implemented by clearing the path error and calling `loadDirectoryChildren(path)`
   - `activeWorktree: string | null` — relative path of the currently active worktree (e.g. `.trees/feature-branch`), or null
   - `setActiveWorktree: (path: string | null) => void` — set the active worktree for terminal scoping
-  - `worktreesSectionCollapsed: boolean` — whether the worktrees section in the explorer is collapsed
+  - `worktreesSectionCollapsed: boolean` — whether the worktrees section in the project sidebar is collapsed
   - `toggleWorktreesSection: () => void` — toggle worktrees section collapsed state
 - **Worktree:** `{ name: string; branch: string }`
 - **Worktree endpoint:** `GET /api/worktrees?slug=<slug>` → `Worktree[]` — parses `git worktree list --porcelain`, filters to `.trees/`-relative entries; returns `[]` on any error
