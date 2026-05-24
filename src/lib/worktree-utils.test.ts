@@ -22,6 +22,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockResolveProjectPath.mockResolvedValue("/workspaces/demo");
   mockFs.realpath.mockImplementation(async (target) => String(target));
+  mockFs.stat.mockResolvedValue({ isDirectory: () => true } as never);
 });
 
 describe("resolveWorktreeRoot", () => {
@@ -81,6 +82,19 @@ describe("resolveWorktreeRoot", () => {
     await expect(resolveWorktreeRoot("demo", "evil")).rejects.toMatchObject({
       code: "WORKTREE_ESCAPE",
       status: 403,
+    });
+    expect(mockFs.stat).not.toHaveBeenCalled();
+  });
+
+  it("maps worktree paths that resolve to files to WORKTREE_NOT_FOUND", async () => {
+    mockFs.realpath
+      .mockResolvedValueOnce("/workspaces/demo" as never)
+      .mockResolvedValueOnce("/workspaces/demo/.trees/not-a-dir" as never);
+    mockFs.stat.mockResolvedValueOnce({ isDirectory: () => false } as never);
+
+    await expect(resolveWorktreeRoot("demo", "not-a-dir")).rejects.toMatchObject({
+      code: "WORKTREE_NOT_FOUND",
+      status: 404,
     });
   });
 });

@@ -94,6 +94,19 @@ export async function resolveWorktreeRoot(slug: string, worktree?: string | null
     );
   }
 
+  let worktreeStats: Awaited<ReturnType<typeof fs.stat>>;
+  try {
+    worktreeStats = await fs.stat(realWorktreeRoot);
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      throw new WorktreeResolutionError("WORKTREE_NOT_FOUND", "Worktree not found", 404);
+    }
+    throw error;
+  }
+  if (!worktreeStats.isDirectory()) {
+    throw new WorktreeResolutionError("WORKTREE_NOT_FOUND", "Worktree not found", 404);
+  }
+
   return realWorktreeRoot;
 }
 
