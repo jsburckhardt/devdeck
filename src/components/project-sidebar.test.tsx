@@ -14,6 +14,12 @@ vi.mock("next/navigation", () => ({
   usePathname: () => mockPathname,
 }));
 
+vi.mock("@/components/worktree-tree", () => ({
+  WorktreeTree: ({ slug }: { slug: string }) => (
+    <div data-testid="project-panel-worktree-tree">{slug}</div>
+  ),
+}));
+
 const mockCloseProject = vi.fn();
 let mockGetCopilotStatus = vi.fn((_slug: string) => "idle" as const);
 const defaultOpenProjects: Project[] = [
@@ -268,6 +274,14 @@ describe("ProjectSidebar", () => {
     render(<ProjectSidebar />);
     const homeButton = screen.getByRole("button", { name: "Go to home page" });
     expect(homeButton).toHaveTextContent("Home");
+  });
+
+  it("renders the worktree selector in the project panel for the active project only", () => {
+    render(<ProjectSidebar />);
+
+    const worktreeTrees = screen.getAllByTestId("project-panel-worktree-tree");
+    expect(worktreeTrees).toHaveLength(1);
+    expect(worktreeTrees[0]).toHaveTextContent("proj-b");
   });
 
   it("T26: preserves accessibility attributes on active project", () => {

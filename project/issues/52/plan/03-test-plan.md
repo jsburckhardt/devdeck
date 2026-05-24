@@ -51,6 +51,7 @@
 - Active styling uses background/font weight in addition to color.
 - Empty component remains mounted and hidden via CSS-compatible state.
 - Missing restored active worktrees reset to project root with a non-fatal notice.
+- WorktreeTree renders in the active project's sidebar panel, not in the file explorer.
 - WorktreeTree does not render nested file-tree contents under entries.
 
 ### FileTree

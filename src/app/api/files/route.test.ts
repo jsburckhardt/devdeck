@@ -66,6 +66,7 @@ beforeEach(() => {
   mockResolveProjectPath.mockResolvedValue("/workspaces/test-project");
   mockFs.access.mockResolvedValue(undefined);
   mockFs.realpath.mockImplementation(async (target) => String(target));
+  mockFs.stat.mockResolvedValue(stat("directory") as never);
 });
 
 describe("GET /api/files", () => {

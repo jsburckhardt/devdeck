@@ -53,7 +53,7 @@ FileViewer now includes active worktree context in content GET, diff GET, and sa
 
 ### Changes Summary
 
-WorktreeTree now renders filesystem-style selector buttons with icons, indentation, `aria-current`, and non-color active affordances while remaining selector-only and CSS-hidden when empty. It also resets a restored active worktree to project root with a non-fatal notice when that worktree is no longer returned by the worktree API.
+WorktreeTree now renders filesystem-style selector buttons with icons, indentation, `aria-current`, and non-color active affordances while remaining selector-only and CSS-hidden when empty. It renders in the active project's sidebar panel rather than inside the file explorer, and resets a restored active worktree to project root with a non-fatal notice when that worktree is no longer returned by the worktree API.
 
 ## Task T52-7: Rendering `.trees/` with Tree icon
 

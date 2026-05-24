@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Spinner } from "@phosphor-icons/react";
 import { use, useEffect, useState } from "react";
-import { WorkspaceProvider } from "@/lib/workspace-context";
 import { WorkspaceLayout } from "@/components/workspace-layout";
 import { Header } from "@/components/header";
 import { useOpenProjects } from "@/lib/open-projects-context";
@@ -73,11 +72,9 @@ export default function ProjectPage({ params }: { params: Promise<{ slug: string
   return (
     <>
       <Header backAction={() => router.push("/")} title={project.name} />
-      <WorkspaceProvider slug={slug}>
-        <div className="min-h-0 flex-1">
-          <WorkspaceLayout project={project} />
-        </div>
-      </WorkspaceProvider>
+      <div className="min-h-0 flex-1">
+        <WorkspaceLayout project={project} />
+      </div>
     </>
   );
 }

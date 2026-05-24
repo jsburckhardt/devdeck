@@ -111,7 +111,7 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - The status indicator MUST use theme-aware CSS custom properties (CORE-COMPONENT-0004) and MUST NOT rely on color alone for semantics — `aria-label` and `title` attributes MUST convey the state
 - The status indicator MUST be hidden (not rendered) when `copilotStatus` is `"idle"`
 - The status indicator MUST be hidden when the terminal WebSocket is not connected (status is only meaningful with a live connection)
-- `WorktreeTree` MUST be rendered above `FileTree` inside `ExplorerContent`, always mounted per Decision #84, hidden via CSS when the worktree list is empty
+- `WorktreeTree` MUST be rendered in `ProjectSidebar` for the active project, always mounted per Decision #84, hidden via CSS when the worktree list is empty, and MUST NOT render inside `ExplorerContent`
 - Worktree data MUST be fetched via `GET /api/worktrees?slug=<slug>` returning `Worktree[]`; an empty array MUST be returned (not a server error) when `.trees/` is absent or git is unavailable
 - A `useWorktrees(slug: string)` hook MUST be provided exposing `{ worktrees: Worktree[], loading: boolean, error: string | null, refresh: () => void }`
 - `WorktreeTree` MUST render filesystem-style selector nodes with icons, indentation, keyboard-accessible buttons, `aria-current` on the active entry, and active-state affordances that do not rely on color alone
@@ -146,8 +146,8 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - **Worktree:** `{ name: string; branch: string }`
 - **Worktree endpoint:** `GET /api/worktrees?slug=<slug>` → `Worktree[]` — parses `git worktree list --porcelain`, filters to `.trees/`-relative entries; returns `[]` on any error
 - **useWorktrees(slug: string):** Hook exposing `{ worktrees: Worktree[], loading: boolean, error: string | null, refresh: () => void }`
-- **WorktreeTree:** Collapsible selector component rendered above `FileTree` in the explorer; lists project root and worktrees as filesystem-style selector nodes without nested inline file trees
-- **ProjectSidebar:** Component rendering the vertical tab strip; consumes `useOpenProjects()` and `usePathname()`
+- **WorktreeTree:** Collapsible selector component rendered in the project sidebar; lists project root and worktrees as filesystem-style selector nodes without nested inline file trees
+- **ProjectSidebar:** Component rendering the vertical tab strip plus the active project's worktree selector; consumes `useOpenProjects()` and `usePathname()`
 - **languageColor(language?: string): string** — Shared utility extracted to `src/lib/utils.ts`
 
 ### Expectations
@@ -243,7 +243,7 @@ async function handleDirectoryClick(node: FileNode) {
 ## Integration Guidelines
 
 - `OpenProjectsProvider` wraps children in `src/app/layout.tsx` as a Client Component wrapper below `ThemeProvider`
-- The intermediate layout at `src/app/project/layout.tsx` renders `<ProjectSidebar />` + `{children}` in a flex row
+- The intermediate layout at `src/app/project/layout.tsx` wraps project routes in `WorkspaceProvider` and renders `<ProjectSidebar />` + `{children}` in a flex row so the project panel and workspace panels share active worktree state
 - `WorkspaceProvider` in `src/lib/workspace-context.tsx` accepts an optional `slug` prop and calls `restoreWorkspaceState`/`saveWorkspaceState`
 - `PerProjectWorkspaceState` lives in `src/lib/types.ts`
 - `languageColor()` is shared from `src/lib/utils.ts` for use by both `ProjectCard` and `ProjectSidebar`
@@ -285,6 +285,7 @@ async function handleDirectoryClick(node: FileNode) {
 - [ ] Automated checks: FileViewer tests must assert content GET, save PUT, and diff GET include active worktree context when set
 - [ ] Automated checks: WorktreeTree tests must assert filesystem-style selector nodes, project-root clearing, nested worktree names, keyboard accessibility, and `aria-current`
 - [ ] Automated checks: WorktreeTree tests must assert missing restored worktrees reset to project root with a non-fatal notice
+- [ ] Automated checks: ProjectSidebar tests must assert the active project's worktree selector renders in the project panel and WorkspaceLayout tests must assert it is absent from `ExplorerContent`
 - [ ] Automated checks: FileTree tests must assert `.trees` directory nodes render the `Tree` icon in expanded and collapsed states
 - [ ] Test coverage requirements: Verification must include `npm run lint`, `npm run format:check`, `npm run build`, and `npm run test`
 

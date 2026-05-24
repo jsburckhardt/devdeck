@@ -2,6 +2,7 @@
 
 import { useRouter, usePathname } from "next/navigation";
 import { House, X } from "@phosphor-icons/react";
+import { WorktreeTree } from "@/components/worktree-tree";
 import { closeNavigationTarget, projectRoute, useOpenProjects } from "@/lib/open-projects-context";
 import type { CopilotCliState } from "@/lib/types";
 import { languageColor } from "@/lib/utils";
@@ -35,7 +36,7 @@ export function ProjectSidebar() {
         const isActive = activeSlug === project.slug;
         const copilotStatus: CopilotCliState = getCopilotStatus(project.slug);
         return (
-          <div key={project.slug} className="group relative mx-2">
+          <div key={project.slug} className="group relative mx-2 min-w-0">
             <button
               onClick={() => router.push(projectRoute(project.slug))}
               className={`flex h-9 w-full items-center gap-2 rounded-md px-2 text-xs transition-colors ${
@@ -77,6 +78,7 @@ export function ProjectSidebar() {
             >
               <X size={10} weight="bold" />
             </button>
+            {isActive && <WorktreeTree slug={project.slug} />}
           </div>
         );
       })}

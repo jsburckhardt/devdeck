@@ -59,6 +59,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockResolveProjectPath.mockResolvedValue("/workspaces/test-project");
   mockFs.realpath.mockImplementation(async (target) => String(target));
+  mockFs.stat.mockResolvedValue(stat("directory") as never);
 });
 
 describe("GET /api/files/content", () => {
@@ -165,10 +166,12 @@ describe("PUT /api/files/content", () => {
     mockFs.realpath
       .mockResolvedValueOnce("/workspaces/test-project" as never)
       .mockResolvedValueOnce("/workspaces/test-project/.trees/feat" as never);
-    mockFs.stat.mockResolvedValueOnce({ size: 100, mtimeMs: 1000 } as never);
+    mockFs.stat
+      .mockResolvedValueOnce(stat("directory") as never)
+      .mockResolvedValueOnce({ size: 100, mtimeMs: 1000 } as never)
+      .mockResolvedValueOnce({ size: 3, mtimeMs: 2000 } as never);
     mockFs.writeFile.mockResolvedValue(undefined);
     mockFs.rename.mockResolvedValue(undefined);
-    mockFs.stat.mockResolvedValueOnce({ size: 3, mtimeMs: 2000 } as never);
 
     const res = await PUT(
       makePutRequest({

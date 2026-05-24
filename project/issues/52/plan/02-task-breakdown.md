@@ -79,7 +79,7 @@
 
 ## T52-6 - Refactoring WorktreeTree selector visualization
 
-**Description:** Render WorktreeTree as filesystem-style selector nodes while keeping it a selector for the main file tree.
+**Description:** Render WorktreeTree as filesystem-style selector nodes in the active project's sidebar panel while keeping it a selector for the main file tree.
 
 **References:** `CORE-COMPONENT-0008`, `CORE-COMPONENT-0004`, `CORE-COMPONENT-0007`.
 
@@ -92,9 +92,10 @@
 - Active entry has `aria-current="true"`.
 - Component remains mounted and CSS-hidden when no worktrees exist.
 - Missing restored active worktrees reset to project root with a non-fatal notice.
+- The selector renders in `ProjectSidebar` for the active project, not inside `ExplorerContent`.
 - No nested inline file trees are rendered.
 
-**Test Coverage:** Component tests cover selector behavior, nested names, active state, accessibility, empty hidden state, and missing restored worktree reset behavior.
+**Test Coverage:** Component tests cover selector behavior, nested names, active state, accessibility, empty hidden state, and missing restored worktree reset behavior. ProjectSidebar and WorkspaceLayout tests cover sidebar placement and explorer absence.
 
 ## T52-7 - Rendering `.trees/` with Tree icon
 

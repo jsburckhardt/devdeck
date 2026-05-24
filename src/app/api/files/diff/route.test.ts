@@ -37,6 +37,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockResolveProjectPath.mockResolvedValue("/workspaces/test-project");
   mockFs.realpath.mockImplementation(async (target) => String(target));
+  mockFs.stat.mockResolvedValue({ isDirectory: () => true } as never);
 });
 
 describe("GET /api/files/diff", () => {

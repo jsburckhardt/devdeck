@@ -52,6 +52,8 @@ src/lib/workspace-context.tsx                                  — Workspace sta
 src/server/start-dev.mts                                       — Dev startup script: generates token, starts Next.js + terminal server
 src/server/terminal-server.mts                                 — WebSocket terminal server with token auth, per-project CWD via slug, optional tmux session attachment
 src/hooks/use-terminal.ts                                      — React hook for terminal WebSocket connection with slug param and 4401 handling
+src/app/project/layout.tsx                                     — Project route layout; wraps sidebar and workspace in WorkspaceProvider for shared worktree state
+src/components/project-sidebar.tsx                             — Project panel/sidebar with project tabs, Copilot status, and active project worktree selector
 src/components/terminal-panel.tsx                              — Terminal panel UI with slug prop forwarding and auth error state
 src/components/diff-view.tsx                                   — Diff view component: renders unified diff with colored lines and dual line numbers
 src/components/file-viewer.tsx                                 — Worktree-aware file viewer with markdown preview (including mermaid diagram rendering), raw toggle, diff tabs, edit mode
