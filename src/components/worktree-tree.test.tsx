@@ -2,6 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { WorktreeTree } from "./worktree-tree";
+import { toast } from "sonner";
+
+vi.mock("sonner", () => ({
+  toast: {
+    warning: vi.fn(),
+  },
+}));
 
 const mockRefresh = vi.fn();
 const mockSetActiveWorktree = vi.fn();
@@ -84,6 +91,28 @@ describe("WorktreeTree", () => {
 
     const worktreeButton = screen.getByRole("button", { name: "Switch to worktree feat" });
     expect(worktreeButton).toHaveAttribute("aria-current", "true");
+  });
+
+  it("resets a missing persisted active worktree to project root with a non-fatal notice", () => {
+    mockWorktrees = [{ name: "feat", branch: "feat" }];
+    mockActiveWorktree = ".trees/deleted";
+
+    render(<WorktreeTree slug="demo" />);
+
+    expect(mockSetActiveWorktree).toHaveBeenCalledWith(null);
+    expect(toast.warning).toHaveBeenCalledWith(
+      "Worktree no longer exists; showing project root instead.",
+    );
+  });
+
+  it("does not reset active worktree while worktree refresh is loading", () => {
+    mockLoading = true;
+    mockActiveWorktree = ".trees/deleted";
+
+    render(<WorktreeTree slug="demo" />);
+
+    expect(mockSetActiveWorktree).not.toHaveBeenCalled();
+    expect(toast.warning).not.toHaveBeenCalled();
   });
 
   it("renders nested worktree names as selector-style filesystem nodes", () => {

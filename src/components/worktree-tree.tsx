@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import {
   GitBranch,
   CaretRight,
@@ -9,6 +10,7 @@ import {
   FolderOpen,
   Tree,
 } from "@phosphor-icons/react";
+import { toast } from "sonner";
 import { useWorktrees } from "@/hooks/use-worktrees";
 import { useWorkspace } from "@/lib/workspace-context";
 
@@ -20,6 +22,24 @@ export function WorktreeTree({ slug }: WorktreeTreeProps) {
   const { worktrees, loading, error, refresh } = useWorktrees(slug);
   const { activeWorktree, worktreesSectionCollapsed, setActiveWorktree, toggleWorktreesSection } =
     useWorkspace();
+  const lastMissingNoticeRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (loading || error || !activeWorktree) return;
+
+    const stillExists = worktrees.some((worktree) => `.trees/${worktree.name}` === activeWorktree);
+    if (stillExists) {
+      lastMissingNoticeRef.current = null;
+      return;
+    }
+
+    const noticeKey = `${slug}:${activeWorktree}`;
+    if (lastMissingNoticeRef.current !== noticeKey) {
+      toast.warning("Worktree no longer exists; showing project root instead.");
+      lastMissingNoticeRef.current = noticeKey;
+    }
+    setActiveWorktree(null);
+  }, [activeWorktree, error, loading, setActiveWorktree, slug, worktrees]);
 
   // Render nothing visible when worktree list is empty (stays mounted per Decision #84)
   if (worktrees.length === 0 && !loading && !error) {

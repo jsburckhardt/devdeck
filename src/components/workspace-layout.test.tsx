@@ -149,6 +149,39 @@ describe("WorkspaceLayout", () => {
     expect(screen.getByTestId("file-tree")).toBeInTheDocument();
   });
 
+  it("Issue #52: reloads the root file tree when activeWorktree changes", async () => {
+    const refreshFileTree = vi.fn().mockResolvedValue(undefined);
+    const setFileTreeLoading = vi.fn();
+
+    mockUseWorkspace.mockReturnValue(
+      makeContext({
+        activeWorktree: null,
+        refreshFileTree,
+        setFileTreeLoading,
+      }),
+    );
+
+    const { rerender } = render(<WorkspaceLayout project={project} />);
+
+    await waitFor(() => {
+      expect(refreshFileTree).toHaveBeenCalledTimes(1);
+    });
+
+    mockUseWorkspace.mockReturnValue(
+      makeContext({
+        activeWorktree: ".trees/feat",
+        refreshFileTree,
+        setFileTreeLoading,
+      }),
+    );
+    rerender(<WorkspaceLayout project={project} />);
+
+    await waitFor(() => {
+      expect(refreshFileTree).toHaveBeenCalledTimes(2);
+    });
+    expect(refreshFileTree).toHaveBeenLastCalledWith(project.slug);
+  });
+
   it("T2-layout-1: shows error+retry when root load fails and tree is empty", () => {
     mockUseWorkspace.mockReturnValue(
       makeContext({

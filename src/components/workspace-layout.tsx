@@ -145,9 +145,9 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     [refreshFileTree, setFileTreeLoading],
   );
 
-  // Initial file-tree load: toggle the spinner via `fileTreeLoading` only on
-  // first mount (or project switch). All subsequent refreshes go through
-  // `refreshFileTree` directly and remain silent (Decision #62).
+  // Root file-tree load: toggle the spinner via `fileTreeLoading` on first
+  // mount, project switch, or active worktree switch. All other refreshes go
+  // through `refreshFileTree` directly and remain silent (Decision #62).
   //
   // Pass `project.slug` explicitly so the fetch does NOT depend on the
   // context `project` state having propagated from the `setProject` effect
@@ -162,7 +162,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     return () => {
       cancelled = true;
     };
-  }, [project.slug, loadRootFileTree]);
+  }, [activeWorktree, project.slug, loadRootFileTree]);
 
   const handleRetry = useCallback(() => {
     void loadRootFileTree(project.slug);
