@@ -7,6 +7,20 @@ vi.mock("@/hooks/use-terminal", () => ({
   useTerminal: (...args: unknown[]) => mockUseTerminal(...args),
 }));
 
+// Mock useOpenProjects
+const mockUpdateCopilotStatus = vi.fn();
+vi.mock("@/lib/open-projects-context", () => ({
+  useOpenProjects: () => ({
+    updateCopilotStatus: mockUpdateCopilotStatus,
+    openProjects: [],
+    closeProject: vi.fn(),
+    openProject: vi.fn(),
+    saveWorkspaceState: vi.fn(),
+    restoreWorkspaceState: vi.fn(),
+    getCopilotStatus: vi.fn(() => "idle"),
+  }),
+}));
+
 // Mock phosphor icons
 vi.mock("@phosphor-icons/react", () => ({
   WarningCircle: () => <span data-testid="warning-icon" />,
@@ -52,6 +66,7 @@ function defaultMockReturn(overrides: Record<string, unknown> = {}) {
     retry: vi.fn(),
     terminalMode: "unknown" as const,
     isFallback: false,
+    copilotStatus: "idle" as const,
     ...overrides,
   };
 }
@@ -105,5 +120,19 @@ describe("TerminalPanel", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("T16: propagates copilotStatus to context via updateCopilotStatus", () => {
+    mockUseTerminal.mockReturnValue(defaultMockReturn({ copilotStatus: "running" }));
+    render(<TerminalPanel slug="test-project" />);
+
+    expect(mockUpdateCopilotStatus).toHaveBeenCalledWith("test-project", "running");
+  });
+
+  it("T17: does not propagate copilotStatus when slug is undefined", () => {
+    mockUseTerminal.mockReturnValue(defaultMockReturn({ copilotStatus: "running" }));
+    render(<TerminalPanel />);
+
+    expect(mockUpdateCopilotStatus).not.toHaveBeenCalled();
   });
 });

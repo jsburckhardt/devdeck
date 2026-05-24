@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { WebSocket } from "ws";
 import type { TerminalServerHandle } from "./terminal-server.mts";
+import { detectCopilotState, stripAnsi } from "./terminal-server.mts";
 
 // --- Fake IPty ---
 function createFakePty() {
@@ -1091,5 +1092,81 @@ describe("terminal-server", () => {
       const lastCall = spawnMock.mock.calls[spawnMock.mock.calls.length - 1];
       expect((lastCall[2] as { cwd: string })?.cwd).toBe(projectPath);
     });
+  });
+});
+
+// --- Copilot CLI Status Detection Tests (Task 7) ---
+
+describe("stripAnsi", () => {
+  it("T5-1: strips standard SGR color sequences", () => {
+    expect(stripAnsi("\x1b[31mred text\x1b[0m")).toBe("red text");
+  });
+
+  it("T5-2: strips compound SGR sequences", () => {
+    expect(stripAnsi("\x1b[1;32;40mcolored\x1b[0m plain")).toBe("colored plain");
+  });
+
+  it("T5-3: preserves non-ANSI text", () => {
+    expect(stripAnsi("no ansi")).toBe("no ansi");
+  });
+
+  it("T5-4: handles empty string", () => {
+    expect(stripAnsi("")).toBe("");
+  });
+
+  it("T5-5: strips cursor movement sequences", () => {
+    expect(stripAnsi("\x1b[H\x1b[2J")).toBe("");
+  });
+});
+
+describe("detectCopilotState", () => {
+  it("T1-1: returns 'running' for spinner character ⠋", () => {
+    expect(detectCopilotState("⠋ Thinking...")).toBe("running");
+  });
+
+  it("T1-2: returns 'running' for spinner character ⠙", () => {
+    expect(detectCopilotState("⠙ Processing...")).toBe("running");
+  });
+
+  it("T1-3: returns 'running' for all braille spinner characters", () => {
+    for (const ch of "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {
+      expect(detectCopilotState(`${ch} Working...`)).toBe("running");
+    }
+  });
+
+  it("T2-1: returns 'waiting' for '> ' prompt at end", () => {
+    expect(detectCopilotState("some text\n> ")).toBe("waiting");
+  });
+
+  it("T2-2: returns 'waiting' for '? ' prompt", () => {
+    expect(detectCopilotState("? Do you want to continue? ")).toBe("waiting");
+  });
+
+  it("T3-1: returns 'idle' for shell prompt with $", () => {
+    expect(detectCopilotState("user@host:~$ ")).toBe("idle");
+  });
+
+  it("T3-2: returns 'idle' for shell prompt with %", () => {
+    expect(detectCopilotState("% ")).toBe("idle");
+  });
+
+  it("T3-3: returns 'idle' for shell prompt with #", () => {
+    expect(detectCopilotState("# ")).toBe("idle");
+  });
+
+  it("T3-4: returns 'idle' for shell prompt with ❯", () => {
+    expect(detectCopilotState("❯ ")).toBe("idle");
+  });
+
+  it("T4-1: returns null for generic text", () => {
+    expect(detectCopilotState("some random text")).toBeNull();
+  });
+
+  it("T4-2: returns null for empty string", () => {
+    expect(detectCopilotState("")).toBeNull();
+  });
+
+  it("T4-3: returns null for ls output", () => {
+    expect(detectCopilotState("ls -la output here")).toBeNull();
   });
 });

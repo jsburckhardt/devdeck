@@ -15,6 +15,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 const mockCloseProject = vi.fn();
+let mockGetCopilotStatus = vi.fn((_slug: string) => "idle" as const);
 const defaultOpenProjects: Project[] = [
   {
     slug: "proj-a",
@@ -53,6 +54,8 @@ vi.mock("@/lib/open-projects-context", async (importOriginal) => {
       openProject: vi.fn(),
       saveWorkspaceState: vi.fn(),
       restoreWorkspaceState: vi.fn(),
+      updateCopilotStatus: vi.fn(),
+      getCopilotStatus: mockGetCopilotStatus,
     }),
   };
 });
@@ -62,6 +65,7 @@ describe("ProjectSidebar", () => {
     vi.clearAllMocks();
     mockPathname = "/project/proj-b";
     mockOpenProjects = defaultOpenProjects;
+    mockGetCopilotStatus = vi.fn((_slug: string) => "idle" as const);
   });
 
   it("T8: renders correct number of tabs with first letters, names and titles", () => {
@@ -277,6 +281,63 @@ describe("ProjectSidebar", () => {
     const closeButtons = screen.getAllByRole("button", { name: /Close project/ });
     closeButtons.forEach((btn) => {
       expect(btn).toHaveAttribute("aria-label");
+    });
+  });
+
+  describe("Copilot CLI status indicators", () => {
+    it("T13: renders status indicator with animate-pulse for 'running' project", () => {
+      mockGetCopilotStatus = vi.fn((slug: string) =>
+        slug === "proj-a" ? ("running" as const) : ("idle" as const),
+      );
+      render(<ProjectSidebar />);
+
+      const indicator = screen.getByRole("status", { name: /running/i });
+      expect(indicator).toBeInTheDocument();
+      expect(indicator).toHaveAttribute("aria-label", "Copilot CLI running");
+      expect(indicator).toHaveAttribute("title", "Copilot CLI running");
+      expect(indicator.className).toContain("animate-pulse");
+    });
+
+    it("T14: renders status indicator without animate-pulse for 'waiting' project", () => {
+      mockGetCopilotStatus = vi.fn((slug: string) =>
+        slug === "proj-b" ? ("waiting" as const) : ("idle" as const),
+      );
+      render(<ProjectSidebar />);
+
+      const indicator = screen.getByRole("status", { name: /waiting/i });
+      expect(indicator).toBeInTheDocument();
+      expect(indicator).toHaveAttribute("aria-label", "Copilot CLI waiting for input");
+      expect(indicator).toHaveAttribute("title", "Copilot CLI waiting for input");
+      expect(indicator.className).not.toContain("animate-pulse");
+    });
+
+    it("T15: hides status indicator for 'idle' projects", () => {
+      mockGetCopilotStatus = vi.fn(() => "idle" as const);
+      render(<ProjectSidebar />);
+
+      const indicators = screen.queryAllByRole("status", { name: /Copilot/i });
+      expect(indicators).toHaveLength(0);
+    });
+
+    it("T18: status indicators have both aria-label and title that differentiate states", () => {
+      mockGetCopilotStatus = vi.fn((slug: string) => {
+        if (slug === "proj-a") return "running" as const;
+        if (slug === "proj-b") return "waiting" as const;
+        return "idle" as const;
+      });
+      render(<ProjectSidebar />);
+
+      const indicators = screen.getAllByRole("status", { name: /Copilot/i });
+      expect(indicators).toHaveLength(2);
+
+      indicators.forEach((indicator) => {
+        expect(indicator).toHaveAttribute("aria-label");
+        expect(indicator).toHaveAttribute("title");
+      });
+
+      const labels = indicators.map((i) => i.getAttribute("aria-label"));
+      expect(labels).toContain("Copilot CLI running");
+      expect(labels).toContain("Copilot CLI waiting for input");
     });
   });
 });
