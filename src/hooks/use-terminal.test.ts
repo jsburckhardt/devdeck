@@ -487,12 +487,14 @@ describe("useTerminal", () => {
     expect(typeof fakeTerminal.attachCustomKeyEventHandler.mock.calls[0][0]).toBe("function");
   });
 
-  it("T24: Terminal constructor includes screenReaderMode: true", async () => {
+  it("T24: Terminal constructor includes accessibility and tmux-safe rendering options", async () => {
     renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
 
     await waitForWs();
 
     expect(terminalConstructorOptions).toMatchObject({
+      lineHeight: 1.0,
+      customGlyphs: true,
       screenReaderMode: true,
       allowProposedApi: true,
     });
