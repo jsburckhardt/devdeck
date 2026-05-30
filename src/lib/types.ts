@@ -92,6 +92,7 @@ export interface WorktreeFileTreeState {
 export interface PerProjectWorkspaceState {
   selectedFile: string | null;
   expandedFolders: string[];
+  showExplorer?: boolean;
   showFileViewer: boolean;
   showTerminal: boolean;
   fileTree: FileNode[];
