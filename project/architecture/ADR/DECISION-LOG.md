@@ -155,12 +155,21 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 123 | Forward resolved config to `src/server/terminal-server.mts` through env vars; prohibit importing the config loader into the standalone `.mts` server | CORE-COMPONENT-0003 | 2026-05-24 |
 | 124 | Persist trimmed `initialProjects` name and description on new manual registry entries | ADR-0006 | 2026-05-24 |
 | 125 | Use the resolved `projectsDir` for `initialProjects` auto-discovery collision checks during startup seeding | ADR-0006 | 2026-05-24 |
-| 126 | Render Explorer toggle before File Preview and Terminal toggles | CORE-COMPONENT-0007 | 2026-05-30 |
-| 127 | Keep Explorer mounted when hidden using collapsible zero-size panel behavior | CORE-COMPONENT-0007 | 2026-05-30 |
-| 128 | Show panel separators only between adjacent expanded panels | CORE-COMPONENT-0007 | 2026-05-30 |
-| 129 | Prevent hiding the last visible workspace panel | CORE-COMPONENT-0007 | 2026-05-30 |
-| 130 | Require PanelToggle aria-label and aria-pressed states | CORE-COMPONENT-0007 | 2026-05-30 |
-| 131 | Expose showExplorer and toggleExplorer on WorkspaceContext | CORE-COMPONENT-0008 | 2026-05-30 |
-| 132 | Persist optional showExplorer in per-project workspace state | CORE-COMPONENT-0008 | 2026-05-30 |
-| 133 | Default missing persisted showExplorer values to true | CORE-COMPONENT-0008 | 2026-05-30 |
-| 134 | Include showExplorer in workspace state save and restore caching | CORE-COMPONENT-0008 | 2026-05-30 |
+| 126 | Persist sidebar collapse state to `localStorage` under `devdeck-sidebar-collapsed` | CORE-COMPONENT-0007 | 2026-05-30 |
+| 127 | Use `w-44` expanded sidebar width and `w-12` collapsed sidebar width | CORE-COMPONENT-0007 | 2026-05-30 |
+| 128 | Require sidebar collapse toggle to use `SidebarSimple` with accessible attributes | CORE-COMPONENT-0007 | 2026-05-30 |
+| 129 | Render collapsed sidebar tabs as icon-only language-color badges | CORE-COMPONENT-0007 | 2026-05-30 |
+| 130 | Keep collapsed sidebar close buttons always visible | CORE-COMPONENT-0008 | 2026-05-30 |
+| 131 | Keep active `WorktreeTree` mounted and CSS-hidden when sidebar collapses | CORE-COMPONENT-0008 | 2026-05-30 |
+| 132 | Keep Copilot status indicators visible on badges in both sidebar modes | CORE-COMPONENT-0008 | 2026-05-30 |
+| 133 | Prohibit storing sidebar collapse state in per-project workspace state | CORE-COMPONENT-0008 | 2026-05-30 |
+| 134 | Prohibit sidebar collapse keyboard shortcuts in v1 | CORE-COMPONENT-0007 | 2026-05-30 |
+| 135 | Render Explorer toggle before File Preview and Terminal toggles | CORE-COMPONENT-0007 | 2026-05-30 |
+| 136 | Keep Explorer mounted when hidden using collapsible zero-size panel behavior | CORE-COMPONENT-0007 | 2026-05-30 |
+| 137 | Show panel separators only between adjacent expanded panels | CORE-COMPONENT-0007 | 2026-05-30 |
+| 138 | Prevent hiding the last visible workspace panel | CORE-COMPONENT-0007 | 2026-05-30 |
+| 139 | Require PanelToggle aria-label and aria-pressed states | CORE-COMPONENT-0007 | 2026-05-30 |
+| 140 | Expose showExplorer and toggleExplorer on WorkspaceContext | CORE-COMPONENT-0008 | 2026-05-30 |
+| 141 | Persist optional showExplorer in per-project workspace state | CORE-COMPONENT-0008 | 2026-05-30 |
+| 142 | Default missing persisted showExplorer values to true | CORE-COMPONENT-0008 | 2026-05-30 |
+| 143 | Include showExplorer in workspace state save and restore caching | CORE-COMPONENT-0008 | 2026-05-30 |

@@ -2,7 +2,7 @@
 
 ## Status
 
-Adopted (updated) - 2026-05-24
+Adopted (updated) - 2026-05-30
 
 ## Purpose
 
@@ -40,10 +40,15 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - `WorkspaceProvider` MUST call `saveWorkspaceState(slug, state)` on unmount (via cleanup effect) to persist current state to the cache
 - The sidebar MUST render outside the `react-resizable-panels` `Group` as a sibling flex column (per CORE-COMPONENT-0007)
 - The sidebar MUST be a fixed-width vertical strip (~176px) on the left edge of the project layout
-- Each sidebar tab MUST display the project's language-color badge (first letter) and the project name as a visible truncated text label
+- Sidebar collapse state MUST be global and MUST NOT be included in `PerProjectWorkspaceState`
+- Collapsed sidebar mode MUST hide Home text and project-name labels while preserving native `title` attributes
+- Collapsed sidebar tabs MUST keep language-color badges visible
+- Expanded sidebar tabs MUST display the project's language-color badge (first letter) and the project name as a visible truncated text label
 - Sidebar tabs MUST show the full project name via the native `title` attribute (no `@radix-ui/react-tooltip` dependency)
 - The active project tab MUST be visually distinguished (e.g., left border accent, brighter background)
-- Each tab MUST have a close button (visible on hover) to remove the project from the open list
+- Each tab MUST have a close button to remove the project from the open list
+- Expanded sidebar close buttons MAY be visible on hover/focus
+- Collapsed sidebar close buttons MUST be always visible
 - The sidebar MUST include a "Home" button at the top to navigate to the landing page
 - Clicking a sidebar tab MUST trigger client-side navigation via `router.push(`/project/${slug}`)` — no full page reload
 - Sidebar MUST use CSS custom properties from CORE-COMPONENT-0004 for structural colors (borders, backgrounds, text). Language color badges use Tailwind palette classes via the shared `languageColor()` utility for consistency with `ProjectCard`
@@ -115,7 +120,8 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - The status indicator MUST use theme-aware CSS custom properties (CORE-COMPONENT-0004) and MUST NOT rely on color alone for semantics — `aria-label` and `title` attributes MUST convey the state
 - The status indicator MUST be hidden (not rendered) when `copilotStatus` is `"idle"`
 - The status indicator MUST be hidden when the terminal WebSocket is not connected (status is only meaningful with a live connection)
-- `WorktreeTree` MUST be rendered in `ProjectSidebar` for the active project, always mounted per Decision #84, hidden via CSS when the worktree list is empty, and MUST NOT render inside `ExplorerContent`
+- Sidebar Copilot status indicators MUST remain visible on project badges in expanded and collapsed modes
+- `WorktreeTree` MUST be rendered in `ProjectSidebar` for the active project, always mounted per Decision #84, hidden via CSS when the worktree list is empty or when the sidebar is collapsed, and MUST NOT render inside `ExplorerContent`
 - Worktree data MUST be fetched via `GET /api/worktrees?slug=<slug>` returning `Worktree[]`; an empty array MUST be returned (not a server error) when `.trees/` is absent or git is unavailable
 - A `useWorktrees(slug: string)` hook MUST be provided exposing `{ worktrees: Worktree[], loading: boolean, error: string | null, refresh: () => void }`
 - `WorktreeTree` MUST render filesystem-style selector nodes with icons, indentation, keyboard-accessible buttons, `aria-current` on the active entry, and active-state affordances that do not rely on color alone
@@ -153,7 +159,7 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - **Worktree endpoint:** `GET /api/worktrees?slug=<slug>` → `Worktree[]` — parses `git worktree list --porcelain`, filters to `.trees/`-relative entries; returns `[]` on any error
 - **useWorktrees(slug: string):** Hook exposing `{ worktrees: Worktree[], loading: boolean, error: string | null, refresh: () => void }`
 - **WorktreeTree:** Collapsible selector component rendered in the project sidebar; lists project root and worktrees as filesystem-style selector nodes without nested inline file trees
-- **ProjectSidebar:** Component rendering the vertical tab strip plus the active project's worktree selector; consumes `useOpenProjects()` and `usePathname()`
+- **ProjectSidebar:** Component rendering the collapsible vertical tab strip plus the active project's CSS-hideable worktree selector; consumes `useOpenProjects()` and `usePathname()`
 - **languageColor(language?: string): string** — Shared utility extracted to `src/lib/utils.ts`
 
 ### Expectations
@@ -294,6 +300,7 @@ async function handleDirectoryClick(node: FileNode) {
 - [ ] Automated checks: WorktreeTree tests must assert missing restored worktrees reset to project root with a non-fatal notice
 - [ ] Automated checks: ProjectSidebar tests must assert the active project's worktree selector renders in the project panel and WorkspaceLayout tests must assert it is absent from `ExplorerContent`
 - [ ] Automated checks: FileTree tests must assert `.trees` directory nodes render the `Tree` icon in expanded and collapsed states
+- [ ] Automated checks: ProjectSidebar tests must assert collapsed icon-only tabs, native titles, always-visible collapsed close buttons, visible Copilot badges, and CSS-hidden mounted WorktreeTree
 - [ ] Test coverage requirements: Verification must include `npm run lint`, `npm run format:check`, `npm run build`, and `npm run test`
 
 ## Related ADRs

@@ -17,6 +17,7 @@ Define the top-level IDE shell structure that all DevDeck pages share. The shell
 - Error boundary wrapping per panel
 - Mount animation conventions
 - Responsive behavior contract
+- Collapsible project sidebar width and transition contract
 
 ## Definition
 
@@ -34,14 +35,22 @@ Define the top-level IDE shell structure that all DevDeck pages share. The shell
 - The shell MUST prevent hiding the last visible workspace panel; the guarded toggle MUST use `aria-disabled="true"`, `tabIndex={-1}`, muted styling, and a suppressed click handler
 - `PanelToggle` controls MUST expose `aria-label` and `aria-pressed`
 - Mount animations SHOULD use `framer-motion` with subtle fade/slide (duration ≤ 300ms)
-- On project pages, a fixed-width sidebar (~176px) MUST render as a flex sibling to the left of the `Group`, outside the resizable panel tree (see CORE-COMPONENT-0008)
-- Each sidebar tab MUST display the project's language-color badge and the project name as a visible truncated text label
+- On project pages, the sidebar MUST render as a fixed-width flex sibling to the left of the `Group`, outside the resizable panel tree (see CORE-COMPONENT-0008)
+- The expanded sidebar MUST use `w-44` (~176px) and display project-name labels
+- The collapsed sidebar MUST use `w-12` (48px) and render icon-only navigation
+- Sidebar collapse state MUST persist globally in `localStorage` under `devdeck-sidebar-collapsed`, defaulting to expanded
+- Sidebar width changes MUST use CSS-only transitions and MUST NOT add runtime animation or tooltip dependencies
+- Sidebar collapse MUST NOT be stored in per-project workspace state
+- The sidebar collapse toggle MUST use `SidebarSimple` with `aria-label`, `aria-expanded`, and native `title` attributes
+- A sidebar collapse keyboard shortcut MUST NOT be implemented in v1
+- Each expanded sidebar tab MUST display the project's language-color badge and the project name as a visible truncated text label
+- Each collapsed sidebar tab MUST display the project's language-color badge while hiding project-name text
 - The sidebar MUST NOT participate in the `react-resizable-panels` layout — it is a static-width element
 
 ### Interfaces
 - **ShellLayout:** The top-level page component composing Header + PanelGroup
 - **Header:** Fixed-height bar with app branding and toolbar actions (theme toggle)
-- **ProjectSidebar:** Fixed-width vertical strip rendered on project pages as a left-edge sibling of the panel workspace (see CORE-COMPONENT-0008)
+- **ProjectSidebar:** Collapsible fixed-width vertical strip rendered on project pages as a left-edge sibling of the panel workspace (see CORE-COMPONENT-0008)
 - **Panel placeholders:** Each panel renders a centered icon + label when no real content is loaded
 - **Separator:** Visible drag handle between panels with hover/active states
 - **PanelToggle:** Toggle-bar button for workspace panels; exposes `aria-label`, `aria-pressed`, and guarded disabled semantics when hiding the last visible panel is prohibited
@@ -113,6 +122,7 @@ export default function Home() {
 - [x] Code review checklist: New panels must be wrapped in ErrorBoundary
 - [x] Test coverage requirements: Shell layout smoke test must pass
 - [x] Test coverage requirements: Layout tests must assert Explorer mounted-collapse behavior, toggle order, pairwise separators, last-panel guard, and `PanelToggle` accessibility
+- [ ] Automated checks: ProjectSidebar tests must assert expanded `w-44`, collapsed `w-12`, persisted collapse state, and accessible toggle attributes
 
 ## Related ADRs
 

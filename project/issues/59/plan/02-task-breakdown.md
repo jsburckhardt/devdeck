@@ -5,7 +5,7 @@
 - **Status:** Planned
 - **Complexity:** Medium
 - **Dependencies:** None
-- **Related Core-Components:** CORE-COMPONENT-0008; Decisions #131, #132, #133, #134
+- **Related Core-Components:** CORE-COMPONENT-0008; Decisions #140, #141, #142, #143
 
 ### Description
 
@@ -35,7 +35,7 @@ Add `showExplorer` and `toggleExplorer()` to workspace state and context. Add op
 - **Status:** Planned
 - **Complexity:** High
 - **Dependencies:** T1
-- **Related Core-Components:** CORE-COMPONENT-0007, CORE-COMPONENT-0008; Decisions #126, #127, #128, #129, #130, #131
+- **Related Core-Components:** CORE-COMPONENT-0007, CORE-COMPONENT-0008; Decisions #135, #136, #137, #138, #139, #140
 
 ### Description
 
@@ -69,7 +69,7 @@ Update `WorkspaceLayout` to render an Explorer toggle before File Preview and Te
 - **Status:** Planned
 - **Complexity:** Medium
 - **Dependencies:** T2
-- **Related Core-Components:** CORE-COMPONENT-0007; Decisions #126, #127, #128, #129, #130
+- **Related Core-Components:** CORE-COMPONENT-0007; Decisions #135, #136, #137, #138, #139
 
 ### Description
 
@@ -93,7 +93,7 @@ Update `src/components/workspace-layout.test.tsx` mocks and assertions for the n
 - **Status:** Planned
 - **Complexity:** Medium
 - **Dependencies:** T1
-- **Related Core-Components:** CORE-COMPONENT-0008; Decisions #131, #132, #133, #134
+- **Related Core-Components:** CORE-COMPONENT-0008; Decisions #140, #141, #142, #143
 
 ### Description
 
