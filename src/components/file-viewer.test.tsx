@@ -1,7 +1,7 @@
 import type React from "react";
 import { useState } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 vi.mock("sonner", () => ({
@@ -1491,6 +1491,292 @@ describe("FileViewer", () => {
       expect(screen.queryByRole("region", { name: "Markdown preview" })).not.toBeInTheDocument();
       expect(screen.queryByLabelText("File editor")).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Live Edit" })).toBeInTheDocument();
+    });
+  });
+
+  describe("Issue #64 Edit in Preview", () => {
+    function renderPreviewMarkdownFile({
+      selectedFile = "README.md",
+      content = "# Before",
+      language = "markdown",
+      isBinary = false,
+      fileTree = [] as ReturnType<typeof useWorkspace>["fileTree"],
+      refreshFileTree = vi.fn().mockResolvedValue(undefined),
+    } = {}) {
+      setupWorkspace({ selectedFile, fileTree, refreshFileTree });
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            content,
+            language,
+            size: content.length,
+            isBinary,
+            path: selectedFile,
+            name: selectedFile.split("/").pop() ?? selectedFile,
+            mtime: 1000,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+      render(<FileViewer />);
+      return { refreshFileTree, fetchSpy: vi.mocked(globalThis.fetch) };
+    }
+
+    it("shows Edit in Preview for non-binary .md files", async () => {
+      renderPreviewMarkdownFile();
+
+      expect(await screen.findByRole("button", { name: "Edit in Preview" })).toBeInTheDocument();
+    });
+
+    it("hides Edit in Preview for .mdx, non-markdown, binary, and changes view", async () => {
+      renderPreviewMarkdownFile({ selectedFile: "README.mdx" });
+      await waitFor(() => expect(screen.getByText("README.mdx")).toBeInTheDocument());
+      expect(screen.queryByRole("button", { name: "Edit in Preview" })).not.toBeInTheDocument();
+
+      cleanup();
+      vi.restoreAllMocks();
+      renderPreviewMarkdownFile({
+        selectedFile: "src/index.ts",
+        content: "const x = 1;",
+        language: "typescript",
+      });
+      await waitFor(() => expect(screen.getByText("src/index.ts")).toBeInTheDocument());
+      expect(screen.queryByRole("button", { name: "Edit in Preview" })).not.toBeInTheDocument();
+
+      cleanup();
+      vi.restoreAllMocks();
+      renderPreviewMarkdownFile({
+        selectedFile: "README.md",
+        content: "",
+        language: "binary",
+        isBinary: true,
+      });
+      await waitFor(() => expect(screen.getByText("Binary file")).toBeInTheDocument());
+      expect(screen.queryByRole("button", { name: "Edit in Preview" })).not.toBeInTheDocument();
+
+      cleanup();
+      vi.restoreAllMocks();
+      const fileTree = [
+        {
+          name: "README.md",
+          path: "README.md",
+          type: "file" as const,
+          status: "modified" as const,
+        },
+      ];
+      const { fetchSpy } = renderPreviewMarkdownFile({ fileTree });
+      const user = userEvent.setup();
+      fetchSpy.mockResolvedValueOnce(
+        new Response(JSON.stringify({ diff: "diff" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+      await user.click(await screen.findByText("Changes"));
+      await waitFor(() => expect(screen.getByTestId("diff-view")).toBeInTheDocument());
+      expect(screen.queryByRole("button", { name: "Edit in Preview" })).not.toBeInTheDocument();
+    });
+
+    it("enters a single-pane editable rendered preview", async () => {
+      renderPreviewMarkdownFile({ content: "# Rich Preview" });
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByRole("button", { name: "Edit in Preview" }));
+
+      const editor = screen.getByRole("textbox", { name: "Editable markdown preview" });
+      expect(editor).toHaveAttribute("contenteditable", "true");
+      expect(screen.getByRole("heading", { name: "Rich Preview" })).toBeInTheDocument();
+      expect(screen.queryByLabelText("File editor")).not.toBeInTheDocument();
+    });
+
+    it("marks the file dirty after editing inside the preview", async () => {
+      renderPreviewMarkdownFile({ content: "# Before" });
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByRole("button", { name: "Edit in Preview" }));
+      const editor = screen.getByRole("textbox", { name: "Editable markdown preview" });
+      editor.innerHTML = "<h1>After</h1>";
+      fireEvent.input(editor);
+
+      expect(screen.getByTestId("dirty-indicator")).toBeInTheDocument();
+    });
+
+    it("saves serialized markdown, refreshes, and exits Edit in Preview", async () => {
+      const refreshFileTree = vi.fn().mockResolvedValue(undefined);
+      const { fetchSpy } = renderPreviewMarkdownFile({ content: "# Before", refreshFileTree });
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByRole("button", { name: "Edit in Preview" }));
+      const editor = screen.getByRole("textbox", { name: "Editable markdown preview" });
+      editor.innerHTML = `<h1>Saved</h1><pre class="hljs"><code class="hljs language-typescript"><span class="hljs-keyword">const</span> x = 1;</code></pre>`;
+      fireEvent.input(editor);
+      fetchSpy.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            content: "# Saved\n\n```typescript\nconst x = 1;\n```\n",
+            language: "markdown",
+            size: 38,
+            isBinary: false,
+            path: "README.md",
+            name: "README.md",
+            mtime: 2000,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+
+      await user.click(screen.getByLabelText("Save file"));
+
+      await waitFor(() => expect(refreshFileTree).toHaveBeenCalledTimes(1));
+      const putInit = fetchSpy.mock.calls[1][1] as RequestInit;
+      const body = JSON.parse(String(putInit.body));
+      expect(body.content).toBe("# Saved\n\n```typescript\nconst x = 1;\n```\n");
+      expect(body.content).not.toContain("<span");
+      expect(body.content).not.toContain("hljs");
+      expect(
+        screen.queryByRole("textbox", { name: "Editable markdown preview" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("keeps Edit in Preview active with user edits on 409 conflict", async () => {
+      const { fetchSpy } = renderPreviewMarkdownFile({ content: "# Before" });
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByRole("button", { name: "Edit in Preview" }));
+      const editor = screen.getByRole("textbox", { name: "Editable markdown preview" });
+      editor.innerHTML = "<h1>Conflict</h1>";
+      fireEvent.input(editor);
+      fetchSpy.mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: "File was modified externally", code: "CONFLICT" }), {
+          status: 409,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
+      await user.click(screen.getByLabelText("Save file"));
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith(
+          "File was modified externally. Reload and try again.",
+        );
+      });
+      expect(
+        screen.getByRole("textbox", { name: "Editable markdown preview" }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Conflict" })).toBeInTheDocument();
+    });
+
+    it("discard exits clean Edit in Preview without confirmation and prompts for dirty edits", async () => {
+      renderPreviewMarkdownFile({ content: "# Before" });
+      const confirmSpy = vi.spyOn(window, "confirm");
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByRole("button", { name: "Edit in Preview" }));
+      await user.click(screen.getByLabelText("Discard changes"));
+      expect(confirmSpy).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("textbox", { name: "Editable markdown preview" }),
+        ).not.toBeInTheDocument(),
+      );
+
+      await user.click(screen.getByRole("button", { name: "Edit in Preview" }));
+      const editor = screen.getByRole("textbox", { name: "Editable markdown preview" });
+      editor.innerHTML = "<h1>Dirty</h1>";
+      fireEvent.input(editor);
+      confirmSpy.mockReturnValueOnce(false);
+      await user.click(screen.getByLabelText("Discard changes"));
+      expect(
+        screen.getByRole("textbox", { name: "Editable markdown preview" }),
+      ).toBeInTheDocument();
+
+      confirmSpy.mockReturnValueOnce(true);
+      await user.click(screen.getByLabelText("Discard changes"));
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("textbox", { name: "Editable markdown preview" }),
+        ).not.toBeInTheDocument(),
+      );
+    });
+
+    it("prompts before dirty Edit in Preview file switches and restores when cancelled", async () => {
+      const selectFileSpy = vi.fn();
+      vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+        const url = new URL(String(input), "http://localhost");
+        const path = url.searchParams.get("path") ?? "README.md";
+        const content = path === "docs/next.md" ? "# Next" : "# Before";
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              content,
+              language: "markdown",
+              size: content.length,
+              isBinary: false,
+              path,
+              name: path.split("/").pop() ?? path,
+              mtime: 1000,
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+        );
+      });
+      vi.spyOn(window, "confirm").mockReturnValue(false);
+
+      function SelectionHarness() {
+        const [selectedFile, setSelectedFile] = useState("README.md");
+        mockUseWorkspace.mockReturnValue({
+          project: { slug: "test-project", name: "Test", path: "/test", source: "auto" as const },
+          selectedFile,
+          fileTree: [],
+          expandedFolders: new Set<string>(),
+          showFileViewer: true,
+          showTerminal: true,
+          fileTreeLoading: false,
+          fileTreeRefreshing: false,
+          setProject: vi.fn(),
+          selectFile: (path: string | null) => {
+            selectFileSpy(path);
+            setSelectedFile(path);
+          },
+          toggleFolder: vi.fn(),
+          toggleFileViewer: vi.fn(),
+          toggleTerminal: vi.fn(),
+          setFileTree: vi.fn(),
+          setFileTreeLoading: vi.fn(),
+          refreshFileTree: vi.fn().mockResolvedValue(undefined),
+          loadDirectoryChildren: vi.fn().mockResolvedValue(undefined),
+          fileTreeError: null,
+          activeWorktree: null,
+          worktreesSectionCollapsed: false,
+          setActiveWorktree: vi.fn(),
+          toggleWorktreesSection: vi.fn(),
+          directoryLoading: new Set<string>(),
+          directoryErrors: new Map<string, string>(),
+        } as ReturnType<typeof useWorkspace>);
+
+        return (
+          <>
+            <button type="button" onClick={() => setSelectedFile("docs/next.md")}>
+              Switch file
+            </button>
+            <FileViewer />
+          </>
+        );
+      }
+
+      render(<SelectionHarness />);
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "Edit in Preview" }));
+      const editor = screen.getByRole("textbox", { name: "Editable markdown preview" });
+      editor.innerHTML = "<h1>Unsaved</h1>";
+      fireEvent.input(editor);
+      await user.click(screen.getByRole("button", { name: "Switch file" }));
+
+      expect(selectFileSpy).toHaveBeenCalledWith("README.md");
+      expect(
+        screen.getByRole("textbox", { name: "Editable markdown preview" }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Unsaved" })).toBeInTheDocument();
     });
   });
 

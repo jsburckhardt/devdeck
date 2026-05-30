@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import { memo, useEffect, useRef, useState, useMemo, useCallback } from "react";
+import type { RefObject } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import {
@@ -32,6 +33,7 @@ import { useTheme } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
 import { DiffView } from "@/components/diff-view";
 import { ExcalidrawView } from "@/components/excalidraw-view";
+import { serializeMarkdownDom } from "@/lib/markdown-dom-serializer";
 import type { FileContent, FileKind, FileNode } from "@/lib/types";
 
 hljs.registerLanguage("typescript", typescript);
@@ -206,6 +208,104 @@ function MarkdownView({ content }: { content: string }) {
   );
 }
 
+function EditableMarkdownView({
+  content,
+  articleRef,
+  onInput,
+  renderVersion,
+}: {
+  content: string;
+  articleRef: RefObject<HTMLElement | null>;
+  onInput: () => void;
+  renderVersion: number;
+}) {
+  void renderVersion;
+  const { theme } = useTheme();
+  const rawHtml = useMemo(() => {
+    const parsed = marked.parse(content, { async: false }) as string;
+    return DOMPurify.sanitize(parsed);
+  }, [content]);
+
+  useEffect(() => {
+    const el = articleRef.current;
+    if (!el) return;
+
+    const mermaidBlocks = el.querySelectorAll<HTMLElement>("[data-mermaid-source]");
+    if (mermaidBlocks.length === 0) return;
+
+    let cancelled = false;
+
+    import("mermaid")
+      .then(async (mod) => {
+        if (cancelled) return;
+        const mermaid = mod.default;
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: "strict",
+          theme: theme === "dark" ? "dark" : "default",
+        });
+
+        for (let i = 0; i < mermaidBlocks.length; i++) {
+          if (cancelled) return;
+          const block = mermaidBlocks[i];
+          const encoded = block.getAttribute("data-mermaid-source") ?? "";
+          let source: string;
+          try {
+            source = fromBase64(encoded);
+          } catch {
+            continue;
+          }
+          try {
+            const { svg } = await mermaid.render(`mermaid-diagram-${Date.now()}-${i}`, source);
+            if (!cancelled) {
+              block.innerHTML = DOMPurify.sanitize(svg, {
+                USE_PROFILES: { svg: true, svgFilters: true },
+              });
+            }
+          } catch (err) {
+            if (!cancelled) {
+              const message = err instanceof Error ? err.message : "Diagram render failed";
+              const escapedSource = escapeHtml(source);
+              const escapedMessage = escapeHtml(message);
+              block.innerHTML = `<div class="mermaid-error"><p>${escapedMessage}</p><pre><code>${escapedSource}</code></pre></div>`;
+            }
+          }
+        }
+      })
+      .catch(() => {
+        /* mermaid import failed — placeholders remain as fallback */
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [articleRef, rawHtml, theme]);
+
+  return (
+    <div className="h-full overflow-auto p-6">
+      <article
+        ref={articleRef}
+        className="markdown-preview markdown-preview-editable max-w-4xl"
+        contentEditable
+        suppressContentEditableWarning
+        role="textbox"
+        aria-label="Editable markdown preview"
+        aria-multiline="true"
+        spellCheck
+        tabIndex={0}
+        onInput={onInput}
+        dangerouslySetInnerHTML={{ __html: rawHtml }}
+      />
+    </div>
+  );
+}
+
+const MemoizedEditableMarkdownView = memo(
+  EditableMarkdownView,
+  (previous, next) => previous.renderVersion === next.renderVersion,
+);
+MemoizedEditableMarkdownView.displayName = "MemoizedEditableMarkdownView";
+
 interface PreviewErrorState {
   message: string;
   code?: string;
@@ -330,7 +430,10 @@ export default function FileViewer() {
   const [saving, setSaving] = useState(false);
   const [originalContent, setOriginalContent] = useState("");
   const [liveEditMode, setLiveEditMode] = useState(false);
+  const [richPreviewEditMode, setRichPreviewEditMode] = useState(false);
   const [livePreviewContent, setLivePreviewContent] = useState("");
+  const [richPreviewRenderVersion, setRichPreviewRenderVersion] = useState(0);
+  const editablePreviewRef = useRef<HTMLElement>(null);
 
   const isDirty = editMode && editContent !== originalContent;
 
@@ -344,7 +447,7 @@ export default function FileViewer() {
     activeWorktree,
   });
 
-  // Reset state when file/worktree changes. Dirty Live Edit selection switches must be
+  // Reset state when file/worktree changes. Dirty markdown edit selection switches must be
   // confirmed before the new file/worktree is accepted; cancelling restores the previous
   // selection and keeps the editor state intact.
   useEffect(() => {
@@ -353,7 +456,7 @@ export default function FileViewer() {
 
     if (!selectedFileChanged && !activeWorktreeChanged) return;
 
-    if (liveEditMode && isDirty) {
+    if ((liveEditMode || richPreviewEditMode) && isDirty) {
       const shouldDiscard = window.confirm("Discard unsaved changes?");
       if (!shouldDiscard) {
         if (selectedFileChanged) {
@@ -362,26 +465,28 @@ export default function FileViewer() {
         if (activeWorktreeChanged) {
           setActiveWorktree(lastAcceptedSelection.activeWorktree);
         }
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- restores the rich edit DOM snapshot after a cancelled selection change
+        setRichPreviewRenderVersion((version) => version + 1);
         return;
       }
     }
 
-    /* eslint-disable react-hooks/set-state-in-effect -- resetting accepted selection and view/edit state when selection changes is the established FileViewer pattern */
     setLastAcceptedSelection({ selectedFile, activeWorktree });
     setShowRaw(false);
     setViewMode("file");
     setDiffContent(null);
     setEditMode(false);
     setLiveEditMode(false);
+    setRichPreviewEditMode(false);
     setEditContent("");
     setOriginalContent("");
     setLivePreviewContent("");
-    /* eslint-enable react-hooks/set-state-in-effect */
   }, [
     selectedFile,
     activeWorktree,
     lastAcceptedSelection,
     liveEditMode,
+    richPreviewEditMode,
     isDirty,
     selectFile,
     setActiveWorktree,
@@ -504,6 +609,7 @@ export default function FileViewer() {
   const handleEdit = useCallback(() => {
     if (!fileContent) return;
     setLiveEditMode(false);
+    setRichPreviewEditMode(false);
     setLivePreviewContent("");
     setEditMode(true);
     setEditContent(fileContent.content);
@@ -514,15 +620,34 @@ export default function FileViewer() {
     if (!fileContent) return;
     setEditMode(true);
     setLiveEditMode(true);
+    setRichPreviewEditMode(false);
     setEditContent(fileContent.content);
     setOriginalContent(fileContent.content);
     setLivePreviewContent(fileContent.content);
   }, [fileContent]);
 
+  const handleRichPreviewEdit = useCallback(() => {
+    if (!fileContent) return;
+    setEditMode(true);
+    setLiveEditMode(false);
+    setRichPreviewEditMode(true);
+    setEditContent(fileContent.content);
+    setOriginalContent(fileContent.content);
+    setLivePreviewContent("");
+    setRichPreviewRenderVersion((version) => version + 1);
+  }, [fileContent]);
+
+  const handleRichPreviewInput = useCallback(() => {
+    const editablePreview = editablePreviewRef.current;
+    if (!editablePreview) return;
+    setEditContent(serializeMarkdownDom(editablePreview));
+  }, []);
+
   const handleDiscard = useCallback(() => {
     if (isDirty && !window.confirm("Discard unsaved changes?")) return;
     setEditMode(false);
     setLiveEditMode(false);
+    setRichPreviewEditMode(false);
     setEditContent("");
     setOriginalContent("");
     setLivePreviewContent("");
@@ -533,13 +658,18 @@ export default function FileViewer() {
     setSaving(true);
 
     try {
+      const contentToSave =
+        richPreviewEditMode && editablePreviewRef.current
+          ? serializeMarkdownDom(editablePreviewRef.current)
+          : editContent;
+
       const res = await fetch("/api/files/content", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           slug: project.slug,
           path: selectedFile,
-          content: editContent,
+          content: contentToSave,
           mtime: fileContent.mtime,
           ...(activeWorktree ? { worktree: activeWorktree } : {}),
         }),
@@ -562,6 +692,7 @@ export default function FileViewer() {
       setFileContent(updated);
       setEditMode(false);
       setLiveEditMode(false);
+      setRichPreviewEditMode(false);
       setEditContent("");
       setOriginalContent("");
       setLivePreviewContent("");
@@ -575,7 +706,15 @@ export default function FileViewer() {
     } finally {
       setSaving(false);
     }
-  }, [project, selectedFile, fileContent, editContent, refreshFileTree, activeWorktree]);
+  }, [
+    project,
+    selectedFile,
+    fileContent,
+    richPreviewEditMode,
+    editContent,
+    refreshFileTree,
+    activeWorktree,
+  ]);
 
   if (!selectedFile) {
     return (
@@ -601,6 +740,7 @@ export default function FileViewer() {
 
   const isMarkdown = fileContent.language === "markdown";
   const canLiveEdit = selectedFile.toLowerCase().endsWith(".md") && !fileContent.isBinary;
+  const canEditInPreview = canLiveEdit;
   const isExcalidraw = fileContent.language === "excalidraw";
   const showTabs = fileStatus === "modified" || fileStatus === "added";
 
@@ -662,6 +802,18 @@ export default function FileViewer() {
           )}
 
           {/* Edit / Save / Discard buttons */}
+          {canEditInPreview && !editMode && viewMode === "file" && (
+            <button
+              className="flex items-center gap-1 rounded px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              onClick={handleRichPreviewEdit}
+              aria-label="Edit in Preview"
+              title="Edit in Preview"
+            >
+              <PencilSimple size={14} />
+              Edit in Preview
+            </button>
+          )}
+
           {canLiveEdit && !editMode && viewMode === "file" && (
             <button
               className="flex items-center gap-1 rounded px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -718,14 +870,24 @@ export default function FileViewer() {
       {/* Content area */}
       <AnimatePresence mode="wait">
         <motion.div
-          key={`${selectedFile}-${viewMode}-${editMode}-${liveEditMode}`}
+          key={`${lastAcceptedSelection.selectedFile}-${lastAcceptedSelection.activeWorktree ?? ""}-${viewMode}-${editMode}-${liveEditMode}-${richPreviewEditMode}`}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
-          className={cn("min-h-0 flex-1", liveEditMode ? "overflow-hidden" : "overflow-auto")}
+          className={cn(
+            "min-h-0 flex-1",
+            liveEditMode || richPreviewEditMode ? "overflow-hidden" : "overflow-auto",
+          )}
         >
-          {liveEditMode ? (
+          {richPreviewEditMode ? (
+            <MemoizedEditableMarkdownView
+              content={editContent}
+              articleRef={editablePreviewRef}
+              onInput={handleRichPreviewInput}
+              renderVersion={richPreviewRenderVersion}
+            />
+          ) : liveEditMode ? (
             <LiveEditView
               editContent={editContent}
               previewContent={livePreviewContent}
