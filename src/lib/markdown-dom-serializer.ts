@@ -223,5 +223,6 @@ function serializeBlockNode(node: Node): string {
 }
 
 export function serializeMarkdownDom(root: HTMLElement): string {
-  return `${trimBlankLines(serializeBlockChildren(root))}\n`;
+  const markdown = trimBlankLines(serializeBlockChildren(root));
+  return markdown ? `${markdown}\n` : "";
 }

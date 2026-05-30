@@ -8,6 +8,11 @@ function serialize(html: string): string {
 }
 
 describe("serializeMarkdownDom", () => {
+  it("serializes empty content as an empty markdown file", () => {
+    expect(serialize("")).toBe("");
+    expect(serialize("<p></p>")).toBe("");
+  });
+
   it("serializes headings and paragraphs", () => {
     expect(serialize("<h1>Hello</h1><p>World</p>")).toBe("# Hello\n\nWorld\n");
   });

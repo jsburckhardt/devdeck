@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useEffect, useRef, useState, useMemo, useCallback } from "react";
-import type { RefObject } from "react";
+import type { ClipboardEvent, RefObject } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import {
@@ -66,6 +66,66 @@ function escapeHtml(str: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function escapePastedMarkdownHtml(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+const MERMAID_EDIT_HINT =
+  "Mermaid diagrams are read-only in Edit in Preview. Use raw Edit or Live Edit to change diagram source.";
+
+function insertPlainTextAtSelection(container: HTMLElement | null, text: string): boolean {
+  if (!container) return false;
+
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return false;
+
+  const range = selection.getRangeAt(0);
+  if (!container.contains(range.commonAncestorContainer)) return false;
+
+  range.deleteContents();
+
+  const fragment = document.createDocumentFragment();
+  let lastNode: Node | null = null;
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+
+  for (const [index, line] of lines.entries()) {
+    if (index > 0) {
+      lastNode = document.createElement("br");
+      fragment.appendChild(lastNode);
+    }
+    if (line) {
+      lastNode = document.createTextNode(line);
+      fragment.appendChild(lastNode);
+    }
+  }
+
+  range.insertNode(fragment);
+  if (lastNode) {
+    range.setStartAfter(lastNode);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+  return true;
+}
+
+function appendMermaidEditHint(block: HTMLElement) {
+  if (block.querySelector(":scope > .mermaid-edit-hint")) return;
+
+  const hint = document.createElement("p");
+  hint.className = "mermaid-edit-hint";
+  hint.textContent = MERMAID_EDIT_HINT;
+  block.appendChild(hint);
+}
+
+function markMermaidBlockReadOnly(block: HTMLElement) {
+  block.contentEditable = "false";
+  block.setAttribute("contenteditable", "false");
+  block.setAttribute("aria-label", MERMAID_EDIT_HINT);
+  block.classList.add("mermaid-block-readonly");
+  appendMermaidEditHint(block);
 }
 
 // Configure marked renderer to use hljs for fenced code blocks
@@ -226,11 +286,28 @@ function EditableMarkdownView({
     return DOMPurify.sanitize(parsed);
   }, [content]);
 
+  const handlePaste = useCallback(
+    (event: ClipboardEvent<HTMLElement>) => {
+      event.preventDefault();
+
+      const plainText =
+        event.clipboardData.getData("text/plain") || event.clipboardData.getData("text/html");
+      const safeText = escapePastedMarkdownHtml(plainText);
+      const inserted = insertPlainTextAtSelection(articleRef.current, safeText);
+      if (!inserted && safeText) {
+        articleRef.current?.appendChild(document.createTextNode(safeText));
+      }
+      onInput();
+    },
+    [articleRef, onInput],
+  );
+
   useEffect(() => {
     const el = articleRef.current;
     if (!el) return;
 
     const mermaidBlocks = el.querySelectorAll<HTMLElement>("[data-mermaid-source]");
+    mermaidBlocks.forEach(markMermaidBlockReadOnly);
     if (mermaidBlocks.length === 0) return;
 
     let cancelled = false;
@@ -261,6 +338,7 @@ function EditableMarkdownView({
               block.innerHTML = DOMPurify.sanitize(svg, {
                 USE_PROFILES: { svg: true, svgFilters: true },
               });
+              markMermaidBlockReadOnly(block);
             }
           } catch (err) {
             if (!cancelled) {
@@ -268,6 +346,7 @@ function EditableMarkdownView({
               const escapedSource = escapeHtml(source);
               const escapedMessage = escapeHtml(message);
               block.innerHTML = `<div class="mermaid-error"><p>${escapedMessage}</p><pre><code>${escapedSource}</code></pre></div>`;
+              markMermaidBlockReadOnly(block);
             }
           }
         }
@@ -294,6 +373,7 @@ function EditableMarkdownView({
         spellCheck
         tabIndex={0}
         onInput={onInput}
+        onPaste={handlePaste}
         dangerouslySetInnerHTML={{ __html: rawHtml }}
       />
     </div>

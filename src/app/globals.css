@@ -363,3 +363,16 @@ body {
 .markdown-preview-editable [contenteditable="false"] {
   user-select: none;
 }
+
+.markdown-preview-editable .mermaid-block-readonly {
+  cursor: not-allowed;
+}
+
+.markdown-preview-editable .mermaid-edit-hint {
+  margin-top: 8px;
+  margin-bottom: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-style: italic;
+  text-align: center;
+}

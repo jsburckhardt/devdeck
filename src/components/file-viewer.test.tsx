@@ -29,6 +29,8 @@ vi.mock("@/components/theme-provider", () => ({
 
 const mockMermaidRender = vi.fn();
 const mockMermaidInitialize = vi.fn();
+const MERMAID_EDIT_HINT =
+  "Mermaid diagrams are read-only in Edit in Preview. Use raw Edit or Live Edit to change diagram source.";
 
 vi.mock("mermaid", () => ({
   default: {
@@ -1599,6 +1601,44 @@ describe("FileViewer", () => {
       fireEvent.input(editor);
 
       expect(screen.getByTestId("dirty-indicator")).toBeInTheDocument();
+    });
+
+    it("pastes clipboard HTML as plain text instead of live DOM nodes", async () => {
+      renderPreviewMarkdownFile({ content: "# Before" });
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByRole("button", { name: "Edit in Preview" }));
+      const editor = screen.getByRole("textbox", { name: "Editable markdown preview" });
+      fireEvent.paste(editor, {
+        clipboardData: {
+          getData: (type: string) =>
+            type === "text/plain"
+              ? '<img src="x" onerror="alert(1)">safe'
+              : '<img src="x" onerror="alert(1)">unsafe',
+        },
+      });
+
+      expect(editor.querySelector("img")).toBeNull();
+      expect(editor.textContent).toContain('&lt;img src="x" onerror="alert(1)"&gt;safe');
+      expect(screen.getByTestId("dirty-indicator")).toBeInTheDocument();
+    });
+
+    it("renders Mermaid diagrams as read-only with a source edit hint in Edit in Preview", async () => {
+      mockMermaidRender.mockResolvedValue({ svg: '<svg data-testid="mermaid-svg">diagram</svg>' });
+      renderPreviewMarkdownFile({
+        content: "# Diagram\n\n```mermaid\ngraph TD\n  A --> B\n```",
+      });
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByRole("button", { name: "Edit in Preview" }));
+      const editor = screen.getByRole("textbox", { name: "Editable markdown preview" });
+
+      await waitFor(() => {
+        const mermaidBlock = editor.querySelector(".mermaid-block");
+        expect(mermaidBlock).toHaveAttribute("contenteditable", "false");
+      });
+      expect(screen.getByText(MERMAID_EDIT_HINT)).toBeInTheDocument();
+      expect(editor.querySelector("svg")).not.toBeNull();
     });
 
     it("saves serialized markdown, refreshes, and exits Edit in Preview", async () => {
