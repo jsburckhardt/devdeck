@@ -16,6 +16,7 @@ interface WorkspaceState {
   project: Project | null;
   selectedFile: string | null;
   expandedFolders: Set<string>;
+  showExplorer: boolean;
   showFileViewer: boolean;
   showTerminal: boolean;
   fileTree: FileNode[];
@@ -31,6 +32,7 @@ interface WorkspaceContextValue extends WorkspaceState {
   setProject: (project: Project) => void;
   selectFile: (path: string | null) => void;
   toggleFolder: (path: string) => void;
+  toggleExplorer: () => void;
   toggleFileViewer: () => void;
   toggleTerminal: () => void;
   setFileTree: (tree: FileNode[]) => void;
@@ -171,6 +173,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     () => new Set(cachedStateRef.current?.expandedFolders ?? []),
   );
+  const [showExplorer, setShowExplorer] = useState(cachedStateRef.current?.showExplorer ?? true);
   const [showFileViewer, setShowFileViewer] = useState(
     cachedStateRef.current?.showFileViewer ?? true,
   );
@@ -202,6 +205,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
   const stateRef = useRef({
     selectedFile,
     expandedFolders,
+    showExplorer,
     showFileViewer,
     showTerminal,
     fileTree,
@@ -214,6 +218,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
     stateRef.current = {
       selectedFile,
       expandedFolders,
+      showExplorer,
       showFileViewer,
       showTerminal,
       fileTree,
@@ -224,6 +229,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
   }, [
     selectedFile,
     expandedFolders,
+    showExplorer,
     showFileViewer,
     showTerminal,
     fileTree,
@@ -276,6 +282,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       saveWorkspaceState(slug, {
         selectedFile: s.selectedFile,
         expandedFolders: Array.from(s.expandedFolders),
+        showExplorer: s.showExplorer,
         showFileViewer: s.showFileViewer,
         showTerminal: s.showTerminal,
         fileTree: s.fileTree,
@@ -327,6 +334,10 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       else next.add(path);
       return next;
     });
+  }, []);
+
+  const toggleExplorer = useCallback(() => {
+    setShowExplorer((prev) => !prev);
   }, []);
 
   const toggleFileViewer = useCallback(() => {
@@ -477,6 +488,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       project,
       selectedFile,
       expandedFolders,
+      showExplorer,
       showFileViewer,
       showTerminal,
       fileTree,
@@ -490,6 +502,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       setProject,
       selectFile,
       toggleFolder,
+      toggleExplorer,
       toggleFileViewer,
       toggleTerminal,
       setFileTree,
@@ -503,6 +516,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       project,
       selectedFile,
       expandedFolders,
+      showExplorer,
       showFileViewer,
       showTerminal,
       fileTree,
@@ -516,6 +530,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       setProject,
       selectFile,
       toggleFolder,
+      toggleExplorer,
       toggleFileViewer,
       toggleTerminal,
       setFileTree,

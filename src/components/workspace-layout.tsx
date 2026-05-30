@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import { Group, Panel, Separator, type PanelImperativeHandle } from "react-resizable-panels";
-import { Spinner, FileCode, TerminalWindow, WarningCircle } from "@phosphor-icons/react";
+import {
+  Spinner,
+  FileCode,
+  FolderOpen,
+  TerminalWindow,
+  WarningCircle,
+} from "@phosphor-icons/react";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { FileTree } from "@/components/file-tree";
 import { TerminalPanel } from "@/components/terminal-panel";
@@ -24,23 +30,38 @@ function PanelToggle({
   icon: Icon,
   label,
   active,
+  guarded = false,
   onClick,
 }: {
   icon: React.ComponentType<{ size?: number; className?: string }>;
   label: string;
   active: boolean;
+  guarded?: boolean;
   onClick: () => void;
 }) {
+  const ariaLabel = `${active ? "Hide" : "Show"} ${label}`;
+
   return (
     <button
-      onClick={onClick}
+      onClick={(event) => {
+        if (guarded) {
+          event.preventDefault();
+          return;
+        }
+        onClick();
+      }}
       className={cn(
         "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors",
         active
           ? "bg-primary/15 text-primary"
           : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+        guarded && "cursor-not-allowed opacity-50 hover:bg-transparent hover:text-muted-foreground",
       )}
-      title={`Toggle ${label}`}
+      title={ariaLabel}
+      aria-label={ariaLabel}
+      aria-pressed={active}
+      aria-disabled={guarded ? "true" : undefined}
+      tabIndex={guarded ? -1 : undefined}
     >
       <Icon size={14} />
       <span className="hidden sm:inline">{label}</span>
@@ -109,13 +130,16 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     fileTreeError,
     setFileTreeLoading,
     refreshFileTree,
+    showExplorer,
     showFileViewer,
     showTerminal,
+    toggleExplorer,
     toggleFileViewer,
     toggleTerminal,
     activeWorktree,
   } = useWorkspace();
 
+  const explorerPanelRef = useRef<PanelImperativeHandle>(null);
   const fileViewerPanelRef = useRef<PanelImperativeHandle>(null);
   const terminalPanelRef = useRef<PanelImperativeHandle>(null);
 
@@ -164,9 +188,22 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     void loadRootFileTree(project.slug);
   }, [loadRootFileTree, project.slug]);
 
+  const visiblePanelCount = [showExplorer, showFileViewer, showTerminal].filter(Boolean).length;
+  const explorerGuarded = showExplorer && visiblePanelCount === 1;
+  const fileViewerGuarded = showFileViewer && visiblePanelCount === 1;
+  const terminalGuarded = showTerminal && visiblePanelCount === 1;
+
   // Collapse/expand panels imperatively to preserve component lifecycle
   // across visibility toggles (Decision #84). useLayoutEffect prevents a
   // one-frame flash where the panel renders at defaultSize before collapsing.
+  useLayoutEffect(() => {
+    if (showExplorer) {
+      explorerPanelRef.current?.expand();
+    } else {
+      explorerPanelRef.current?.collapse();
+    }
+  }, [showExplorer]);
+
   useLayoutEffect(() => {
     if (showFileViewer) {
       fileViewerPanelRef.current?.expand();
@@ -188,25 +225,40 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
       {/* Panel toggle bar */}
       <div className="flex h-8 shrink-0 items-center gap-1 border-b border-border bg-card/30 px-2">
         <PanelToggle
+          icon={FolderOpen}
+          label="Explorer"
+          active={showExplorer}
+          guarded={explorerGuarded}
+          onClick={toggleExplorer}
+        />
+        <PanelToggle
           icon={FileCode}
           label="File Preview"
           active={showFileViewer}
+          guarded={fileViewerGuarded}
           onClick={toggleFileViewer}
         />
         <PanelToggle
           icon={TerminalWindow}
           label="Terminal"
           active={showTerminal}
+          guarded={terminalGuarded}
           onClick={toggleTerminal}
         />
       </div>
 
       <Group orientation="horizontal" className="min-h-0 flex-1">
-        {/* File Explorer — always visible. Spinner is gated SOLELY by
+        {/* File Explorer stays mounted even when collapsed. Spinner is gated SOLELY by
             `fileTreeLoading` (initial-load). `fileTreeRefreshing` is
             intentionally NOT surfaced here so background refreshes after
             in-portal edits stay silent (Decision #62). */}
-        <Panel defaultSize={20} minSize={12}>
+        <Panel
+          panelRef={explorerPanelRef}
+          collapsible
+          collapsedSize={0}
+          defaultSize={20}
+          minSize={12}
+        >
           <ExplorerContent
             loading={fileTreeLoading}
             error={fileTreeError}
@@ -218,9 +270,9 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
         <Separator
           className={cn(
             "w-1 bg-border transition-colors hover:bg-primary/40",
-            !showFileViewer && "hidden",
+            !(showExplorer && showFileViewer) && "hidden",
           )}
-          disabled={!showFileViewer}
+          disabled={!(showExplorer && showFileViewer)}
         />
         <Panel
           panelRef={fileViewerPanelRef}
@@ -237,9 +289,9 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
         <Separator
           className={cn(
             "w-1 bg-border transition-colors hover:bg-primary/40",
-            !showTerminal && "hidden",
+            !(showFileViewer && showTerminal) && "hidden",
           )}
-          disabled={!showTerminal}
+          disabled={!(showFileViewer && showTerminal)}
         />
         <Panel
           panelRef={terminalPanelRef}

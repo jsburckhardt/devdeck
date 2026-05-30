@@ -164,3 +164,12 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 132 | Keep Copilot status indicators visible on badges in both sidebar modes | CORE-COMPONENT-0008 | 2026-05-30 |
 | 133 | Prohibit storing sidebar collapse state in per-project workspace state | CORE-COMPONENT-0008 | 2026-05-30 |
 | 134 | Prohibit sidebar collapse keyboard shortcuts in v1 | CORE-COMPONENT-0007 | 2026-05-30 |
+| 135 | Render Explorer toggle before File Preview and Terminal toggles | CORE-COMPONENT-0007 | 2026-05-30 |
+| 136 | Keep Explorer mounted when hidden using collapsible zero-size panel behavior | CORE-COMPONENT-0007 | 2026-05-30 |
+| 137 | Show panel separators only between adjacent expanded panels | CORE-COMPONENT-0007 | 2026-05-30 |
+| 138 | Prevent hiding the last visible workspace panel | CORE-COMPONENT-0007 | 2026-05-30 |
+| 139 | Require PanelToggle aria-label and aria-pressed states | CORE-COMPONENT-0007 | 2026-05-30 |
+| 140 | Expose showExplorer and toggleExplorer on WorkspaceContext | CORE-COMPONENT-0008 | 2026-05-30 |
+| 141 | Persist optional showExplorer in per-project workspace state | CORE-COMPONENT-0008 | 2026-05-30 |
+| 142 | Default missing persisted showExplorer values to true | CORE-COMPONENT-0008 | 2026-05-30 |
+| 143 | Include showExplorer in workspace state save and restore caching | CORE-COMPONENT-0008 | 2026-05-30 |

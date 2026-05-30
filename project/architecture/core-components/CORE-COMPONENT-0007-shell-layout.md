@@ -2,7 +2,7 @@
 
 ## Status
 
-Adopted (updated)
+Adopted (updated) - 2026-05-30
 
 ## Purpose
 
@@ -12,6 +12,8 @@ Define the top-level IDE shell structure that all DevDeck pages share. The shell
 
 - Root page layout structure (header + panel workspace)
 - Panel registration pattern using `react-resizable-panels`
+- Panel toggle bar behavior, accessibility, and visibility guards
+- Pairwise separator visibility between expanded adjacent panels
 - Error boundary wrapping per panel
 - Mount animation conventions
 - Responsive behavior contract
@@ -27,6 +29,11 @@ Define the top-level IDE shell structure that all DevDeck pages share. The shell
 - The header MUST contain the application title ("DevDeck") and a theme toggle button
 - Panels MUST define a `minSize` percentage to prevent collapse below usable dimensions
 - Togglable panels that own persistent resources (WebSocket connections, server processes) MUST remain mounted at all times; use `collapsible`/`collapsedSize` with imperative `collapse()`/`expand()` to control visibility instead of conditional rendering
+- The Explorer panel MUST be toggleable from the panel toggle bar before File Preview and Terminal
+- The Explorer panel MUST remain mounted when hidden using `collapsible`, `collapsedSize={0}`, and imperative `collapse()`/`expand()` behavior
+- Panel separators MUST be visible only between two adjacent expanded panels
+- The shell MUST prevent hiding the last visible workspace panel; the guarded toggle MUST use `aria-disabled="true"`, `tabIndex={-1}`, muted styling, and a suppressed click handler
+- `PanelToggle` controls MUST expose `aria-label` and `aria-pressed`
 - Mount animations SHOULD use `framer-motion` with subtle fade/slide (duration ≤ 300ms)
 - On project pages, the sidebar MUST render as a fixed-width flex sibling to the left of the `Group`, outside the resizable panel tree (see CORE-COMPONENT-0008)
 - The expanded sidebar MUST use `w-44` (~176px) and display project-name labels
@@ -46,6 +53,7 @@ Define the top-level IDE shell structure that all DevDeck pages share. The shell
 - **ProjectSidebar:** Collapsible fixed-width vertical strip rendered on project pages as a left-edge sibling of the panel workspace (see CORE-COMPONENT-0008)
 - **Panel placeholders:** Each panel renders a centered icon + label when no real content is loaded
 - **Separator:** Visible drag handle between panels with hover/active states
+- **PanelToggle:** Toggle-bar button for workspace panels; exposes `aria-label`, `aria-pressed`, and guarded disabled semantics when hiding the last visible panel is prohibited
 
 ### Expectations
 - The shell MUST render without JavaScript errors when all panels contain only placeholder content
@@ -113,6 +121,7 @@ export default function Home() {
 - [x] Automated checks: Smoke test verifies shell renders with header and panel labels
 - [x] Code review checklist: New panels must be wrapped in ErrorBoundary
 - [x] Test coverage requirements: Shell layout smoke test must pass
+- [x] Test coverage requirements: Layout tests must assert Explorer mounted-collapse behavior, toggle order, pairwise separators, last-panel guard, and `PanelToggle` accessibility
 - [ ] Automated checks: ProjectSidebar tests must assert expanded `w-44`, collapsed `w-12`, persisted collapse state, and accessible toggle attributes
 
 ## Related ADRs
