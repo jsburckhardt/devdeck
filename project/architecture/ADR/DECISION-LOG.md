@@ -21,8 +21,8 @@ This file is the single registry of all architectural decisions and core-compone
 | CORE-COMPONENT-0004 | Theming | Adopted (updated) | 2026-05-21 |
 | CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2025-07-16 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
-| CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-05-23 |
-| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-05-24 |
+| CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-05-30 |
+| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-05-30 |
 
 ## Decisions
 
@@ -155,3 +155,12 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 123 | Forward resolved config to `src/server/terminal-server.mts` through env vars; prohibit importing the config loader into the standalone `.mts` server | CORE-COMPONENT-0003 | 2026-05-24 |
 | 124 | Persist trimmed `initialProjects` name and description on new manual registry entries | ADR-0006 | 2026-05-24 |
 | 125 | Use the resolved `projectsDir` for `initialProjects` auto-discovery collision checks during startup seeding | ADR-0006 | 2026-05-24 |
+| 126 | Render Explorer toggle before File Preview and Terminal toggles | CORE-COMPONENT-0007 | 2026-05-30 |
+| 127 | Keep Explorer mounted when hidden using collapsible zero-size panel behavior | CORE-COMPONENT-0007 | 2026-05-30 |
+| 128 | Show panel separators only between adjacent expanded panels | CORE-COMPONENT-0007 | 2026-05-30 |
+| 129 | Prevent hiding the last visible workspace panel | CORE-COMPONENT-0007 | 2026-05-30 |
+| 130 | Require PanelToggle aria-label and aria-pressed states | CORE-COMPONENT-0007 | 2026-05-30 |
+| 131 | Expose showExplorer and toggleExplorer on WorkspaceContext | CORE-COMPONENT-0008 | 2026-05-30 |
+| 132 | Persist optional showExplorer in per-project workspace state | CORE-COMPONENT-0008 | 2026-05-30 |
+| 133 | Default missing persisted showExplorer values to true | CORE-COMPONENT-0008 | 2026-05-30 |
+| 134 | Include showExplorer in workspace state save and restore caching | CORE-COMPONENT-0008 | 2026-05-30 |
