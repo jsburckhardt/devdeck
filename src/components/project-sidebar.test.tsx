@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ProjectSidebar } from "./project-sidebar";
 import type { Project } from "@/lib/types";
+
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "devdeck-sidebar-collapsed";
 
 const mockPush = vi.fn();
 let mockPathname = "/project/proj-b";
@@ -21,7 +23,7 @@ vi.mock("@/components/worktree-tree", () => ({
 }));
 
 const mockCloseProject = vi.fn();
-let mockGetCopilotStatus = vi.fn((_slug: string) => "idle" as const);
+let mockGetCopilotStatus = vi.fn(() => "idle" as const);
 const defaultOpenProjects: Project[] = [
   {
     slug: "proj-a",
@@ -71,7 +73,8 @@ describe("ProjectSidebar", () => {
     vi.clearAllMocks();
     mockPathname = "/project/proj-b";
     mockOpenProjects = defaultOpenProjects;
-    mockGetCopilotStatus = vi.fn((_slug: string) => "idle" as const);
+    mockGetCopilotStatus = vi.fn(() => "idle" as const);
+    window.localStorage.clear();
   });
 
   it("T8: renders correct number of tabs with first letters, names and titles", () => {
@@ -221,6 +224,9 @@ describe("ProjectSidebar", () => {
       expect(btn).toHaveAttribute("aria-label");
       expect(btn.getAttribute("aria-label")).toMatch(/Close project/);
     });
+
+    const toggle = screen.getByRole("button", { name: "Collapse sidebar" });
+    expect(toggle).toHaveAttribute("aria-label");
   });
 
   it("T14: keyboard navigation — Tab focuses elements, Enter activates tabs", async () => {
@@ -274,6 +280,168 @@ describe("ProjectSidebar", () => {
     render(<ProjectSidebar />);
     const homeButton = screen.getByRole("button", { name: "Go to home page" });
     expect(homeButton).toHaveTextContent("Home");
+  });
+
+  it("TP1: defaults expanded and persists collapsed state globally", async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(<ProjectSidebar />);
+
+    const nav = screen.getByRole("navigation", { name: "Open projects" });
+    expect(nav.className).toContain("w-44");
+
+    const toggle = screen.getByRole("button", { name: "Collapse sidebar" });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await user.click(toggle);
+
+    expect(nav.className).toContain("w-12");
+    expect(window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY)).toBe("true");
+
+    unmount();
+    render(<ProjectSidebar />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("navigation", { name: "Open projects" }).className).toContain("w-12");
+    });
+  });
+
+  it("TP1: invalid persisted collapse state falls back to expanded", async () => {
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, "not-a-boolean");
+    render(<ProjectSidebar />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("navigation", { name: "Open projects" }).className).toContain("w-44");
+    });
+  });
+
+  it("TP2: expanded and collapsed widths use CSS transition classes", async () => {
+    const user = userEvent.setup();
+    render(<ProjectSidebar />);
+
+    const nav = screen.getByRole("navigation", { name: "Open projects" });
+    expect(nav.className).toContain("w-44");
+    expect(nav.className).toContain("transition-[width]");
+
+    await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+
+    expect(nav.className).toContain("w-12");
+    expect(nav.className).toContain("transition-[width]");
+  });
+
+  it("TP3: collapsed mode hides labels while keeping badge initials", async () => {
+    const user = userEvent.setup();
+    render(<ProjectSidebar />);
+
+    expect(screen.getByRole("button", { name: "Go to home page" })).toHaveTextContent("Home");
+    expect(screen.getByText("Alpha")).toBeInTheDocument();
+    expect(screen.getByText("Beta")).toBeInTheDocument();
+    expect(screen.getByText("Charlie")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+
+    expect(screen.getByRole("button", { name: "Go to home page" })).not.toHaveTextContent("Home");
+    expect(screen.queryByText("Alpha")).not.toBeInTheDocument();
+    expect(screen.queryByText("Beta")).not.toBeInTheDocument();
+    expect(screen.queryByText("Charlie")).not.toBeInTheDocument();
+
+    const tabs = screen.getAllByRole("button", { name: /Open project/ });
+    expect(tabs[0]).toHaveTextContent("A");
+    expect(tabs[1]).toHaveTextContent("B");
+    expect(tabs[2]).toHaveTextContent("C");
+  });
+
+  it("TP4: collapse toggle exposes aria-expanded and meaningful title in both modes", async () => {
+    const user = userEvent.setup();
+    render(<ProjectSidebar />);
+
+    const collapseToggle = screen.getByRole("button", { name: "Collapse sidebar" });
+    expect(collapseToggle).toHaveAttribute("aria-expanded", "true");
+    expect(collapseToggle).toHaveAttribute("title", "Collapse sidebar");
+
+    await user.click(collapseToggle);
+
+    const expandToggle = screen.getByRole("button", { name: "Expand sidebar" });
+    expect(expandToggle).toHaveAttribute("aria-expanded", "false");
+    expect(expandToggle).toHaveAttribute("title", "Expand sidebar");
+  });
+
+  it("TP5: close buttons retain hover reveal expanded and are visible collapsed", async () => {
+    const user = userEvent.setup();
+    render(<ProjectSidebar />);
+
+    const expandedCloseButtons = screen.getAllByRole("button", { name: /Close project/ });
+    expandedCloseButtons.forEach((btn) => {
+      expect(btn.className).toContain("opacity-0");
+      expect(btn.className).toContain("group-hover:opacity-100");
+      expect(btn.className).toContain("focus:opacity-100");
+    });
+
+    await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+
+    const collapsedCloseButtons = screen.getAllByRole("button", { name: /Close project/ });
+    collapsedCloseButtons.forEach((btn) => {
+      expect(btn.className).toContain("opacity-100");
+      expect(btn.className).not.toContain("opacity-0");
+    });
+
+    await user.click(collapsedCloseButtons[0]);
+    expect(mockCloseProject).toHaveBeenCalledWith("proj-a");
+  });
+
+  it("TP6: keeps active WorktreeTree mounted and CSS-hidden when collapsed", async () => {
+    const user = userEvent.setup();
+    render(<ProjectSidebar />);
+
+    const worktreeTree = screen.getByTestId("project-panel-worktree-tree");
+    const wrapper = screen.getByTestId("active-worktree-wrapper");
+    expect(worktreeTree).toHaveTextContent("proj-b");
+    expect(wrapper.className).not.toContain("hidden");
+
+    await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+
+    expect(screen.getByTestId("project-panel-worktree-tree")).toBe(worktreeTree);
+    expect(wrapper.className).toContain("hidden");
+  });
+
+  it("TP7: keeps Copilot status visible on badges when collapsed", async () => {
+    const user = userEvent.setup();
+    mockGetCopilotStatus = vi.fn((slug: string) =>
+      slug === "proj-b" ? ("running" as const) : ("idle" as const),
+    );
+    render(<ProjectSidebar />);
+
+    expect(screen.getByRole("status", { name: /running/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+
+    expect(screen.getByRole("status", { name: /running/i })).toBeInTheDocument();
+  });
+
+  it("TP8: collapsed controls retain native titles and active aria-current", async () => {
+    const user = userEvent.setup();
+    mockGetCopilotStatus = vi.fn((slug: string) =>
+      slug === "proj-b" ? ("waiting" as const) : ("idle" as const),
+    );
+    render(<ProjectSidebar />);
+
+    await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+
+    expect(screen.getByRole("button", { name: "Go to home page" })).toHaveAttribute(
+      "title",
+      "Home",
+    );
+
+    const tabs = screen.getAllByRole("button", { name: /Open project/ });
+    expect(tabs[0]).toHaveAttribute("title", "Alpha");
+    expect(tabs[1]).toHaveAttribute("title", "Beta");
+    expect(tabs[1]).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("status", { name: /waiting/i })).toHaveAttribute(
+      "title",
+      "Copilot CLI waiting for input",
+    );
+    expect(screen.getByRole("button", { name: "Expand sidebar" })).toHaveAttribute(
+      "title",
+      "Expand sidebar",
+    );
   });
 
   it("renders the worktree selector in the project panel for the active project only", () => {
