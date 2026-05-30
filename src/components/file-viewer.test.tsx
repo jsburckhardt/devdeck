@@ -1,6 +1,7 @@
 import type React from "react";
+import { useState } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 vi.mock("sonner", () => ({
@@ -50,6 +51,22 @@ vi.mock("framer-motion", () => ({
   AnimatePresence: ({ children }: React.PropsWithChildren) => <>{children}</>,
 }));
 
+vi.mock("react-resizable-panels", () => ({
+  Group: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
+    <div data-testid="live-edit-panel-group" {...props}>
+      {children}
+    </div>
+  ),
+  Panel: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => {
+    void props;
+    return <div data-testid="live-edit-panel">{children}</div>;
+  },
+  Separator: (props: Record<string, unknown>) => {
+    void props;
+    return <div data-testid="live-edit-separator" />;
+  },
+}));
+
 const mockExcalidrawProps = vi.fn();
 
 vi.mock("next/dynamic", () => ({
@@ -65,7 +82,7 @@ vi.mock("next/dynamic", () => ({
 }));
 
 vi.mock("@excalidraw/excalidraw", () => ({
-  Excalidraw: (_props: Record<string, unknown>) => <div data-testid="excalidraw-renderer" />,
+  Excalidraw: () => <div data-testid="excalidraw-renderer" />,
 }));
 
 import { toast } from "sonner";
@@ -1005,6 +1022,473 @@ describe("FileViewer", () => {
       expect(screen.getByLabelText("File editor")).toBeInTheDocument();
 
       confirmSpy.mockRestore();
+    });
+  });
+
+  describe("Issue #60 Live Edit", () => {
+    function renderMarkdownFile({
+      selectedFile = "README.md",
+      content = "# Before",
+      language = "markdown",
+      activeWorktree = null as string | null,
+      refreshFileTree = vi.fn().mockResolvedValue(undefined),
+    } = {}) {
+      setupWorkspace({ selectedFile, activeWorktree, refreshFileTree });
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            content,
+            language,
+            size: content.length,
+            isBinary: false,
+            path: selectedFile,
+            name: selectedFile.split("/").pop() ?? selectedFile,
+            mtime: 1000,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+      render(<FileViewer />);
+      return { refreshFileTree, fetchSpy: vi.mocked(globalThis.fetch) };
+    }
+
+    it("shows the Live Edit button for .md files", async () => {
+      renderMarkdownFile();
+
+      expect(await screen.findByRole("button", { name: "Live Edit" })).toBeInTheDocument();
+    });
+
+    it("does not show the Live Edit button for .mdx files", async () => {
+      renderMarkdownFile({ selectedFile: "README.mdx" });
+
+      await waitFor(() => expect(screen.getByText("README.mdx")).toBeInTheDocument());
+      expect(screen.queryByRole("button", { name: "Live Edit" })).not.toBeInTheDocument();
+    });
+
+    it("does not show the Live Edit button for non-markdown files", async () => {
+      renderMarkdownFile({
+        selectedFile: "src/index.ts",
+        content: "const x = 1;",
+        language: "typescript",
+      });
+
+      await waitFor(() => expect(screen.getByText("src/index.ts")).toBeInTheDocument());
+      expect(screen.queryByRole("button", { name: "Live Edit" })).not.toBeInTheDocument();
+    });
+
+    it("entering Live Edit shows editor and markdown preview together", async () => {
+      renderMarkdownFile({ content: "# Live Preview" });
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByRole("button", { name: "Live Edit" }));
+
+      expect(screen.getByLabelText("File editor")).toHaveValue("# Live Preview");
+      expect(screen.getByRole("region", { name: "Markdown preview" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Live Preview" })).toBeInTheDocument();
+      expect(screen.getByTestId("live-edit-panel-group")).toHaveAttribute(
+        "orientation",
+        "horizontal",
+      );
+    });
+
+    it("renders the Live Edit preview as read-only content", async () => {
+      renderMarkdownFile();
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByRole("button", { name: "Live Edit" }));
+
+      const preview = screen.getByRole("region", { name: "Markdown preview" });
+      expect(preview).not.toHaveAttribute("contenteditable", "true");
+      expect(preview.querySelector("article")).not.toHaveAttribute("contenteditable", "true");
+    });
+
+    it("does not update the Live Edit preview before debounce", async () => {
+      renderMarkdownFile({ content: "# Before" });
+      const liveEditButton = await screen.findByRole("button", { name: "Live Edit" });
+      vi.useFakeTimers();
+      try {
+        fireEvent.click(liveEditButton);
+
+        fireEvent.change(screen.getByLabelText("File editor"), { target: { value: "# After" } });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(299);
+        });
+
+        expect(screen.getByRole("heading", { name: "Before" })).toBeInTheDocument();
+        expect(screen.queryByRole("heading", { name: "After" })).not.toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("updates the Live Edit preview after debounce", async () => {
+      renderMarkdownFile({ content: "# Before" });
+      const liveEditButton = await screen.findByRole("button", { name: "Live Edit" });
+      vi.useFakeTimers();
+      try {
+        fireEvent.click(liveEditButton);
+
+        fireEvent.change(screen.getByLabelText("File editor"), { target: { value: "# After" } });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(300);
+        });
+
+        expect(screen.getByRole("heading", { name: "After" })).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("shows the dirty indicator after editing in Live Edit", async () => {
+      renderMarkdownFile();
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByRole("button", { name: "Live Edit" }));
+      await user.type(screen.getByLabelText("File editor"), " changed");
+
+      expect(screen.getByTestId("dirty-indicator")).toBeInTheDocument();
+    });
+
+    it("saves Live Edit content, refreshes once, and exits Live Edit", async () => {
+      const refreshFileTree = vi.fn().mockResolvedValue(undefined);
+      const { fetchSpy } = renderMarkdownFile({
+        content: "# Before",
+        activeWorktree: ".trees/feat",
+        refreshFileTree,
+      });
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByRole("button", { name: "Live Edit" }));
+      fireEvent.change(screen.getByLabelText("File editor"), { target: { value: "# Saved" } });
+      fetchSpy.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            content: "# Saved",
+            language: "markdown",
+            size: 7,
+            isBinary: false,
+            path: "README.md",
+            name: "README.md",
+            mtime: 2000,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+
+      await user.click(screen.getByLabelText("Save file"));
+
+      await waitFor(() => expect(refreshFileTree).toHaveBeenCalledTimes(1));
+      const putInit = fetchSpy.mock.calls[1][1] as RequestInit;
+      expect(JSON.parse(String(putInit.body))).toMatchObject({
+        slug: "test-project",
+        path: "README.md",
+        content: "# Saved",
+        mtime: 1000,
+        worktree: ".trees/feat",
+      });
+      expect(screen.queryByRole("region", { name: "Markdown preview" })).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("File editor")).not.toBeInTheDocument();
+    });
+
+    it("preserves Live Edit and edited content on 409 conflict", async () => {
+      const { fetchSpy } = renderMarkdownFile({ content: "# Before" });
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByRole("button", { name: "Live Edit" }));
+      fireEvent.change(screen.getByLabelText("File editor"), { target: { value: "# Conflict" } });
+      fetchSpy.mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: "File was modified externally", code: "CONFLICT" }), {
+          status: 409,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
+      await user.click(screen.getByLabelText("Save file"));
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith(
+          "File was modified externally. Reload and try again.",
+        );
+      });
+      expect(screen.getByRole("region", { name: "Markdown preview" })).toBeInTheDocument();
+      expect(screen.getByLabelText("File editor")).toHaveValue("# Conflict");
+    });
+
+    it("keeps dirty Live Edit open when discard is cancelled", async () => {
+      renderMarkdownFile();
+      const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByRole("button", { name: "Live Edit" }));
+      await user.type(screen.getByLabelText("File editor"), " changed");
+      await user.click(screen.getByLabelText("Discard changes"));
+
+      expect(confirmSpy).toHaveBeenCalledWith("Discard unsaved changes?");
+      expect(screen.getByRole("region", { name: "Markdown preview" })).toBeInTheDocument();
+      expect(screen.getByLabelText("File editor")).toBeInTheDocument();
+    });
+
+    it("exits dirty Live Edit when discard is confirmed", async () => {
+      renderMarkdownFile();
+      const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByRole("button", { name: "Live Edit" }));
+      await user.type(screen.getByLabelText("File editor"), " changed");
+      await user.click(screen.getByLabelText("Discard changes"));
+
+      expect(confirmSpy).toHaveBeenCalledWith("Discard unsaved changes?");
+      await waitFor(() => {
+        expect(screen.queryByRole("region", { name: "Markdown preview" })).not.toBeInTheDocument();
+      });
+      expect(screen.queryByLabelText("File editor")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Live Edit" })).toBeInTheDocument();
+    });
+
+    it("prompts before switching files in dirty Live Edit and restores the previous file when cancelled", async () => {
+      const selectFileSpy = vi.fn();
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+        const url = new URL(String(input), "http://localhost");
+        const path = url.searchParams.get("path") ?? "README.md";
+        const content = path === "docs/next.md" ? "# Next" : "# Before";
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              content,
+              language: "markdown",
+              size: content.length,
+              isBinary: false,
+              path,
+              name: path.split("/").pop() ?? path,
+              mtime: 1000,
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+        );
+      });
+      const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+      function SelectionHarness() {
+        const [selectedFile, setSelectedFile] = useState("README.md");
+        mockUseWorkspace.mockReturnValue({
+          project: { slug: "test-project", name: "Test", path: "/test", source: "auto" as const },
+          selectedFile,
+          fileTree: [],
+          expandedFolders: new Set<string>(),
+          showFileViewer: true,
+          showTerminal: true,
+          fileTreeLoading: false,
+          fileTreeRefreshing: false,
+          setProject: vi.fn(),
+          selectFile: (path: string | null) => {
+            selectFileSpy(path);
+            setSelectedFile(path);
+          },
+          toggleFolder: vi.fn(),
+          toggleFileViewer: vi.fn(),
+          toggleTerminal: vi.fn(),
+          setFileTree: vi.fn(),
+          setFileTreeLoading: vi.fn(),
+          refreshFileTree: vi.fn().mockResolvedValue(undefined),
+          loadDirectoryChildren: vi.fn().mockResolvedValue(undefined),
+          fileTreeError: null,
+          activeWorktree: null,
+          worktreesSectionCollapsed: false,
+          setActiveWorktree: vi.fn(),
+          toggleWorktreesSection: vi.fn(),
+          directoryLoading: new Set<string>(),
+          directoryErrors: new Map<string, string>(),
+        } as ReturnType<typeof useWorkspace>);
+
+        return (
+          <>
+            <button type="button" onClick={() => setSelectedFile("docs/next.md")}>
+              Switch file
+            </button>
+            <FileViewer />
+          </>
+        );
+      }
+
+      render(<SelectionHarness />);
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByRole("button", { name: "Live Edit" }));
+      fireEvent.change(screen.getByLabelText("File editor"), {
+        target: { value: "# Unsaved changes" },
+      });
+      await user.click(screen.getByRole("button", { name: "Switch file" }));
+
+      expect(confirmSpy).toHaveBeenCalledWith("Discard unsaved changes?");
+      expect(selectFileSpy).toHaveBeenCalledWith("README.md");
+      await waitFor(() => expect(screen.getByText("README.md")).toBeInTheDocument());
+      expect(screen.getByRole("region", { name: "Markdown preview" })).toBeInTheDocument();
+      expect(screen.getByLabelText("File editor")).toHaveValue("# Unsaved changes");
+      expect(fetchSpy).not.toHaveBeenCalledWith(expect.stringContaining("docs%2Fnext.md"));
+    });
+
+    it("prompts before switching worktrees in dirty Live Edit and restores the previous worktree when cancelled", async () => {
+      const setActiveWorktreeSpy = vi.fn();
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+        const url = new URL(String(input), "http://localhost");
+        const worktree = url.searchParams.get("worktree");
+        const content = worktree ? "# Worktree" : "# Before";
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              content,
+              language: "markdown",
+              size: content.length,
+              isBinary: false,
+              path: "README.md",
+              name: "README.md",
+              mtime: 1000,
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+        );
+      });
+      const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+      function SelectionHarness() {
+        const [activeWorktree, updateActiveWorktree] = useState<string | null>(null);
+        const setActiveWorktree = (path: string | null) => {
+          setActiveWorktreeSpy(path);
+          updateActiveWorktree(path);
+        };
+        mockUseWorkspace.mockReturnValue({
+          project: { slug: "test-project", name: "Test", path: "/test", source: "auto" as const },
+          selectedFile: "README.md",
+          fileTree: [],
+          expandedFolders: new Set<string>(),
+          showFileViewer: true,
+          showTerminal: true,
+          fileTreeLoading: false,
+          fileTreeRefreshing: false,
+          setProject: vi.fn(),
+          selectFile: vi.fn(),
+          toggleFolder: vi.fn(),
+          toggleFileViewer: vi.fn(),
+          toggleTerminal: vi.fn(),
+          setFileTree: vi.fn(),
+          setFileTreeLoading: vi.fn(),
+          refreshFileTree: vi.fn().mockResolvedValue(undefined),
+          loadDirectoryChildren: vi.fn().mockResolvedValue(undefined),
+          fileTreeError: null,
+          activeWorktree,
+          worktreesSectionCollapsed: false,
+          setActiveWorktree,
+          toggleWorktreesSection: vi.fn(),
+          directoryLoading: new Set<string>(),
+          directoryErrors: new Map<string, string>(),
+        } as ReturnType<typeof useWorkspace>);
+
+        return (
+          <>
+            <button type="button" onClick={() => setActiveWorktree(".trees/feat")}>
+              Switch worktree
+            </button>
+            <FileViewer />
+          </>
+        );
+      }
+
+      render(<SelectionHarness />);
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByRole("button", { name: "Live Edit" }));
+      fireEvent.change(screen.getByLabelText("File editor"), {
+        target: { value: "# Unsaved changes" },
+      });
+      await user.click(screen.getByRole("button", { name: "Switch worktree" }));
+
+      expect(confirmSpy).toHaveBeenCalledWith("Discard unsaved changes?");
+      await waitFor(() => expect(setActiveWorktreeSpy).toHaveBeenLastCalledWith(null));
+      expect(screen.getByRole("region", { name: "Markdown preview" })).toBeInTheDocument();
+      expect(screen.getByLabelText("File editor")).toHaveValue("# Unsaved changes");
+      expect(
+        fetchSpy.mock.calls.some(([input]) => String(input).includes("worktree=.trees%2Ffeat")),
+      ).toBe(false);
+    });
+
+    it("prompts before switching files in dirty Live Edit and accepts the new file when confirmed", async () => {
+      vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+        const url = new URL(String(input), "http://localhost");
+        const path = url.searchParams.get("path") ?? "README.md";
+        const content = path === "docs/next.md" ? "# Next" : "# Before";
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              content,
+              language: "markdown",
+              size: content.length,
+              isBinary: false,
+              path,
+              name: path.split("/").pop() ?? path,
+              mtime: 1000,
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+        );
+      });
+      const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+      function SelectionHarness() {
+        const [selectedFile, setSelectedFile] = useState("README.md");
+        mockUseWorkspace.mockReturnValue({
+          project: { slug: "test-project", name: "Test", path: "/test", source: "auto" as const },
+          selectedFile,
+          fileTree: [],
+          expandedFolders: new Set<string>(),
+          showFileViewer: true,
+          showTerminal: true,
+          fileTreeLoading: false,
+          fileTreeRefreshing: false,
+          setProject: vi.fn(),
+          selectFile: vi.fn(),
+          toggleFolder: vi.fn(),
+          toggleFileViewer: vi.fn(),
+          toggleTerminal: vi.fn(),
+          setFileTree: vi.fn(),
+          setFileTreeLoading: vi.fn(),
+          refreshFileTree: vi.fn().mockResolvedValue(undefined),
+          loadDirectoryChildren: vi.fn().mockResolvedValue(undefined),
+          fileTreeError: null,
+          activeWorktree: null,
+          worktreesSectionCollapsed: false,
+          setActiveWorktree: vi.fn(),
+          toggleWorktreesSection: vi.fn(),
+          directoryLoading: new Set<string>(),
+          directoryErrors: new Map<string, string>(),
+        } as ReturnType<typeof useWorkspace>);
+
+        return (
+          <>
+            <button type="button" onClick={() => setSelectedFile("docs/next.md")}>
+              Switch file
+            </button>
+            <FileViewer />
+          </>
+        );
+      }
+
+      render(<SelectionHarness />);
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByRole("button", { name: "Live Edit" }));
+      fireEvent.change(screen.getByLabelText("File editor"), {
+        target: { value: "# Unsaved changes" },
+      });
+      await user.click(screen.getByRole("button", { name: "Switch file" }));
+
+      expect(confirmSpy).toHaveBeenCalledWith("Discard unsaved changes?");
+      await waitFor(() => expect(screen.getByText("docs/next.md")).toBeInTheDocument());
+      await waitFor(() =>
+        expect(screen.getByRole("heading", { name: "Next" })).toBeInTheDocument(),
+      );
+      expect(screen.queryByRole("region", { name: "Markdown preview" })).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("File editor")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Live Edit" })).toBeInTheDocument();
     });
   });
 
