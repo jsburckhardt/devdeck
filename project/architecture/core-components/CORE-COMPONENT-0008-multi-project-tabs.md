@@ -65,6 +65,10 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - Unreadable directories MUST remain visible, MUST be marked `unreadable: true`, and MUST NOT enter a perpetual loading state
 - The API MAY perform shallow child-existence checks for direct directory entries, but MUST NOT recursively traverse descendants for root or child listing requests
 - `WorkspaceContext` MUST expose `refreshFileTree: (explicitSlug?: string) => Promise<void>` and `fileTreeRefreshing: boolean`
+- `WorkspaceContext` MUST expose `showExplorer: boolean` and `toggleExplorer(): void`
+- `PerProjectWorkspaceState` MUST include optional `showExplorer?: boolean` for backwards-compatible per-project panel visibility persistence
+- Missing cached `showExplorer` values MUST restore as `true`
+- `WorkspaceProvider` save-on-unmount and in-memory per-project workspace cache MUST include `showExplorer`
 - `WorkspaceContext` MUST expose `loadDirectoryChildren: (path: string, explicitSlug?: string) => Promise<void>` for lazy child loading
 - `WorkspaceContext` MUST expose serializable per-directory loading and error state keyed by project-relative directory path
 - `refreshFileTree` MUST be a no-op when neither `explicitSlug` nor the active context `project.slug` is available
@@ -124,7 +128,7 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 
 - **OpenProjectsProvider:** React context providing `openProjects`, `openProject()`, `closeProject()`, `saveWorkspaceState()`, `restoreWorkspaceState()`, `updateCopilotStatus()`, `getCopilotStatus()`
 - **useOpenProjects():** Hook to consume the context; throws if used outside provider
-- **PerProjectWorkspaceState:** `{ selectedFile: string | null; expandedFolders: string[]; showFileViewer: boolean; showTerminal: boolean; fileTree: FileNode[]; directoryLoadErrors?: Record<string, string>; loadedDirectories?: string[]; activeWorktree: string | null; worktreesSectionCollapsed: boolean }`
+- **PerProjectWorkspaceState:** `{ selectedFile: string | null; expandedFolders: string[]; showExplorer?: boolean; showFileViewer: boolean; showTerminal: boolean; fileTree: FileNode[]; directoryLoadErrors?: Record<string, string>; loadedDirectories?: string[]; activeWorktree: string | null; worktreesSectionCollapsed: boolean }`
 - **FileNode lazy metadata:** `hasChildren?: boolean; childrenLoaded?: boolean; children?: FileNode[]; unreadable?: boolean; truncated?: boolean; truncatedReason?: "max-depth" | "entry-limit"`
 - **File tree root endpoint:** `GET /api/files?slug=<slug>[&worktree=<relative-worktree>]` returns `FileNode[]` containing direct root children of the project root or active worktree root only
 - **File tree directory endpoint:** `GET /api/files?slug=<slug>&path=<relative-dir>[&worktree=<relative-worktree>]` returns `FileNode[]` containing direct children of the requested directory under the project root or active worktree root
@@ -132,6 +136,8 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - **File diff endpoint:** `GET /api/files/diff?slug=<slug>&path=<relative-file>[&worktree=<relative-worktree>]` runs git diff/status from the project root or active worktree root
 - **Shared HTTP worktree resolver:** `resolveWorktreeRoot(slug: string, worktree?: string): Promise<string>` resolves the effective file API root and applies symlink-escape protection when `worktree` is present
 - **WorkspaceContextValue (extended):** in addition to existing members (`setProject`, `selectFile`, `toggleFolder`, `toggleFileViewer`, `toggleTerminal`, `setFileTree`, `setFileTreeLoading`), MUST include:
+  - `showExplorer: boolean` — whether the Explorer panel is expanded
+  - `toggleExplorer: () => void` — toggles Explorer visibility while preserving mounted Explorer state
   - `refreshFileTree: (explicitSlug?: string) => Promise<void>` — root lazy-list refresh using `cache: "no-store"`; uses `explicitSlug` when provided, else active `project.slug`, and scopes the request to `activeWorktree` when set
   - `loadDirectoryChildren: (path: string, explicitSlug?: string) => Promise<void>` — lazy child-list request and merge for a readable directory, scoped to `activeWorktree` when set
   - `fileTreeRefreshing: boolean` — true while any root refresh is in flight
@@ -273,6 +279,7 @@ async function handleDirectoryClick(node: FileNode) {
 - [x] Code review checklist: `ExplorerContent` and future tree consumers MUST NOT read `fileTreeRefreshing`
 - [x] Automated checks: Context tests must assert root file-tree error state is set on failure, cleared on retry/success, and guarded against stale project responses
 - [x] Automated checks: Layout tests must assert ExplorerContent renders error+retry UI when root load fails and tree is empty
+- [x] Automated checks: Context tests must assert `showExplorer` defaults, restore behavior, toggle behavior, and save-on-unmount persistence
 - [ ] Automated checks: API route tests must assert root requests return direct children only and path requests return direct children only
 - [ ] Automated checks: API route tests must assert path traversal and non-directory targets return structured errors
 - [ ] Automated checks: Context tests must assert root and same-directory request deduplication by `slug + path`
