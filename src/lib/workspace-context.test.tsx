@@ -17,6 +17,7 @@ vi.mock("next/navigation", () => ({
 const cachedState: PerProjectWorkspaceState = {
   selectedFile: "main.ts",
   expandedFolders: ["src", "src/lib"],
+  showExplorer: false,
   showFileViewer: false,
   showTerminal: false,
   fileTree: [{ name: "main.ts", path: "main.ts", type: "file", kind: "regular-file" as const }],
@@ -33,6 +34,7 @@ function WorkspaceConsumer({
   return (
     <div>
       <span data-testid="selected-file">{state.selectedFile ?? "null"}</span>
+      <span data-testid="show-explorer">{String(state.showExplorer)}</span>
       <span data-testid="show-file-viewer">{String(state.showFileViewer)}</span>
       <span data-testid="show-terminal">{String(state.showTerminal)}</span>
       <span data-testid="expanded-count">{state.expandedFolders.size}</span>
@@ -96,6 +98,7 @@ describe("WorkspaceProvider with slug integration", () => {
     await act(async () => {
       wsState!.selectFile("test.ts");
       wsState!.toggleFolder("src");
+      wsState!.toggleExplorer();
     });
 
     unmount();
@@ -104,6 +107,7 @@ describe("WorkspaceProvider with slug integration", () => {
     expect(restored).toBeDefined();
     expect(restored!.selectedFile).toBe("test.ts");
     expect(restored!.expandedFolders).toContain("src");
+    expect(restored!.showExplorer).toBe(false);
   });
 
   it("T16: state is restored from cache on mount when cache exists", async () => {
@@ -118,6 +122,7 @@ describe("WorkspaceProvider with slug integration", () => {
     );
 
     expect(screen.getByTestId("selected-file").textContent).toBe("main.ts");
+    expect(screen.getByTestId("show-explorer").textContent).toBe("false");
     expect(screen.getByTestId("show-file-viewer").textContent).toBe("false");
     expect(screen.getByTestId("show-terminal").textContent).toBe("false");
     expect(screen.getByTestId("expanded-count").textContent).toBe("2");
@@ -133,9 +138,60 @@ describe("WorkspaceProvider with slug integration", () => {
     );
 
     expect(screen.getByTestId("selected-file").textContent).toBe("null");
+    expect(screen.getByTestId("show-explorer").textContent).toBe("true");
     expect(screen.getByTestId("show-file-viewer").textContent).toBe("true");
     expect(screen.getByTestId("show-terminal").textContent).toBe("true");
     expect(screen.getByTestId("expanded-count").textContent).toBe("0");
+  });
+
+  it("Issue #59 TP2: toggleExplorer flips Explorer visibility", async () => {
+    let wsState: ReturnType<typeof useWorkspace>;
+
+    render(
+      <OpenProjectsProvider>
+        <WorkspaceProvider slug="proj-a">
+          <WorkspaceConsumer
+            onState={(s) => {
+              wsState = s;
+            }}
+          />
+        </WorkspaceProvider>
+      </OpenProjectsProvider>,
+    );
+
+    expect(screen.getByTestId("show-explorer").textContent).toBe("true");
+
+    await act(async () => {
+      wsState!.toggleExplorer();
+    });
+    expect(screen.getByTestId("show-explorer").textContent).toBe("false");
+
+    await act(async () => {
+      wsState!.toggleExplorer();
+    });
+    expect(screen.getByTestId("show-explorer").textContent).toBe("true");
+  });
+
+  it("Issue #59 TP4: cached state missing showExplorer defaults to true", () => {
+    const legacyCachedState: PerProjectWorkspaceState = {
+      selectedFile: "legacy.ts",
+      expandedFolders: [],
+      showFileViewer: true,
+      showTerminal: true,
+      fileTree: [],
+    };
+
+    render(
+      <OpenProjectsProvider>
+        <CacheSetup slug="proj-a" state={legacyCachedState}>
+          <WorkspaceProvider slug="proj-a">
+            <WorkspaceConsumer onState={() => {}} />
+          </WorkspaceProvider>
+        </CacheSetup>
+      </OpenProjectsProvider>,
+    );
+
+    expect(screen.getByTestId("show-explorer").textContent).toBe("true");
   });
 
   it("T18: state round-trip — modify, unmount, remount, verify restored", async () => {

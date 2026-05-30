@@ -1,6 +1,17 @@
 import type React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
+
+const panelMockState = vi.hoisted(() => ({
+  panelHandles: [] as Array<{
+    collapse: ReturnType<typeof vi.fn>;
+    expand: ReturnType<typeof vi.fn>;
+    isCollapsed: ReturnType<typeof vi.fn>;
+    getSize: ReturnType<typeof vi.fn>;
+  }>,
+  panelIndex: 0,
+  separatorIndex: 0,
+}));
 
 vi.mock("@/lib/workspace-context", () => ({
   useWorkspace: vi.fn(),
@@ -24,27 +35,54 @@ vi.mock("@/components/file-viewer", () => ({
 }));
 
 vi.mock("react-resizable-panels", () => ({
-  Group: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
+  Group: ({ children }: React.PropsWithChildren) => {
+    panelMockState.panelIndex = 0;
+    panelMockState.separatorIndex = 0;
+    return <div>{children}</div>;
+  },
   Panel: ({
     children,
     panelRef,
+    collapsible,
+    collapsedSize,
   }: React.PropsWithChildren<{
     panelRef?: React.Ref<unknown>;
     collapsible?: boolean;
     collapsedSize?: number;
   }>) => {
-    // Expose a minimal imperative handle so collapse/expand calls don't throw
+    const index = panelMockState.panelIndex++;
+    const handle =
+      panelMockState.panelHandles[index] ??
+      (panelMockState.panelHandles[index] = {
+        collapse: vi.fn(),
+        expand: vi.fn(),
+        isCollapsed: vi.fn(() => false),
+        getSize: vi.fn(() => ({ asPercentage: 50, inPixels: 500 })),
+      });
+
     if (panelRef && typeof panelRef === "object" && panelRef !== null) {
-      (panelRef as React.MutableRefObject<unknown>).current = {
-        collapse: () => {},
-        expand: () => {},
-        isCollapsed: () => false,
-        getSize: () => ({ asPercentage: 50, inPixels: 500 }),
-      };
+      (panelRef as React.MutableRefObject<unknown>).current = handle;
     }
-    return <div>{children}</div>;
+    return (
+      <div
+        data-testid={`panel-${index}`}
+        data-collapsible={String(Boolean(collapsible))}
+        data-collapsed-size={String(collapsedSize ?? "")}
+      >
+        {children}
+      </div>
+    );
   },
-  Separator: () => <div />,
+  Separator: ({ className, disabled }: { className?: string; disabled?: boolean }) => {
+    const index = panelMockState.separatorIndex++;
+    return (
+      <div
+        data-testid={`separator-${index}`}
+        data-disabled={String(Boolean(disabled))}
+        className={className}
+      />
+    );
+  },
 }));
 
 import { useWorkspace } from "@/lib/workspace-context";
@@ -65,6 +103,7 @@ function makeContext(overrides: Record<string, unknown> = {}) {
     project: null,
     selectedFile: null,
     expandedFolders: new Set<string>(),
+    showExplorer: true,
     showFileViewer: true,
     showTerminal: true,
     fileTree: [],
@@ -76,6 +115,7 @@ function makeContext(overrides: Record<string, unknown> = {}) {
     setProject: vi.fn(),
     selectFile: vi.fn(),
     toggleFolder: vi.fn(),
+    toggleExplorer: vi.fn(),
     toggleFileViewer: vi.fn(),
     toggleTerminal: vi.fn(),
     setFileTree: vi.fn(),
@@ -92,6 +132,9 @@ function makeContext(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  panelMockState.panelHandles = [];
+  panelMockState.panelIndex = 0;
+  panelMockState.separatorIndex = 0;
 });
 
 describe("WorkspaceLayout", () => {
@@ -311,6 +354,138 @@ describe("WorkspaceLayout", () => {
     rerender(<WorkspaceLayout project={project} />);
 
     expect(screen.getByTestId("file-viewer")).toBeInTheDocument();
+  });
+
+  it("Issue #59: renders Explorer toggle before File Preview and Terminal", () => {
+    mockUseWorkspace.mockReturnValue(makeContext());
+
+    render(<WorkspaceLayout project={project} />);
+
+    const toggleNames = screen
+      .getAllByRole("button")
+      .map((button) => button.getAttribute("aria-label"))
+      .filter(
+        (name) =>
+          name?.includes("Explorer") ||
+          name?.includes("File Preview") ||
+          name?.includes("Terminal"),
+      );
+
+    expect(toggleNames).toEqual(["Hide Explorer", "Hide File Preview", "Hide Terminal"]);
+  });
+
+  it("Issue #59: Explorer remains mounted while hidden and uses collapsible zero-size panel behavior", () => {
+    mockUseWorkspace.mockReturnValue(makeContext({ showExplorer: true }));
+
+    const { rerender } = render(<WorkspaceLayout project={project} />);
+
+    expect(screen.getByTestId("file-tree")).toBeInTheDocument();
+    expect(screen.getByTestId("panel-0")).toHaveAttribute("data-collapsible", "true");
+    expect(screen.getByTestId("panel-0")).toHaveAttribute("data-collapsed-size", "0");
+    expect(panelMockState.panelHandles[0].expand).toHaveBeenCalled();
+
+    mockUseWorkspace.mockReturnValue(makeContext({ showExplorer: false }));
+    rerender(<WorkspaceLayout project={project} />);
+
+    expect(screen.getByTestId("file-tree")).toBeInTheDocument();
+    expect(panelMockState.panelHandles[0].collapse).toHaveBeenCalled();
+
+    mockUseWorkspace.mockReturnValue(makeContext({ showExplorer: true }));
+    rerender(<WorkspaceLayout project={project} />);
+
+    expect(panelMockState.panelHandles[0].expand).toHaveBeenCalledTimes(2);
+  });
+
+  it("Issue #59: separators are visible only between adjacent expanded panels", () => {
+    mockUseWorkspace.mockReturnValue(
+      makeContext({ showExplorer: true, showFileViewer: true, showTerminal: true }),
+    );
+
+    const { rerender } = render(<WorkspaceLayout project={project} />);
+
+    expect(screen.getByTestId("separator-0")).not.toHaveClass("hidden");
+    expect(screen.getByTestId("separator-0")).toHaveAttribute("data-disabled", "false");
+    expect(screen.getByTestId("separator-1")).not.toHaveClass("hidden");
+    expect(screen.getByTestId("separator-1")).toHaveAttribute("data-disabled", "false");
+
+    mockUseWorkspace.mockReturnValue(
+      makeContext({ showExplorer: false, showFileViewer: true, showTerminal: true }),
+    );
+    rerender(<WorkspaceLayout project={project} />);
+    expect(screen.getByTestId("separator-0")).toHaveClass("hidden");
+    expect(screen.getByTestId("separator-0")).toHaveAttribute("data-disabled", "true");
+    expect(screen.getByTestId("separator-1")).not.toHaveClass("hidden");
+
+    mockUseWorkspace.mockReturnValue(
+      makeContext({ showExplorer: true, showFileViewer: false, showTerminal: true }),
+    );
+    rerender(<WorkspaceLayout project={project} />);
+    expect(screen.getByTestId("separator-0")).toHaveClass("hidden");
+    expect(screen.getByTestId("separator-1")).toHaveClass("hidden");
+
+    mockUseWorkspace.mockReturnValue(
+      makeContext({ showExplorer: true, showFileViewer: true, showTerminal: false }),
+    );
+    rerender(<WorkspaceLayout project={project} />);
+    expect(screen.getByTestId("separator-0")).not.toHaveClass("hidden");
+    expect(screen.getByTestId("separator-1")).toHaveClass("hidden");
+  });
+
+  it.each([
+    {
+      label: "Explorer",
+      state: { showExplorer: true, showFileViewer: false, showTerminal: false },
+      handler: "toggleExplorer",
+    },
+    {
+      label: "File Preview",
+      state: { showExplorer: false, showFileViewer: true, showTerminal: false },
+      handler: "toggleFileViewer",
+    },
+    {
+      label: "Terminal",
+      state: { showExplorer: false, showFileViewer: false, showTerminal: true },
+      handler: "toggleTerminal",
+    },
+  ] as const)(
+    "Issue #59: last-panel guard blocks hiding $label without native disabled",
+    ({ label, state, handler }) => {
+      const toggleHandler = vi.fn();
+      mockUseWorkspace.mockReturnValue(makeContext({ ...state, [handler]: toggleHandler }));
+
+      render(<WorkspaceLayout project={project} />);
+
+      const button = screen.getByRole("button", { name: `Hide ${label}` });
+      expect(button).toHaveAttribute("aria-disabled", "true");
+      expect(button).toHaveAttribute("tabindex", "-1");
+      expect(button).toHaveAttribute("aria-pressed", "true");
+      expect(button).toHaveClass("opacity-50");
+      expect(button).not.toHaveAttribute("disabled");
+
+      fireEvent.click(button);
+      expect(toggleHandler).not.toHaveBeenCalled();
+    },
+  );
+
+  it("Issue #59: PanelToggle exposes aria-label and aria-pressed for visible and hidden panels", () => {
+    mockUseWorkspace.mockReturnValue(
+      makeContext({ showExplorer: true, showFileViewer: false, showTerminal: true }),
+    );
+
+    render(<WorkspaceLayout project={project} />);
+
+    expect(screen.getByRole("button", { name: "Hide Explorer" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Show File Preview" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    expect(screen.getByRole("button", { name: "Hide Terminal" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 
   it("T22: file explorer renders FileTree without the project-panel WorktreeTree", () => {
