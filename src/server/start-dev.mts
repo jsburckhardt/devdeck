@@ -1,57 +1,141 @@
-import { randomUUID } from "crypto";
 import { spawn } from "child_process";
-import type { ChildProcess } from "child_process";
+import type { ChildProcess, SpawnOptions } from "child_process";
+import { loadConfig, displayToken, type ResolvedConfig } from "../lib/config";
+import { seedInitialProjects } from "../lib/registry";
 
-const token = process.env.DEVDECK_TOKEN?.trim() || randomUUID();
-const env = { ...process.env, DEVDECK_TOKEN: token };
-
-const port = process.env.PORT ?? "8070";
-const host = process.env.DEVDECK_HOST ?? "0.0.0.0";
-
-console.log("");
-console.log(`🔑 Access token: ${token}`);
-console.log(`   Local:   http://localhost:${port}?token=${token}`);
-console.log(`   Network: http://192.168.1.185:${port}?token=${token}`);
-console.log("");
-
-const terminal: ChildProcess = spawn("npx", ["tsx", "src/server/terminal-server.mts"], {
-  env,
-  stdio: "inherit",
-  cwd: process.cwd(),
-});
-
-const next: ChildProcess = spawn(
-  "npx",
-  ["next", "dev", "--turbopack", "--hostname", host, "--port", port],
-  {
-    env,
-    stdio: "inherit",
-    cwd: process.cwd(),
-  },
-);
-
-let shuttingDown = false;
-
-function shutdown() {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  console.log("\nShutting down...");
-  terminal.kill("SIGTERM");
-  next.kill("SIGTERM");
-  setTimeout(() => process.exit(0), 3000);
+export interface StartDevDeps {
+  spawn?: (command: string, args?: readonly string[], options?: SpawnOptions) => ChildProcess;
+  log?: (message?: unknown, ...optionalParams: unknown[]) => void;
+  error?: (message?: unknown, ...optionalParams: unknown[]) => void;
+  loadConfig?: typeof loadConfig;
+  seedInitialProjects?: typeof seedInitialProjects;
+  env?: NodeJS.ProcessEnv;
+  cwd?: string;
+  exit?: (code?: number) => never;
+  registerSignalHandlers?: boolean;
 }
 
-terminal.on("exit", (code) => {
-  if (shuttingDown) return;
-  console.log(`Terminal server exited (code ${code})`);
-  shutdown();
-});
+export interface StartDevHandle {
+  terminal: ChildProcess;
+  next: ChildProcess;
+  env: NodeJS.ProcessEnv;
+  config: ResolvedConfig;
+  shutdown: () => void;
+}
 
-next.on("exit", (code) => {
-  if (shuttingDown) return;
-  console.log(`Next.js exited (code ${code})`);
-  shutdown();
-});
+function buildChildEnv(baseEnv: NodeJS.ProcessEnv, config: ResolvedConfig): NodeJS.ProcessEnv {
+  return {
+    ...baseEnv,
+    DEVDECK_TOKEN: config.token,
+    PORT: String(config.port),
+    DEVDECK_HOST: config.host,
+    DEVDECK_PROJECTS_DIR: config.projectsDir,
+    DEVDECK_DATA_DIR: config.dataDir,
+    DEVDECK_WORKSPACE_ROOT: config.workspaceRoot,
+    TERMINAL_HOST: config.terminalHost,
+    TERMINAL_PORT: String(config.terminalPort),
+  };
+}
 
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+function printBanner(config: ResolvedConfig, log: StartDevDeps["log"] = console.log): void {
+  const tokenDisplay = displayToken(config.token, config.sources.token);
+  log("");
+  log("🔑 Access token (" + config.sources.token + "): " + tokenDisplay);
+  log("   Local:   http://localhost:" + config.port + "?token=" + tokenDisplay);
+  log(
+    "   HTTP:    " +
+      config.host +
+      ":" +
+      config.port +
+      " (" +
+      config.sources.host +
+      "/" +
+      config.sources.port +
+      ")",
+  );
+  log(
+    "   Terminal: " +
+      config.terminalHost +
+      ":" +
+      config.terminalPort +
+      " (" +
+      config.sources.terminalHost +
+      "/" +
+      config.sources.terminalPort +
+      ")",
+  );
+  log("   Projects: " + config.projectsDir + " (" + config.sources.projectsDir + ")");
+  log("   Data:     " + config.dataDir + " (" + config.sources.dataDir + ")");
+  log("");
+}
+
+export async function startDev(deps: StartDevDeps = {}): Promise<StartDevHandle> {
+  const spawnChild = deps.spawn ?? spawn;
+  const log = deps.log ?? console.log;
+  const load = deps.loadConfig ?? loadConfig;
+  const seed = deps.seedInitialProjects ?? seedInitialProjects;
+  const baseEnv = deps.env ?? process.env;
+  const cwd = deps.cwd ?? process.cwd();
+  const exit = deps.exit ?? process.exit;
+  const config = await load({ env: baseEnv, warn: (message) => log(message) });
+
+  await seed(config.initialProjects, {
+    log: (message) => log(message),
+    projectsDir: config.projectsDir,
+  });
+  printBanner(config, log);
+
+  const env = buildChildEnv(baseEnv, config);
+  const terminal: ChildProcess = spawnChild("npx", ["tsx", "src/server/terminal-server.mts"], {
+    env,
+    stdio: "inherit",
+    cwd,
+  });
+
+  const next: ChildProcess = spawnChild(
+    "npx",
+    ["next", "dev", "--turbopack", "--hostname", config.host, "--port", String(config.port)],
+    {
+      env,
+      stdio: "inherit",
+      cwd,
+    },
+  );
+
+  let shuttingDown = false;
+
+  function shutdown() {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    log("\nShutting down...");
+    terminal.kill("SIGTERM");
+    next.kill("SIGTERM");
+    setTimeout(() => exit(0), 3000);
+  }
+
+  terminal.on("exit", (code) => {
+    if (shuttingDown) return;
+    log("Terminal server exited (code " + code + ")");
+    shutdown();
+  });
+
+  next.on("exit", (code) => {
+    if (shuttingDown) return;
+    log("Next.js exited (code " + code + ")");
+    shutdown();
+  });
+
+  if (deps.registerSignalHandlers ?? true) {
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+  }
+
+  return { terminal, next, env, config, shutdown };
+}
+
+if (process.argv[1]?.endsWith("src/server/start-dev.mts")) {
+  startDev().catch((err: unknown) => {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  });
+}

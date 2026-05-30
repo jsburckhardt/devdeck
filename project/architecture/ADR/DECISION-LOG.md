@@ -8,15 +8,16 @@ This file is the single registry of all architectural decisions and core-compone
 |----|-------|--------|------|
 | ADR-0002 | Next.js + xterm.js + node-pty Tech Stack | Accepted | 2026-05-06 |
 | ADR-0003 | Project Registry & Persistence Strategy | Accepted | 2025-07-15 |
-| ADR-0004 | Token-Based Authentication | Accepted | 2025-07-16 |
+| ADR-0004 | Token-Based Authentication | Accepted (amended) | 2026-05-24 |
 | ADR-0005 | Copilot CLI Status Detection Strategy | Accepted | 2025-07-28 |
+| ADR-0006 | Config File-Driven Configuration System | Accepted | 2026-05-24 |
 
 ## Core-Components
 
 | ID | Title | Status | Date |
 |----|-------|--------|------|
 | CORE-COMPONENT-0002 | Commit Standards | Adopted | 2026-05-05 |
-| CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2025-07-28 |
+| CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2026-05-24 |
 | CORE-COMPONENT-0004 | Theming | Adopted (updated) | 2026-05-21 |
 | CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2025-07-16 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
@@ -143,3 +144,14 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 112 | Render `.trees` directory nodes with the Tree icon in FileTree | CORE-COMPONENT-0008 | 2026-05-24 |
 | 113 | Reset missing restored activeWorktree values to project root with a non-fatal notice | CORE-COMPONENT-0008 | 2026-05-24 |
 | 114 | Supersede Decision #94: render WorktreeTree in the active project sidebar panel, not inside ExplorerContent | CORE-COMPONENT-0008 | 2026-05-24 |
+| 115 | Load optional runtime configuration from `$DEVDECK_DATA_DIR/config.json` | ADR-0006 | 2026-05-24 |
+| 116 | Resolve configuration with environment variables overriding config-file values and config-file values overriding defaults | ADR-0006 | 2026-05-24 |
+| 117 | Keep `DEVDECK_DATA_DIR` env-only; warn and ignore `dataDir` when present in `config.json` | ADR-0006 | 2026-05-24 |
+| 118 | Persist generated auth tokens to `config.json` with POSIX `0600` permissions when neither env nor config provides a token | ADR-0006 | 2026-05-24 |
+| 119 | Mask env/config auth tokens in startup output as `[redacted:<source>]`; generated first-run tokens may be printed in full | ADR-0006 | 2026-05-24 |
+| 120 | Seed object-based `initialProjects` additively and idempotently using manual project duplicate rules | ADR-0006 | 2026-05-24 |
+| 121 | Support leading `~` expansion for configured initial project entry paths before validation | ADR-0006 | 2026-05-24 |
+| 122 | Amend ADR-0004 token generation so generated tokens persist to config and non-generated tokens are masked in startup output | ADR-0004 | 2026-05-24 |
+| 123 | Forward resolved config to `src/server/terminal-server.mts` through env vars; prohibit importing the config loader into the standalone `.mts` server | CORE-COMPONENT-0003 | 2026-05-24 |
+| 124 | Persist trimmed `initialProjects` name and description on new manual registry entries | ADR-0006 | 2026-05-24 |
+| 125 | Use the resolved `projectsDir` for `initialProjects` auto-discovery collision checks during startup seeding | ADR-0006 | 2026-05-24 |

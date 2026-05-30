@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted (amended by ADR-0006)
 
 ## Context
 
@@ -10,7 +10,7 @@ DevDeck exposes a full shell via WebSocket at `/api/terminal` and serves an HTTP
 
 ## Decision
 
-1. **Token generation** — On startup the terminal server reads `DEVDECK_TOKEN` from the environment. If the variable is unset, a random token is generated via `crypto.randomUUID()`. The token and a ready-to-click URL are printed to stdout.
+1. **Token generation** — On startup DevDeck reads `DEVDECK_TOKEN` from the environment, then the config-file token defined by ADR-0006. If neither is configured, a random token is generated via `crypto.randomUUID()` and persisted to `$DEVDECK_DATA_DIR/config.json`. Generated first-run tokens may be printed in full with a ready-to-click URL; env/config tokens must be masked in startup output.
 
 2. **Token storage** — A shared module `src/lib/auth.ts` exports `getToken()` (returns the current token) and `validateToken(candidate)` (constant-time comparison via `crypto.timingSafeEqual`).
 
@@ -42,7 +42,7 @@ DevDeck exposes a full shell via WebSocket at `/api/terminal` and serves an HTTP
 
 ### Negative
 - Single shared secret — not suitable for multi-user deployments
-- Token printed to stdout — must not run in shared terminal sessions
+- Generated token printed to stdout on first run — must not run first startup in shared terminal sessions
 - Cookie + localStorage dual storage adds minor complexity
 
 ### Neutral
@@ -52,9 +52,11 @@ DevDeck exposes a full shell via WebSocket at `/api/terminal` and serves an HTTP
 ## Related Issues
 
 - [#11](https://github.com/jsburckhardt/devdeck/issues/11)
+- [#53](https://github.com/jsburckhardt/devdeck/issues/53)
 
 ## References
 
 - [RFC 6455 §7.4.2 — WebSocket close codes](https://www.rfc-editor.org/rfc/rfc6455#section-7.4.2)
 - [Node.js crypto.timingSafeEqual](https://nodejs.org/api/crypto.html#cryptotimingsafeequala-b)
 - [Next.js Middleware](https://nextjs.org/docs/app/building-your-application/routing/middleware)
+- [ADR-0006: Config File-Driven Configuration System](./ADR-0006-config-file-driven-configuration.md)

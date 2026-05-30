@@ -34,6 +34,7 @@ Establish the communication pattern between the browser-based terminal (xterm.js
   2. If `.devcontainer/.tmux-shared` is absent, attempt `tmux new-session -A -s <sanitizedSlug>` on the system default tmux socket. System-default tmux sessions are visible to processes for the same host user.
   3. If tmux attach/create fails, tmux exits non-zero, or tmux cannot be spawned, fall back to a regular shell in the resolved project directory.
 - If no slug is provided, the server MUST fall back to the configured default CWD (`DEVDECK_WORKSPACE_ROOT`, `options.cwd`, or `os.homedir()`)
+- Terminal server token, bind host, bind port, projects directory, data directory, and workspace root MUST be resolved by the centralized startup config flow and forwarded to `src/server/terminal-server.mts` through environment variables; the standalone `.mts` server MUST remain env-driven and MUST NOT import the config loader.
 - The client MUST pass initial terminal dimensions as `cols` and `rows` query parameters on the WebSocket upgrade URL so the server can spawn the PTY at the correct size before any resize message arrives
 - The frontend MUST load `@xterm/addon-clipboard` (ClipboardAddon) to support OSC 52 clipboard escape sequences from programs like tmux and vim
 - The frontend MUST set `screenReaderMode: true` in the Terminal constructor options to enable accessibility input methods (IME, voice-to-text)
@@ -64,6 +65,7 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - **Status message (server → client):** `{ type: "status", copilotState: "idle" | "running" | "waiting" }` — sent as a JSON text frame whenever the server detects a Copilot CLI state change via PTY output pattern matching
 - **CopilotCliState type:** `"idle" | "running" | "waiting"` — inlined in `terminal-server.mts` (no `@/` imports) and exported from `src/lib/types.ts` for client-side use
 - **Frontend hook (extended):** `useTerminal(options?)` additionally returns `copilotStatus: CopilotCliState` (`"idle"` by default, updated on `"status"` frames)
+- **Terminal server configuration:** startup resolves ADR-0006 config values and forwards them as `DEVDECK_TOKEN`, `TERMINAL_HOST`, `TERMINAL_PORT`, `DEVDECK_PROJECTS_DIR`, `DEVDECK_DATA_DIR`, and `DEVDECK_WORKSPACE_ROOT`; `TerminalServerOptions` remain available for direct test overrides.
 
 ### Expectations
 - Terminal input/output latency MUST be under 50ms on localhost
@@ -106,6 +108,7 @@ wss.on('connection', (ws, req) => {
 ## Integration Guidelines
 
 - The WebSocket server setup should be in `src/server/terminal-server.mts` (`.mts` extension required for ESM interop with `tsx` runner)
+- Config-file loading belongs in startup code, not in `src/server/terminal-server.mts`; the terminal server consumes resolved values through env vars to preserve standalone `.mts` compatibility.
 - The frontend hook should be in `src/hooks/use-terminal.ts`
 - xterm.js addons (fit, web-links, unicode11, clipboard) should be loaded in the hook
 - PTY shell selection should default to the user's `$SHELL` or fall back to `/bin/bash`
@@ -127,3 +130,4 @@ wss.on('connection', (ws, req) => {
 - [ADR-0002-tech-stack](../ADR/ADR-0002-tech-stack.md)
 - [ADR-0004-token-authentication](../ADR/ADR-0004-token-authentication.md)
 - [ADR-0005-copilot-cli-status-detection-strategy](../ADR/ADR-0005-copilot-cli-status-detection-strategy.md)
+- [ADR-0006-config-file-driven-configuration](../ADR/ADR-0006-config-file-driven-configuration.md)
