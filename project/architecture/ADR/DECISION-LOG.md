@@ -21,8 +21,8 @@ This file is the single registry of all architectural decisions and core-compone
 | CORE-COMPONENT-0004 | Theming | Adopted (updated) | 2026-05-21 |
 | CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2025-07-16 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
-| CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-05-23 |
-| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-05-24 |
+| CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-05-30 |
+| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-05-30 |
 
 ## Decisions
 
@@ -155,3 +155,12 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 123 | Forward resolved config to `src/server/terminal-server.mts` through env vars; prohibit importing the config loader into the standalone `.mts` server | CORE-COMPONENT-0003 | 2026-05-24 |
 | 124 | Persist trimmed `initialProjects` name and description on new manual registry entries | ADR-0006 | 2026-05-24 |
 | 125 | Use the resolved `projectsDir` for `initialProjects` auto-discovery collision checks during startup seeding | ADR-0006 | 2026-05-24 |
+| 126 | Persist sidebar collapse state to `localStorage` under `devdeck-sidebar-collapsed` | CORE-COMPONENT-0007 | 2026-05-30 |
+| 127 | Use `w-44` expanded sidebar width and `w-12` collapsed sidebar width | CORE-COMPONENT-0007 | 2026-05-30 |
+| 128 | Require sidebar collapse toggle to use `SidebarSimple` with accessible attributes | CORE-COMPONENT-0007 | 2026-05-30 |
+| 129 | Render collapsed sidebar tabs as icon-only language-color badges | CORE-COMPONENT-0007 | 2026-05-30 |
+| 130 | Keep collapsed sidebar close buttons always visible | CORE-COMPONENT-0008 | 2026-05-30 |
+| 131 | Keep active `WorktreeTree` mounted and CSS-hidden when sidebar collapses | CORE-COMPONENT-0008 | 2026-05-30 |
+| 132 | Keep Copilot status indicators visible on badges in both sidebar modes | CORE-COMPONENT-0008 | 2026-05-30 |
+| 133 | Prohibit storing sidebar collapse state in per-project workspace state | CORE-COMPONENT-0008 | 2026-05-30 |
+| 134 | Prohibit sidebar collapse keyboard shortcuts in v1 | CORE-COMPONENT-0007 | 2026-05-30 |
