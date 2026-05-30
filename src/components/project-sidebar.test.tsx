@@ -313,6 +313,44 @@ describe("ProjectSidebar", () => {
     });
   });
 
+  it("TP1: unavailable storage reads fall back to expanded", () => {
+    const getItemSpy = vi.spyOn(Storage.prototype, "getItem").mockImplementation((key) => {
+      if (key === SIDEBAR_COLLAPSED_STORAGE_KEY) {
+        throw new DOMException("Storage blocked", "SecurityError");
+      }
+      return null;
+    });
+
+    try {
+      render(<ProjectSidebar />);
+
+      expect(screen.getByRole("navigation", { name: "Open projects" }).className).toContain("w-44");
+    } finally {
+      getItemSpy.mockRestore();
+    }
+  });
+
+  it("TP1: unavailable storage writes still toggle the sidebar in memory", async () => {
+    const user = userEvent.setup();
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation((key) => {
+      if (key === SIDEBAR_COLLAPSED_STORAGE_KEY) {
+        throw new DOMException("Storage unavailable", "QuotaExceededError");
+      }
+    });
+
+    try {
+      render(<ProjectSidebar />);
+
+      const nav = screen.getByRole("navigation", { name: "Open projects" });
+      await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+
+      expect(nav.className).toContain("w-12");
+      expect(setItemSpy).toHaveBeenCalledWith(SIDEBAR_COLLAPSED_STORAGE_KEY, "true");
+    } finally {
+      setItemSpy.mockRestore();
+    }
+  });
+
   it("TP2: expanded and collapsed widths use CSS transition classes", async () => {
     const user = userEvent.setup();
     render(<ProjectSidebar />);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { House, SidebarSimple, X } from "@phosphor-icons/react";
 import { WorktreeTree } from "@/components/worktree-tree";
@@ -15,32 +15,11 @@ function readPersistedCollapsedState(): boolean {
     return false;
   }
 
-  return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
-}
-
-const sidebarCollapsedListeners = new Set<() => void>();
-
-function subscribeToCollapsedState(listener: () => void) {
-  sidebarCollapsedListeners.add(listener);
-
-  if (typeof window === "undefined") {
-    return () => {
-      sidebarCollapsedListeners.delete(listener);
-    };
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
   }
-
-  function handleStorage(event: StorageEvent) {
-    if (event.key === SIDEBAR_COLLAPSED_STORAGE_KEY) {
-      listener();
-    }
-  }
-
-  window.addEventListener("storage", handleStorage);
-
-  return () => {
-    sidebarCollapsedListeners.delete(listener);
-    window.removeEventListener("storage", handleStorage);
-  };
 }
 
 function persistCollapsedState(collapsed: boolean) {
@@ -48,26 +27,43 @@ function persistCollapsedState(collapsed: boolean) {
     return;
   }
 
-  window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(collapsed));
-  sidebarCollapsedListeners.forEach((listener) => listener());
+  try {
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(collapsed));
+  } catch {
+    // Storage can be disabled; keep the in-memory sidebar state usable.
+  }
 }
 
 export function ProjectSidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const { openProjects, closeProject, getCopilotStatus } = useOpenProjects();
-  const isCollapsed = useSyncExternalStore(
-    subscribeToCollapsedState,
-    readPersistedCollapsedState,
-    () => false,
-  );
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const activeSlug = openProjects.find((project) => pathname === projectRoute(project.slug))?.slug;
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: hydrate from localStorage after SSR to avoid mismatch
+    setIsCollapsed(readPersistedCollapsedState());
+
+    function handleStorage(event: StorageEvent) {
+      if (event.key === SIDEBAR_COLLAPSED_STORAGE_KEY) {
+        setIsCollapsed(readPersistedCollapsedState());
+      }
+    }
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
 
   const toggleLabel = isCollapsed ? "Expand sidebar" : "Collapse sidebar";
 
-  function toggleSidebar() {
-    persistCollapsedState(!isCollapsed);
-  }
+  const toggleSidebar = useCallback(() => {
+    setIsCollapsed((collapsed) => {
+      const nextCollapsed = !collapsed;
+      persistCollapsedState(nextCollapsed);
+      return nextCollapsed;
+    });
+  }, []);
 
   return (
     <nav
