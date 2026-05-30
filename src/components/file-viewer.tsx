@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Group, Panel, Separator } from "react-resizable-panels";
 import {
   Spinner,
   FileX,
@@ -276,9 +277,41 @@ function EditView({ content, onChange }: { content: string; onChange: (value: st
   );
 }
 
+function LiveEditView({
+  editContent,
+  previewContent,
+  onChange,
+}: {
+  editContent: string;
+  previewContent: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <Group orientation="horizontal" className="h-full">
+      <Panel defaultSize={50} minSize={25}>
+        <EditView content={editContent} onChange={onChange} />
+      </Panel>
+      <Separator className="w-1 bg-border transition-colors hover:bg-accent" />
+      <Panel defaultSize={50} minSize={25}>
+        <div role="region" aria-label="Markdown preview" className="h-full overflow-auto">
+          <MarkdownView content={previewContent} />
+        </div>
+      </Panel>
+    </Group>
+  );
+}
+
 export default function FileViewer() {
-  const { project, selectedFile, fileTree, refreshFileTree, showFileViewer, activeWorktree } =
-    useWorkspace();
+  const {
+    project,
+    selectedFile,
+    fileTree,
+    refreshFileTree,
+    showFileViewer,
+    activeWorktree,
+    selectFile,
+    setActiveWorktree,
+  } = useWorkspace();
   const [fileContent, setFileContent] = useState<FileContent | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<PreviewErrorState | null>(null);
@@ -296,6 +329,8 @@ export default function FileViewer() {
   const [editContent, setEditContent] = useState("");
   const [saving, setSaving] = useState(false);
   const [originalContent, setOriginalContent] = useState("");
+  const [liveEditMode, setLiveEditMode] = useState(false);
+  const [livePreviewContent, setLivePreviewContent] = useState("");
 
   const isDirty = editMode && editContent !== originalContent;
 
@@ -304,17 +339,65 @@ export default function FileViewer() {
     return findFileStatus(fileTree, selectedFile);
   }, [selectedFile, fileTree]);
 
-  // Reset state when file changes
+  const [lastAcceptedSelection, setLastAcceptedSelection] = useState({
+    selectedFile,
+    activeWorktree,
+  });
+
+  // Reset state when file/worktree changes. Dirty Live Edit selection switches must be
+  // confirmed before the new file/worktree is accepted; cancelling restores the previous
+  // selection and keeps the editor state intact.
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect -- resetting derived state when selectedFile changes is the standard pattern */
+    const selectedFileChanged = selectedFile !== lastAcceptedSelection.selectedFile;
+    const activeWorktreeChanged = activeWorktree !== lastAcceptedSelection.activeWorktree;
+
+    if (!selectedFileChanged && !activeWorktreeChanged) return;
+
+    if (liveEditMode && isDirty) {
+      const shouldDiscard = window.confirm("Discard unsaved changes?");
+      if (!shouldDiscard) {
+        if (selectedFileChanged) {
+          selectFile(lastAcceptedSelection.selectedFile);
+        }
+        if (activeWorktreeChanged) {
+          setActiveWorktree(lastAcceptedSelection.activeWorktree);
+        }
+        return;
+      }
+    }
+
+    /* eslint-disable react-hooks/set-state-in-effect -- resetting accepted selection and view/edit state when selection changes is the established FileViewer pattern */
+    setLastAcceptedSelection({ selectedFile, activeWorktree });
     setShowRaw(false);
     setViewMode("file");
     setDiffContent(null);
     setEditMode(false);
+    setLiveEditMode(false);
     setEditContent("");
     setOriginalContent("");
+    setLivePreviewContent("");
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [selectedFile, activeWorktree]);
+  }, [
+    selectedFile,
+    activeWorktree,
+    lastAcceptedSelection,
+    liveEditMode,
+    isDirty,
+    selectFile,
+    setActiveWorktree,
+  ]);
+
+  useEffect(() => {
+    if (!liveEditMode) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setLivePreviewContent(editContent);
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [editContent, liveEditMode]);
 
   // Fetch file content — skip when the panel is collapsed to avoid wasted
   // network/CPU while the preview is hidden.
@@ -323,6 +406,13 @@ export default function FileViewer() {
       if (!showFileViewer) return; // keep stale content so re-expand doesn't flash blank
       // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting state when deps clear is the standard pattern
       setFileContent(null);
+      return;
+    }
+
+    if (
+      selectedFile !== lastAcceptedSelection.selectedFile ||
+      activeWorktree !== lastAcceptedSelection.activeWorktree
+    ) {
       return;
     }
 
@@ -373,7 +463,7 @@ export default function FileViewer() {
     return () => {
       cancelled = true;
     };
-  }, [project, selectedFile, showFileViewer, activeWorktree]);
+  }, [project, selectedFile, showFileViewer, activeWorktree, lastAcceptedSelection]);
 
   // Fetch diff when switching to changes tab
   useEffect(() => {
@@ -413,16 +503,29 @@ export default function FileViewer() {
 
   const handleEdit = useCallback(() => {
     if (!fileContent) return;
+    setLiveEditMode(false);
+    setLivePreviewContent("");
     setEditMode(true);
     setEditContent(fileContent.content);
     setOriginalContent(fileContent.content);
   }, [fileContent]);
 
+  const handleLiveEdit = useCallback(() => {
+    if (!fileContent) return;
+    setEditMode(true);
+    setLiveEditMode(true);
+    setEditContent(fileContent.content);
+    setOriginalContent(fileContent.content);
+    setLivePreviewContent(fileContent.content);
+  }, [fileContent]);
+
   const handleDiscard = useCallback(() => {
     if (isDirty && !window.confirm("Discard unsaved changes?")) return;
     setEditMode(false);
+    setLiveEditMode(false);
     setEditContent("");
     setOriginalContent("");
+    setLivePreviewContent("");
   }, [isDirty]);
 
   const handleSave = useCallback(async () => {
@@ -458,8 +561,10 @@ export default function FileViewer() {
       const updated: FileContent = await res.json();
       setFileContent(updated);
       setEditMode(false);
+      setLiveEditMode(false);
       setEditContent("");
       setOriginalContent("");
+      setLivePreviewContent("");
       // Reset diff cache so it re-fetches with new content
       setDiffContent(null);
       toast.success("File saved");
@@ -495,6 +600,7 @@ export default function FileViewer() {
   if (!fileContent) return null;
 
   const isMarkdown = fileContent.language === "markdown";
+  const canLiveEdit = selectedFile.toLowerCase().endsWith(".md") && !fileContent.isBinary;
   const isExcalidraw = fileContent.language === "excalidraw";
   const showTabs = fileStatus === "modified" || fileStatus === "added";
 
@@ -556,6 +662,18 @@ export default function FileViewer() {
           )}
 
           {/* Edit / Save / Discard buttons */}
+          {canLiveEdit && !editMode && viewMode === "file" && (
+            <button
+              className="flex items-center gap-1 rounded px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              onClick={handleLiveEdit}
+              aria-label="Live Edit"
+              title="Live Edit"
+            >
+              <PencilSimple size={14} />
+              Live Edit
+            </button>
+          )}
+
           {!fileContent.isBinary && !editMode && viewMode === "file" && (
             <button
               className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -600,14 +718,20 @@ export default function FileViewer() {
       {/* Content area */}
       <AnimatePresence mode="wait">
         <motion.div
-          key={`${selectedFile}-${viewMode}-${editMode}`}
+          key={`${selectedFile}-${viewMode}-${editMode}-${liveEditMode}`}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
-          className="min-h-0 flex-1 overflow-auto"
+          className={cn("min-h-0 flex-1", liveEditMode ? "overflow-hidden" : "overflow-auto")}
         >
-          {editMode ? (
+          {liveEditMode ? (
+            <LiveEditView
+              editContent={editContent}
+              previewContent={livePreviewContent}
+              onChange={setEditContent}
+            />
+          ) : editMode ? (
             <EditView content={editContent} onChange={setEditContent} />
           ) : viewMode === "changes" ? (
             diffLoading ? (
