@@ -220,6 +220,18 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     }
   }, [showTerminal]);
 
+  useLayoutEffect(() => {
+    const visiblePanels = [
+      showExplorer ? explorerPanelRef.current : null,
+      showFileViewer ? fileViewerPanelRef.current : null,
+      showTerminal ? terminalPanelRef.current : null,
+    ].filter((panel): panel is PanelImperativeHandle => panel !== null);
+
+    if (visiblePanels.length === 1) {
+      visiblePanels[0].resize("100%");
+    }
+  }, [activeWorktree, project.slug, showExplorer, showFileViewer, showTerminal]);
+
   return (
     <div className="flex h-full flex-col">
       {/* Panel toggle bar */}

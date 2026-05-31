@@ -110,7 +110,7 @@ describe("WorkspaceProvider with slug integration", () => {
     expect(restored!.showExplorer).toBe(false);
   });
 
-  it("T16: state is restored from cache on mount when cache exists", async () => {
+  it("Issue #69 TP1: all-hidden cached visibility normalizes to Terminal-only", async () => {
     render(
       <OpenProjectsProvider>
         <CacheSetup slug="proj-a" state={cachedState}>
@@ -124,8 +124,62 @@ describe("WorkspaceProvider with slug integration", () => {
     expect(screen.getByTestId("selected-file").textContent).toBe("main.ts");
     expect(screen.getByTestId("show-explorer").textContent).toBe("false");
     expect(screen.getByTestId("show-file-viewer").textContent).toBe("false");
-    expect(screen.getByTestId("show-terminal").textContent).toBe("false");
+    expect(screen.getByTestId("show-terminal").textContent).toBe("true");
     expect(screen.getByTestId("expanded-count").textContent).toBe("2");
+  });
+
+  it.each([
+    {
+      label: "Terminal-only",
+      visibility: { showExplorer: false, showFileViewer: false, showTerminal: true },
+    },
+    {
+      label: "Explorer-only",
+      visibility: { showExplorer: true, showFileViewer: false, showTerminal: false },
+    },
+    {
+      label: "File Preview-only",
+      visibility: { showExplorer: false, showFileViewer: true, showTerminal: false },
+    },
+    {
+      label: "Explorer + File Preview",
+      visibility: { showExplorer: true, showFileViewer: true, showTerminal: false },
+    },
+    {
+      label: "Explorer + Terminal",
+      visibility: { showExplorer: true, showFileViewer: false, showTerminal: true },
+    },
+    {
+      label: "File Preview + Terminal",
+      visibility: { showExplorer: false, showFileViewer: true, showTerminal: true },
+    },
+    {
+      label: "all panels",
+      visibility: { showExplorer: true, showFileViewer: true, showTerminal: true },
+    },
+  ] as const)("Issue #69 TP1: preserves valid cached visibility state $label", ({ visibility }) => {
+    const validCachedState: PerProjectWorkspaceState = {
+      selectedFile: null,
+      expandedFolders: [],
+      ...visibility,
+      fileTree: [],
+    };
+
+    render(
+      <OpenProjectsProvider>
+        <CacheSetup slug="proj-a" state={validCachedState}>
+          <WorkspaceProvider slug="proj-a">
+            <WorkspaceConsumer onState={() => {}} />
+          </WorkspaceProvider>
+        </CacheSetup>
+      </OpenProjectsProvider>,
+    );
+
+    expect(screen.getByTestId("show-explorer").textContent).toBe(String(visibility.showExplorer));
+    expect(screen.getByTestId("show-file-viewer").textContent).toBe(
+      String(visibility.showFileViewer),
+    );
+    expect(screen.getByTestId("show-terminal").textContent).toBe(String(visibility.showTerminal));
   });
 
   it("T17: default state is used when no cache exists", () => {

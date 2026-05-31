@@ -136,6 +136,24 @@ function responseErrorMessage(response: Response): string {
   return `HTTP ${response.status}`;
 }
 
+function normalizeCachedWorkspaceState(
+  cachedState: PerProjectWorkspaceState | undefined,
+): PerProjectWorkspaceState | undefined {
+  if (!cachedState) return undefined;
+
+  const showExplorer = cachedState.showExplorer ?? true;
+  if (!showExplorer && !cachedState.showFileViewer && !cachedState.showTerminal) {
+    return {
+      ...cachedState,
+      showExplorer: false,
+      showFileViewer: false,
+      showTerminal: true,
+    };
+  }
+
+  return cachedState;
+}
+
 function scopedStateFromCache(
   cachedState: PerProjectWorkspaceState | undefined,
 ): Map<string, WorktreeFileTreeState> {
@@ -160,7 +178,9 @@ function scopedStateFromCache(
 
 export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
   const { saveWorkspaceState, restoreWorkspaceState } = useOpenProjects();
-  const cachedStateRef = useRef(slug ? restoreWorkspaceState(slug) : undefined);
+  const cachedStateRef = useRef(
+    normalizeCachedWorkspaceState(slug ? restoreWorkspaceState(slug) : undefined),
+  );
   const scopedStatesRef = useRef<Map<string, WorktreeFileTreeState>>(
     scopedStateFromCache(cachedStateRef.current),
   );
