@@ -397,38 +397,101 @@ describe("WorkspaceLayout", () => {
   });
 
   it("Issue #59: separators are visible only between adjacent expanded panels", () => {
-    mockUseWorkspace.mockReturnValue(
-      makeContext({ showExplorer: true, showFileViewer: true, showTerminal: true }),
-    );
+    const renderState = (state: {
+      showExplorer: boolean;
+      showFileViewer: boolean;
+      showTerminal: boolean;
+    }) => {
+      mockUseWorkspace.mockReturnValue(makeContext(state));
+    };
+    const expectSeparator = (index: 0 | 1, visible: boolean) => {
+      const separator = screen.getByTestId(`separator-${index}`);
+      if (visible) {
+        expect(separator).not.toHaveClass("hidden");
+        expect(separator).toHaveAttribute("data-disabled", "false");
+      } else {
+        expect(separator).toHaveClass("hidden");
+        expect(separator).toHaveAttribute("data-disabled", "true");
+      }
+    };
+
+    renderState({ showExplorer: true, showFileViewer: true, showTerminal: true });
 
     const { rerender } = render(<WorkspaceLayout project={project} />);
 
-    expect(screen.getByTestId("separator-0")).not.toHaveClass("hidden");
-    expect(screen.getByTestId("separator-0")).toHaveAttribute("data-disabled", "false");
-    expect(screen.getByTestId("separator-1")).not.toHaveClass("hidden");
-    expect(screen.getByTestId("separator-1")).toHaveAttribute("data-disabled", "false");
+    expectSeparator(0, true);
+    expectSeparator(1, true);
 
-    mockUseWorkspace.mockReturnValue(
-      makeContext({ showExplorer: false, showFileViewer: true, showTerminal: true }),
-    );
+    renderState({ showExplorer: false, showFileViewer: true, showTerminal: true });
     rerender(<WorkspaceLayout project={project} />);
-    expect(screen.getByTestId("separator-0")).toHaveClass("hidden");
-    expect(screen.getByTestId("separator-0")).toHaveAttribute("data-disabled", "true");
-    expect(screen.getByTestId("separator-1")).not.toHaveClass("hidden");
+    expectSeparator(0, false);
+    expectSeparator(1, true);
 
-    mockUseWorkspace.mockReturnValue(
-      makeContext({ showExplorer: true, showFileViewer: false, showTerminal: true }),
-    );
+    renderState({ showExplorer: true, showFileViewer: false, showTerminal: true });
     rerender(<WorkspaceLayout project={project} />);
-    expect(screen.getByTestId("separator-0")).toHaveClass("hidden");
-    expect(screen.getByTestId("separator-1")).toHaveClass("hidden");
+    expectSeparator(0, false);
+    expectSeparator(1, true);
 
-    mockUseWorkspace.mockReturnValue(
-      makeContext({ showExplorer: true, showFileViewer: true, showTerminal: false }),
-    );
+    renderState({ showExplorer: true, showFileViewer: true, showTerminal: false });
     rerender(<WorkspaceLayout project={project} />);
-    expect(screen.getByTestId("separator-0")).not.toHaveClass("hidden");
-    expect(screen.getByTestId("separator-1")).toHaveClass("hidden");
+    expectSeparator(0, true);
+    expectSeparator(1, false);
+
+    renderState({ showExplorer: false, showFileViewer: false, showTerminal: true });
+    rerender(<WorkspaceLayout project={project} />);
+    expectSeparator(0, false);
+    expectSeparator(1, false);
+  });
+
+  it("Issue #69: keeps the terminal separator active after hiding File Preview before Explorer", () => {
+    const renderState = (state: {
+      showExplorer: boolean;
+      showFileViewer: boolean;
+      showTerminal: boolean;
+    }) => {
+      mockUseWorkspace.mockReturnValue(makeContext(state));
+    };
+    const expectSeparator = (index: 0 | 1, visible: boolean) => {
+      const separator = screen.getByTestId(`separator-${index}`);
+      if (visible) {
+        expect(separator).not.toHaveClass("hidden");
+        expect(separator).toHaveAttribute("data-disabled", "false");
+      } else {
+        expect(separator).toHaveClass("hidden");
+        expect(separator).toHaveAttribute("data-disabled", "true");
+      }
+    };
+
+    renderState({ showExplorer: true, showFileViewer: true, showTerminal: true });
+
+    const { rerender } = render(<WorkspaceLayout project={project} />);
+
+    expect(screen.getByTestId("file-tree")).toBeInTheDocument();
+    expect(screen.getByTestId("file-viewer")).toBeInTheDocument();
+    expect(screen.getByTestId("terminal-panel")).toBeInTheDocument();
+    expectSeparator(0, true);
+    expectSeparator(1, true);
+
+    renderState({ showExplorer: true, showFileViewer: false, showTerminal: true });
+    rerender(<WorkspaceLayout project={project} />);
+
+    expect(screen.getByTestId("file-viewer")).toBeInTheDocument();
+    expect(screen.getByTestId("terminal-panel")).toBeInTheDocument();
+    expect(panelMockState.panelHandles[1].collapse).toHaveBeenCalled();
+    expect(panelMockState.panelHandles[0].expand).toHaveBeenCalled();
+    expect(panelMockState.panelHandles[2].expand).toHaveBeenCalled();
+    expectSeparator(0, false);
+    expectSeparator(1, true);
+
+    renderState({ showExplorer: false, showFileViewer: false, showTerminal: true });
+    rerender(<WorkspaceLayout project={project} />);
+
+    expect(screen.getByTestId("file-tree")).toBeInTheDocument();
+    expect(screen.getByTestId("terminal-panel")).toBeInTheDocument();
+    expect(panelMockState.panelHandles[0].collapse).toHaveBeenCalled();
+    expect(panelMockState.panelHandles[2].expand).toHaveBeenCalled();
+    expectSeparator(0, false);
+    expectSeparator(1, false);
   });
 
   it.each([
