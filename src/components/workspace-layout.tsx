@@ -220,6 +220,18 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     }
   }, [showTerminal]);
 
+  useLayoutEffect(() => {
+    const visiblePanels = [
+      showExplorer ? explorerPanelRef.current : null,
+      showFileViewer ? fileViewerPanelRef.current : null,
+      showTerminal ? terminalPanelRef.current : null,
+    ].filter((panel): panel is PanelImperativeHandle => panel !== null);
+
+    if (visiblePanels.length === 1) {
+      visiblePanels[0].resize("100%");
+    }
+  }, [activeWorktree, project.slug, showExplorer, showFileViewer, showTerminal]);
+
   return (
     <div className="flex h-full flex-col">
       {/* Panel toggle bar */}
@@ -289,9 +301,9 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
         <Separator
           className={cn(
             "w-1 bg-border transition-colors hover:bg-primary/40",
-            !(showFileViewer && showTerminal) && "hidden",
+            !(showTerminal && (showFileViewer || showExplorer)) && "hidden",
           )}
-          disabled={!(showFileViewer && showTerminal)}
+          disabled={!(showTerminal && (showFileViewer || showExplorer))}
         />
         <Panel
           panelRef={terminalPanelRef}

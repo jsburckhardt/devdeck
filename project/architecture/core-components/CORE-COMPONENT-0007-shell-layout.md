@@ -33,6 +33,7 @@ Define the top-level IDE shell structure that all DevDeck pages share. The shell
 - The Explorer panel MUST remain mounted when hidden using `collapsible`, `collapsedSize={0}`, and imperative `collapse()`/`expand()` behavior
 - Panel separators MUST be visible only between two adjacent expanded panels
 - The shell MUST prevent hiding the last visible workspace panel; the guarded toggle MUST use `aria-disabled="true"`, `tabIndex={-1}`, muted styling, and a suppressed click handler
+- When visibility, project, or active worktree changes leave exactly one workspace panel visible, the shell MUST resize that remaining panel to fill the workspace; multi-panel layouts MUST preserve user-resized proportions and MUST NOT be reset by single-panel normalization
 - `PanelToggle` controls MUST expose `aria-label` and `aria-pressed`
 - Mount animations SHOULD use `framer-motion` with subtle fade/slide (duration ≤ 300ms)
 - On project pages, the sidebar MUST render as a fixed-width flex sibling to the left of the `Group`, outside the resizable panel tree (see CORE-COMPONENT-0008)
