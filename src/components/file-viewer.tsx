@@ -176,7 +176,7 @@ function CodeView({ content, language }: { content: string; language: string }) 
 
   return (
     <div className="overflow-auto font-mono text-[13px] leading-relaxed">
-      <div className="flex">
+      <div className="flex min-w-max">
         <div
           className="select-none border-r border-border px-3 text-right text-xs text-muted-foreground/50"
           aria-hidden="true"
@@ -185,7 +185,7 @@ function CodeView({ content, language }: { content: string; language: string }) 
             <div key={i}>{i + 1}</div>
           ))}
         </div>
-        <pre className="flex-1 px-4">
+        <pre className="flex-shrink-0 whitespace-pre px-4">
           <code dangerouslySetInnerHTML={{ __html: highlighted }} />
         </pre>
       </div>
