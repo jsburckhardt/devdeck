@@ -140,6 +140,49 @@ function mockFetchResponse(data: unknown, status = 200) {
   );
 }
 
+function mockFileContentResponse({
+  content,
+  language = "typescript",
+  path = "src/index.ts",
+}: {
+  content: string;
+  language?: string;
+  path?: string;
+}) {
+  setupWorkspace({ selectedFile: path });
+  mockFetchResponse({
+    content,
+    language,
+    size: content.length,
+    isBinary: false,
+    path,
+    name: path.split("/").pop() ?? path,
+    mtime: 1000,
+  });
+}
+
+function getCodeViewParts(container: HTMLElement) {
+  const pre = container.querySelector("pre");
+  expect(pre).not.toBeNull();
+  const row = pre?.parentElement;
+  expect(row).not.toBeNull();
+  const scrollContainer = row?.parentElement;
+  expect(scrollContainer).not.toBeNull();
+  const gutter = pre?.previousElementSibling;
+  expect(gutter).not.toBeNull();
+
+  return {
+    gutter: gutter as HTMLElement,
+    pre: pre as HTMLPreElement,
+    row: row as HTMLElement,
+    scrollContainer: scrollContainer as HTMLElement,
+  };
+}
+
+function getGutterEntries(gutter: HTMLElement) {
+  return Array.from(gutter.children).map((entry) => entry.textContent);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.restoreAllMocks();
@@ -272,6 +315,54 @@ describe("FileViewer", () => {
     setupWorkspace({ selectedFile: null });
     render(<FileViewer />);
     expect(screen.getByText("Select a file to view its contents")).toBeInTheDocument();
+  });
+
+  describe("Issue #66 code gutter layout", () => {
+    it("renders one gutter entry per logical line for multi-line code", async () => {
+      mockFileContentResponse({ content: "const a = 1;\nconst b = 2;\nconst c = 3;" });
+
+      const { container } = render(<FileViewer />);
+
+      await waitFor(() => expect(screen.getByText("src/index.ts")).toBeInTheDocument());
+      const { gutter } = getCodeViewParts(container);
+      expect(getGutterEntries(gutter)).toEqual(["1", "2", "3"]);
+    });
+
+    it("uses the shared scroll-row no-wrap contract for long code lines", async () => {
+      mockFileContentResponse({ content: `const longLine = "${"x".repeat(240)}";` });
+
+      const { container } = render(<FileViewer />);
+
+      await waitFor(() => expect(screen.getByText("src/index.ts")).toBeInTheDocument());
+      const { gutter, pre, row, scrollContainer } = getCodeViewParts(container);
+      expect(scrollContainer).toHaveClass("overflow-auto", "text-[13px]", "leading-relaxed");
+      expect(row).toHaveClass("flex", "min-w-max");
+      expect(gutter).not.toHaveClass("text-xs");
+      expect(pre).toHaveClass("flex-shrink-0", "whitespace-pre", "px-4");
+      expect(pre).not.toHaveClass("flex-1");
+    });
+
+    it("renders a one-line gutter for empty code content", async () => {
+      mockFileContentResponse({ content: "", language: "plaintext", path: "empty.txt" });
+
+      const { container } = render(<FileViewer />);
+
+      await waitFor(() => expect(screen.getByText("empty.txt")).toBeInTheDocument());
+      const { gutter, pre } = getCodeViewParts(container);
+      expect(getGutterEntries(gutter)).toEqual(["1"]);
+      expect(pre).toHaveClass("flex-shrink-0", "whitespace-pre");
+    });
+
+    it("renders a one-line gutter for single-line code content", async () => {
+      mockFileContentResponse({ content: "const onlyLine = true;" });
+
+      const { container } = render(<FileViewer />);
+
+      await waitFor(() => expect(screen.getByText("src/index.ts")).toBeInTheDocument());
+      const { gutter, pre } = getCodeViewParts(container);
+      expect(getGutterEntries(gutter)).toEqual(["1"]);
+      expect(pre).toHaveClass("flex-shrink-0", "whitespace-pre");
+    });
   });
 
   describe("Issue #32 preview errors", () => {
