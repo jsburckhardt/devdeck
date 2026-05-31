@@ -90,3 +90,28 @@
 
 - No ADR or core-component changes were required.
 - Verification used the configured Soft Factory commands; no source changes were made during Verify.
+
+
+## Second Implement Pass: T2-T5 layout normalization
+
+- **Status:** Completed with targeted unit and browser verification passing.
+- **Files Changed:** `src/components/workspace-layout.tsx`, `src/lib/workspace-context.tsx`, `src/components/workspace-layout.test.tsx`, `src/lib/workspace-context.test.tsx`, `e2e/workspace-layout.spec.ts`, `project/issues/69/implementation/README.md`.
+- **Architecture Context:** Plan-stage architecture updates are present in `CORE-COMPONENT-0007`, `CORE-COMPONENT-0008`, and `DECISION-LOG.md` decisions #144/#145.
+
+### Changes Summary
+
+- Added exactly-one-visible-panel normalization in `WorkspaceLayout` after the existing collapse/expand layout effects. The remaining Explorer, File Preview, or Terminal panel is resized with `resize("100%")`; two- and three-panel states are left untouched.
+- Included `project.slug` and `activeWorktree` in the normalization dependencies so single-panel restored layouts are normalized on project and worktree changes.
+- Normalized invalid all-hidden cached workspace visibility before initial state creation in `WorkspaceProvider`, restoring it as Terminal-only while preserving valid cached states and the legacy missing-`showExplorer` default of `true`.
+- Expanded unit coverage for single-panel resize behavior, order-independent terminal-only transitions, multi-panel preservation, rapid visibility changes, project/worktree retriggers, separator topology, and cached visibility restoration.
+- Added Playwright browser geometry coverage for both reported toggle orders using a deterministic `layout-target` fixture project and Connected-status/real-width assertions.
+
+### Test Results
+
+- `npx vitest run src/components/workspace-layout.test.tsx src/lib/workspace-context.test.tsx` passed: 2 files, 73 tests.
+- `npx playwright test e2e/workspace-layout.spec.ts` passed: 2 tests.
+
+### Verification Targets for Verify
+
+- Re-run focused unit tests if needed.
+- Continue with full planned verification: lint, format check, build, full Vitest suite, and targeted Playwright geometry spec.
