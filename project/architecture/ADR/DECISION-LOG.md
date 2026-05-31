@@ -173,3 +173,5 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 141 | Persist optional showExplorer in per-project workspace state | CORE-COMPONENT-0008 | 2026-05-30 |
 | 142 | Default missing persisted showExplorer values to true | CORE-COMPONENT-0008 | 2026-05-30 |
 | 143 | Include showExplorer in workspace state save and restore caching | CORE-COMPONENT-0008 | 2026-05-30 |
+| 144 | Resize the remaining visible shell panel to 100% when visibility, project, or worktree changes leave exactly one expanded workspace panel | CORE-COMPONENT-0007 | 2026-05-30 |
+| 145 | Restore invalid all-hidden cached workspace visibility as Terminal visible before first render | CORE-COMPONENT-0008 | 2026-05-30 |
