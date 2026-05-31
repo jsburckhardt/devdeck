@@ -178,7 +178,7 @@ function CodeView({ content, language }: { content: string; language: string }) 
     <div className="overflow-auto font-mono text-[13px] leading-relaxed">
       <div className="flex min-w-max">
         <div
-          className="select-none border-r border-border px-3 text-right text-xs text-muted-foreground/50"
+          className="select-none border-r border-border px-3 text-right text-muted-foreground/50"
           aria-hidden="true"
         >
           {Array.from({ length: lineCount }, (_, i) => (

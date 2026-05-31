@@ -334,9 +334,10 @@ describe("FileViewer", () => {
       const { container } = render(<FileViewer />);
 
       await waitFor(() => expect(screen.getByText("src/index.ts")).toBeInTheDocument());
-      const { pre, row, scrollContainer } = getCodeViewParts(container);
-      expect(scrollContainer).toHaveClass("overflow-auto");
+      const { gutter, pre, row, scrollContainer } = getCodeViewParts(container);
+      expect(scrollContainer).toHaveClass("overflow-auto", "text-[13px]", "leading-relaxed");
       expect(row).toHaveClass("flex", "min-w-max");
+      expect(gutter).not.toHaveClass("text-xs");
       expect(pre).toHaveClass("flex-shrink-0", "whitespace-pre", "px-4");
       expect(pre).not.toHaveClass("flex-1");
     });
