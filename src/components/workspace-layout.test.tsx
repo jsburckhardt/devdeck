@@ -8,6 +8,7 @@ const panelMockState = vi.hoisted(() => ({
     expand: ReturnType<typeof vi.fn>;
     isCollapsed: ReturnType<typeof vi.fn>;
     getSize: ReturnType<typeof vi.fn>;
+    resize: ReturnType<typeof vi.fn>;
   }>,
   panelIndex: 0,
   separatorIndex: 0,
@@ -58,6 +59,7 @@ vi.mock("react-resizable-panels", () => ({
         expand: vi.fn(),
         isCollapsed: vi.fn(() => false),
         getSize: vi.fn(() => ({ asPercentage: 50, inPixels: 500 })),
+        resize: vi.fn(),
       });
 
     if (panelRef && typeof panelRef === "object" && panelRef !== null) {
@@ -397,38 +399,101 @@ describe("WorkspaceLayout", () => {
   });
 
   it("Issue #59: separators are visible only between adjacent expanded panels", () => {
-    mockUseWorkspace.mockReturnValue(
-      makeContext({ showExplorer: true, showFileViewer: true, showTerminal: true }),
-    );
+    const renderState = (state: {
+      showExplorer: boolean;
+      showFileViewer: boolean;
+      showTerminal: boolean;
+    }) => {
+      mockUseWorkspace.mockReturnValue(makeContext(state));
+    };
+    const expectSeparator = (index: 0 | 1, visible: boolean) => {
+      const separator = screen.getByTestId(`separator-${index}`);
+      if (visible) {
+        expect(separator).not.toHaveClass("hidden");
+        expect(separator).toHaveAttribute("data-disabled", "false");
+      } else {
+        expect(separator).toHaveClass("hidden");
+        expect(separator).toHaveAttribute("data-disabled", "true");
+      }
+    };
+
+    renderState({ showExplorer: true, showFileViewer: true, showTerminal: true });
 
     const { rerender } = render(<WorkspaceLayout project={project} />);
 
-    expect(screen.getByTestId("separator-0")).not.toHaveClass("hidden");
-    expect(screen.getByTestId("separator-0")).toHaveAttribute("data-disabled", "false");
-    expect(screen.getByTestId("separator-1")).not.toHaveClass("hidden");
-    expect(screen.getByTestId("separator-1")).toHaveAttribute("data-disabled", "false");
+    expectSeparator(0, true);
+    expectSeparator(1, true);
 
-    mockUseWorkspace.mockReturnValue(
-      makeContext({ showExplorer: false, showFileViewer: true, showTerminal: true }),
-    );
+    renderState({ showExplorer: false, showFileViewer: true, showTerminal: true });
     rerender(<WorkspaceLayout project={project} />);
-    expect(screen.getByTestId("separator-0")).toHaveClass("hidden");
-    expect(screen.getByTestId("separator-0")).toHaveAttribute("data-disabled", "true");
-    expect(screen.getByTestId("separator-1")).not.toHaveClass("hidden");
+    expectSeparator(0, false);
+    expectSeparator(1, true);
 
-    mockUseWorkspace.mockReturnValue(
-      makeContext({ showExplorer: true, showFileViewer: false, showTerminal: true }),
-    );
+    renderState({ showExplorer: true, showFileViewer: false, showTerminal: true });
     rerender(<WorkspaceLayout project={project} />);
-    expect(screen.getByTestId("separator-0")).toHaveClass("hidden");
-    expect(screen.getByTestId("separator-1")).toHaveClass("hidden");
+    expectSeparator(0, false);
+    expectSeparator(1, true);
 
-    mockUseWorkspace.mockReturnValue(
-      makeContext({ showExplorer: true, showFileViewer: true, showTerminal: false }),
-    );
+    renderState({ showExplorer: true, showFileViewer: true, showTerminal: false });
     rerender(<WorkspaceLayout project={project} />);
-    expect(screen.getByTestId("separator-0")).not.toHaveClass("hidden");
-    expect(screen.getByTestId("separator-1")).toHaveClass("hidden");
+    expectSeparator(0, true);
+    expectSeparator(1, false);
+
+    renderState({ showExplorer: false, showFileViewer: false, showTerminal: true });
+    rerender(<WorkspaceLayout project={project} />);
+    expectSeparator(0, false);
+    expectSeparator(1, false);
+  });
+
+  it("Issue #69: keeps the terminal separator active after hiding File Preview before Explorer", () => {
+    const renderState = (state: {
+      showExplorer: boolean;
+      showFileViewer: boolean;
+      showTerminal: boolean;
+    }) => {
+      mockUseWorkspace.mockReturnValue(makeContext(state));
+    };
+    const expectSeparator = (index: 0 | 1, visible: boolean) => {
+      const separator = screen.getByTestId(`separator-${index}`);
+      if (visible) {
+        expect(separator).not.toHaveClass("hidden");
+        expect(separator).toHaveAttribute("data-disabled", "false");
+      } else {
+        expect(separator).toHaveClass("hidden");
+        expect(separator).toHaveAttribute("data-disabled", "true");
+      }
+    };
+
+    renderState({ showExplorer: true, showFileViewer: true, showTerminal: true });
+
+    const { rerender } = render(<WorkspaceLayout project={project} />);
+
+    expect(screen.getByTestId("file-tree")).toBeInTheDocument();
+    expect(screen.getByTestId("file-viewer")).toBeInTheDocument();
+    expect(screen.getByTestId("terminal-panel")).toBeInTheDocument();
+    expectSeparator(0, true);
+    expectSeparator(1, true);
+
+    renderState({ showExplorer: true, showFileViewer: false, showTerminal: true });
+    rerender(<WorkspaceLayout project={project} />);
+
+    expect(screen.getByTestId("file-viewer")).toBeInTheDocument();
+    expect(screen.getByTestId("terminal-panel")).toBeInTheDocument();
+    expect(panelMockState.panelHandles[1].collapse).toHaveBeenCalled();
+    expect(panelMockState.panelHandles[0].expand).toHaveBeenCalled();
+    expect(panelMockState.panelHandles[2].expand).toHaveBeenCalled();
+    expectSeparator(0, false);
+    expectSeparator(1, true);
+
+    renderState({ showExplorer: false, showFileViewer: false, showTerminal: true });
+    rerender(<WorkspaceLayout project={project} />);
+
+    expect(screen.getByTestId("file-tree")).toBeInTheDocument();
+    expect(screen.getByTestId("terminal-panel")).toBeInTheDocument();
+    expect(panelMockState.panelHandles[0].collapse).toHaveBeenCalled();
+    expect(panelMockState.panelHandles[2].expand).toHaveBeenCalled();
+    expectSeparator(0, false);
+    expectSeparator(1, false);
   });
 
   it.each([
@@ -466,6 +531,187 @@ describe("WorkspaceLayout", () => {
       expect(toggleHandler).not.toHaveBeenCalled();
     },
   );
+
+  it.each([
+    {
+      label: "Explorer",
+      state: { showExplorer: true, showFileViewer: false, showTerminal: false },
+      panelIndex: 0,
+    },
+    {
+      label: "File Preview",
+      state: { showExplorer: false, showFileViewer: true, showTerminal: false },
+      panelIndex: 1,
+    },
+    {
+      label: "Terminal",
+      state: { showExplorer: false, showFileViewer: false, showTerminal: true },
+      panelIndex: 2,
+    },
+  ] as const)("Issue #69: single visible $label resizes to 100%", ({ state, panelIndex }) => {
+    mockUseWorkspace.mockReturnValue(makeContext(state));
+
+    render(<WorkspaceLayout project={project} />);
+
+    panelMockState.panelHandles.forEach((handle, index) => {
+      if (index === panelIndex) {
+        expect(handle.resize).toHaveBeenCalledWith("100%");
+      } else {
+        expect(handle.resize).not.toHaveBeenCalled();
+      }
+    });
+  });
+
+  it.each([
+    { showExplorer: true, showFileViewer: true, showTerminal: true },
+    { showExplorer: true, showFileViewer: true, showTerminal: false },
+    { showExplorer: true, showFileViewer: false, showTerminal: true },
+    { showExplorer: false, showFileViewer: true, showTerminal: true },
+  ])("Issue #69: multi-panel states do not force resize normalization", (state) => {
+    mockUseWorkspace.mockReturnValue(makeContext(state));
+
+    render(<WorkspaceLayout project={project} />);
+
+    panelMockState.panelHandles.forEach((handle) => {
+      expect(handle.resize).not.toHaveBeenCalled();
+    });
+  });
+
+  it.each([
+    {
+      label: "File Preview then Explorer",
+      steps: [
+        { showExplorer: true, showFileViewer: false, showTerminal: true },
+        { showExplorer: false, showFileViewer: false, showTerminal: true },
+      ],
+    },
+    {
+      label: "Explorer then File Preview",
+      steps: [
+        { showExplorer: false, showFileViewer: true, showTerminal: true },
+        { showExplorer: false, showFileViewer: false, showTerminal: true },
+      ],
+    },
+  ] as const)("Issue #69: reported order $label leaves Terminal resized to 100%", ({ steps }) => {
+    mockUseWorkspace.mockReturnValue(makeContext());
+    const { rerender } = render(<WorkspaceLayout project={project} />);
+    panelMockState.panelHandles.forEach((handle) => handle.resize.mockClear());
+
+    mockUseWorkspace.mockReturnValue(makeContext(steps[0]));
+    rerender(<WorkspaceLayout project={project} />);
+    expect(panelMockState.panelHandles[2].resize).not.toHaveBeenCalled();
+
+    mockUseWorkspace.mockReturnValue(makeContext(steps[1]));
+    rerender(<WorkspaceLayout project={project} />);
+
+    expect(screen.getByTestId("terminal-panel")).toBeInTheDocument();
+    expect(panelMockState.panelHandles[2].resize).toHaveBeenCalledWith("100%");
+  });
+
+  it.each([
+    {
+      label: "Explorer after File Preview then Terminal",
+      steps: [
+        { showExplorer: true, showFileViewer: false, showTerminal: true },
+        { showExplorer: true, showFileViewer: false, showTerminal: false },
+      ],
+      panelIndex: 0,
+    },
+    {
+      label: "Explorer after Terminal then File Preview",
+      steps: [
+        { showExplorer: true, showFileViewer: true, showTerminal: false },
+        { showExplorer: true, showFileViewer: false, showTerminal: false },
+      ],
+      panelIndex: 0,
+    },
+    {
+      label: "File Preview after Explorer then Terminal",
+      steps: [
+        { showExplorer: false, showFileViewer: true, showTerminal: true },
+        { showExplorer: false, showFileViewer: true, showTerminal: false },
+      ],
+      panelIndex: 1,
+    },
+    {
+      label: "File Preview after Terminal then Explorer",
+      steps: [
+        { showExplorer: true, showFileViewer: true, showTerminal: false },
+        { showExplorer: false, showFileViewer: true, showTerminal: false },
+      ],
+      panelIndex: 1,
+    },
+    {
+      label: "Terminal after Explorer then File Preview",
+      steps: [
+        { showExplorer: false, showFileViewer: true, showTerminal: true },
+        { showExplorer: false, showFileViewer: false, showTerminal: true },
+      ],
+      panelIndex: 2,
+    },
+    {
+      label: "Terminal after File Preview then Explorer",
+      steps: [
+        { showExplorer: true, showFileViewer: false, showTerminal: true },
+        { showExplorer: false, showFileViewer: false, showTerminal: true },
+      ],
+      panelIndex: 2,
+    },
+  ] as const)(
+    "Issue #69: ordered two-step transition leaving only $label resizes remaining panel",
+    ({ steps, panelIndex }) => {
+      mockUseWorkspace.mockReturnValue(makeContext());
+      const { rerender } = render(<WorkspaceLayout project={project} />);
+      panelMockState.panelHandles.forEach((handle) => handle.resize.mockClear());
+
+      for (const step of steps) {
+        mockUseWorkspace.mockReturnValue(makeContext(step));
+        rerender(<WorkspaceLayout project={project} />);
+      }
+
+      expect(panelMockState.panelHandles[panelIndex].resize).toHaveBeenCalledWith("100%");
+    },
+  );
+
+  it("Issue #69: project slug and active worktree changes retrigger single-panel normalization", () => {
+    const singleTerminal = {
+      showExplorer: false,
+      showFileViewer: false,
+      showTerminal: true,
+    };
+    mockUseWorkspace.mockReturnValue(makeContext(singleTerminal));
+    const { rerender } = render(<WorkspaceLayout project={project} />);
+
+    expect(panelMockState.panelHandles[2].resize).toHaveBeenCalledTimes(1);
+
+    rerender(<WorkspaceLayout project={{ ...project, slug: "demo-2" }} />);
+    expect(panelMockState.panelHandles[2].resize).toHaveBeenCalledTimes(2);
+
+    mockUseWorkspace.mockReturnValue(
+      makeContext({ ...singleTerminal, activeWorktree: ".trees/feat" }),
+    );
+    rerender(<WorkspaceLayout project={{ ...project, slug: "demo-2" }} />);
+    expect(panelMockState.panelHandles[2].resize).toHaveBeenCalledTimes(3);
+  });
+
+  it("Issue #69: rapid visibility sequence settles to the final single-panel resize", () => {
+    mockUseWorkspace.mockReturnValue(makeContext());
+    const { rerender } = render(<WorkspaceLayout project={project} />);
+    panelMockState.panelHandles.forEach((handle) => handle.resize.mockClear());
+
+    for (const state of [
+      { showExplorer: true, showFileViewer: false, showTerminal: true },
+      { showExplorer: false, showFileViewer: true, showTerminal: true },
+      { showExplorer: false, showFileViewer: false, showTerminal: true },
+    ]) {
+      mockUseWorkspace.mockReturnValue(makeContext(state));
+      rerender(<WorkspaceLayout project={project} />);
+    }
+
+    expect(panelMockState.panelHandles[0].resize).not.toHaveBeenCalled();
+    expect(panelMockState.panelHandles[1].resize).not.toHaveBeenCalled();
+    expect(panelMockState.panelHandles[2].resize).toHaveBeenCalledWith("100%");
+  });
 
   it("Issue #59: PanelToggle exposes aria-label and aria-pressed for visible and hidden panels", () => {
     mockUseWorkspace.mockReturnValue(

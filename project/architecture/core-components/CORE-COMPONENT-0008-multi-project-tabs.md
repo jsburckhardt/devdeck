@@ -73,6 +73,7 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - `WorkspaceContext` MUST expose `showExplorer: boolean` and `toggleExplorer(): void`
 - `PerProjectWorkspaceState` MUST include optional `showExplorer?: boolean` for backwards-compatible per-project panel visibility persistence
 - Missing cached `showExplorer` values MUST restore as `true`
+- Cached workspace visibility MUST be normalized before first render so invalid all-hidden states restore as Terminal visible; valid one-panel, two-panel, and three-panel visibility combinations MUST be preserved
 - `WorkspaceProvider` save-on-unmount and in-memory per-project workspace cache MUST include `showExplorer`
 - `WorkspaceContext` MUST expose `loadDirectoryChildren: (path: string, explicitSlug?: string) => Promise<void>` for lazy child loading
 - `WorkspaceContext` MUST expose serializable per-directory loading and error state keyed by project-relative directory path
