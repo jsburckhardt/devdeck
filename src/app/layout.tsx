@@ -28,9 +28,9 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${spaceGrotesk.variable} ${jetbrainsMono.variable} dark h-full antialiased`}
+      className={`${spaceGrotesk.variable} ${jetbrainsMono.variable} dark h-full overflow-hidden antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="flex h-full min-h-0 flex-col overflow-hidden">
         <Providers>{children}</Providers>
         <Toaster />
       </body>

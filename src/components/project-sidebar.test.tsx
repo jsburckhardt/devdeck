@@ -50,6 +50,22 @@ const defaultOpenProjects: Project[] = [
     source: "auto",
   },
 ];
+
+function createManyOpenProjects(count: number): Project[] {
+  return Array.from({ length: count }, (_, index): Project => {
+    const projectNumber = index + 1;
+    const slug = `project-${projectNumber}`;
+    return {
+      slug,
+      name: `Project ${String(projectNumber).padStart(2, "0")}`,
+      description: `Project ${projectNumber} fixture`,
+      language: projectNumber % 2 === 0 ? "TypeScript" : "Python",
+      path: `/workspaces/${slug}`,
+      source: "auto",
+    };
+  });
+}
+
 let mockOpenProjects: Project[] = defaultOpenProjects;
 
 vi.mock("@/lib/open-projects-context", async (importOriginal) => {
@@ -400,6 +416,51 @@ describe("ProjectSidebar", () => {
     const expandToggle = screen.getByRole("button", { name: "Expand sidebar" });
     expect(expandToggle).toHaveAttribute("aria-expanded", "false");
     expect(expandToggle).toHaveAttribute("title", "Expand sidebar");
+  });
+
+  it("Issue #70: uses a scrollable project/worktree region and fixed footer", () => {
+    render(<ProjectSidebar />);
+
+    const scrollRegion = screen.getByTestId("project-sidebar-scroll-region");
+    expect(scrollRegion.className).toContain("min-h-0");
+    expect(scrollRegion.className).toContain("flex-1");
+    expect(scrollRegion.className).toContain("overflow-y-auto");
+
+    const footer = screen.getByTestId("project-sidebar-footer");
+    expect(footer.className).toContain("shrink-0");
+
+    const toggle = screen.getByRole("button", { name: "Collapse sidebar" });
+    expect(footer).toContainElement(toggle);
+    expect(toggle.className).not.toContain("mt-auto");
+  });
+
+  it("Issue #70: many open projects keep the toggle in the fixed footer", async () => {
+    const user = userEvent.setup();
+    const activeSlug = "project-20";
+    mockOpenProjects = createManyOpenProjects(36);
+    mockPathname = `/project/${activeSlug}`;
+    render(<ProjectSidebar />);
+
+    const tabs = screen.getAllByRole("button", { name: /Open project/ });
+    expect(tabs).toHaveLength(36);
+    expect(tabs[35]).toHaveTextContent("Project 36");
+
+    const footer = screen.getByTestId("project-sidebar-footer");
+    const collapseToggle = screen.getByRole("button", { name: "Collapse sidebar" });
+    expect(footer).toContainElement(collapseToggle);
+    expect(collapseToggle.className).not.toContain("mt-auto");
+
+    const worktreeTree = screen.getByTestId("project-panel-worktree-tree");
+    const wrapper = screen.getByTestId("active-worktree-wrapper");
+    expect(worktreeTree).toHaveTextContent(activeSlug);
+    expect(wrapper.className).not.toContain("hidden");
+
+    await user.click(collapseToggle);
+
+    const expandToggle = screen.getByRole("button", { name: "Expand sidebar" });
+    expect(footer).toContainElement(expandToggle);
+    expect(screen.getByTestId("project-panel-worktree-tree")).toBe(worktreeTree);
+    expect(wrapper.className).toContain("hidden");
   });
 
   it("TP5: close buttons retain hover reveal expanded and are visible collapsed", async () => {
