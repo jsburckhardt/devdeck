@@ -72,95 +72,104 @@ export function ProjectSidebar() {
       }`}
       aria-label="Open projects"
     >
-      {/* Home button */}
-      <button
-        onClick={() => router.push("/")}
-        className={`mx-2 flex h-9 items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground ${
-          isCollapsed ? "justify-center px-0" : "gap-2 px-2"
-        }`}
-        aria-label="Go to home page"
-        title="Home"
+      <div data-testid="project-sidebar-header" className="shrink-0">
+        {/* Home button */}
+        <button
+          onClick={() => router.push("/")}
+          className={`mx-2 flex h-9 items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground ${
+            isCollapsed ? "justify-center px-0" : "gap-2 px-2"
+          }`}
+          aria-label="Go to home page"
+          title="Home"
+        >
+          <House size={20} weight="bold" />
+          {!isCollapsed && <span className="text-sm font-medium">Home</span>}
+        </button>
+
+        <div className="mx-2 my-1 h-px bg-border" />
+      </div>
+
+      <div
+        data-testid="project-sidebar-scroll-region"
+        className="min-h-0 flex-1 space-y-1 overflow-y-auto"
       >
-        <House size={20} weight="bold" />
-        {!isCollapsed && <span className="text-sm font-medium">Home</span>}
-      </button>
-
-      <div className="mx-2 my-1 h-px bg-border" />
-
-      {/* Project tabs */}
-      {openProjects.map((project) => {
-        const isActive = activeSlug === project.slug;
-        const copilotStatus: CopilotCliState = getCopilotStatus(project.slug);
-        return (
-          <div key={project.slug} className="group relative mx-2 min-w-0">
-            <button
-              onClick={() => router.push(projectRoute(project.slug))}
-              className={`flex h-9 w-full items-center rounded-md text-xs transition-colors ${
-                isCollapsed ? "justify-center px-0" : "gap-2 px-2"
-              } ${
-                isActive
-                  ? "bg-primary/15 text-primary ring-2 ring-primary/60"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              }`}
-              aria-label={`Open project ${project.name}`}
-              aria-current={isActive ? "page" : undefined}
-              title={project.name}
-            >
-              <span className="relative">
-                <span
-                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-[10px] font-bold text-white ${languageColor(project.language)}`}
-                >
-                  {project.name.charAt(0).toUpperCase()}
-                </span>
-                {copilotStatus !== "idle" && <CopilotStatusIndicator status={copilotStatus} />}
-              </span>
-              {!isCollapsed && <span className="truncate text-sm">{project.name}</span>}
-            </button>
-
-            {/* Close button - accessible via keyboard and hover */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                const navigationTarget = closeNavigationTarget(
-                  openProjects,
-                  project.slug,
-                  activeSlug,
-                );
-                closeProject(project.slug);
-                if (navigationTarget) {
-                  router.push(navigationTarget);
-                }
-              }}
-              className={`absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] text-destructive-foreground transition-opacity ${
-                isCollapsed
-                  ? "opacity-100"
-                  : "opacity-0 focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
-              }`}
-              aria-label={`Close project ${project.name}`}
-            >
-              <X size={10} weight="bold" />
-            </button>
-            {isActive && (
-              <div
-                data-testid="active-worktree-wrapper"
-                className={isCollapsed ? "hidden" : undefined}
+        {/* Project tabs */}
+        {openProjects.map((project) => {
+          const isActive = activeSlug === project.slug;
+          const copilotStatus: CopilotCliState = getCopilotStatus(project.slug);
+          return (
+            <div key={project.slug} className="group relative mx-2 min-w-0">
+              <button
+                onClick={() => router.push(projectRoute(project.slug))}
+                className={`flex h-9 w-full items-center rounded-md text-xs transition-colors ${
+                  isCollapsed ? "justify-center px-0" : "gap-2 px-2"
+                } ${
+                  isActive
+                    ? "bg-primary/15 text-primary ring-2 ring-primary/60"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                }`}
+                aria-label={`Open project ${project.name}`}
+                aria-current={isActive ? "page" : undefined}
+                title={project.name}
               >
-                <WorktreeTree slug={project.slug} />
-              </div>
-            )}
-          </div>
-        );
-      })}
+                <span className="relative">
+                  <span
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-[10px] font-bold text-white ${languageColor(project.language)}`}
+                  >
+                    {project.name.charAt(0).toUpperCase()}
+                  </span>
+                  {copilotStatus !== "idle" && <CopilotStatusIndicator status={copilotStatus} />}
+                </span>
+                {!isCollapsed && <span className="truncate text-sm">{project.name}</span>}
+              </button>
 
-      <button
-        onClick={toggleSidebar}
-        className="mx-2 mt-auto flex h-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-        aria-label={toggleLabel}
-        aria-expanded={!isCollapsed}
-        title={toggleLabel}
-      >
-        <SidebarSimple size={20} weight="bold" />
-      </button>
+              {/* Close button - accessible via keyboard and hover */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const navigationTarget = closeNavigationTarget(
+                    openProjects,
+                    project.slug,
+                    activeSlug,
+                  );
+                  closeProject(project.slug);
+                  if (navigationTarget) {
+                    router.push(navigationTarget);
+                  }
+                }}
+                className={`absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] text-destructive-foreground transition-opacity ${
+                  isCollapsed
+                    ? "opacity-100"
+                    : "opacity-0 focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
+                }`}
+                aria-label={`Close project ${project.name}`}
+              >
+                <X size={10} weight="bold" />
+              </button>
+              {isActive && (
+                <div
+                  data-testid="active-worktree-wrapper"
+                  className={isCollapsed ? "hidden" : undefined}
+                >
+                  <WorktreeTree slug={project.slug} />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div data-testid="project-sidebar-footer" className="shrink-0 pt-1">
+        <button
+          onClick={toggleSidebar}
+          className="mx-2 flex h-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          aria-label={toggleLabel}
+          aria-expanded={!isCollapsed}
+          title={toggleLabel}
+        >
+          <SidebarSimple size={20} weight="bold" />
+        </button>
+      </div>
     </nav>
   );
 }

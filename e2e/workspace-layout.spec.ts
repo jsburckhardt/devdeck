@@ -40,6 +40,46 @@ async function togglePanel(page: Page, label: "Explorer" | "File Preview") {
   await page.getByRole("button", { name: `Hide ${label}` }).click();
 }
 
+async function expectProjectShellFitsViewport(page: Page) {
+  const geometry = await page.evaluate(() => {
+    const toggle = document.querySelector(
+      'button[aria-label="Collapse sidebar"], button[aria-label="Expand sidebar"]',
+    );
+    const workspace = document.querySelector("[data-panel-group], [data-group]");
+
+    if (!(toggle instanceof HTMLElement)) {
+      throw new Error("Sidebar collapse toggle not found");
+    }
+
+    if (!(workspace instanceof HTMLElement)) {
+      throw new Error("Workspace panel group not found");
+    }
+
+    const toggleBox = toggle.getBoundingClientRect();
+    const workspaceBox = workspace.getBoundingClientRect();
+    const html = document.documentElement;
+    const body = document.body;
+
+    return {
+      innerHeight: window.innerHeight,
+      htmlOverflow: html.scrollHeight - html.clientHeight,
+      bodyOverflow: body.scrollHeight - body.clientHeight,
+      toggleTop: toggleBox.top,
+      toggleBottom: toggleBox.bottom,
+      workspaceTop: workspaceBox.top,
+      workspaceBottom: workspaceBox.bottom,
+    };
+  });
+  const tolerance = 1;
+
+  expect(geometry.htmlOverflow).toBeLessThanOrEqual(tolerance);
+  expect(geometry.bodyOverflow).toBeLessThanOrEqual(tolerance);
+  expect(geometry.toggleTop).toBeGreaterThanOrEqual(-tolerance);
+  expect(geometry.toggleBottom).toBeLessThanOrEqual(geometry.innerHeight + tolerance);
+  expect(geometry.workspaceTop).toBeGreaterThanOrEqual(-tolerance);
+  expect(geometry.workspaceBottom).toBeLessThanOrEqual(geometry.innerHeight + tolerance);
+}
+
 async function expectTerminalFillsWorkspace(page: Page) {
   await expect
     .poll(
@@ -73,6 +113,14 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await fs.rm(fixtureRoot, { recursive: true, force: true });
+});
+
+test("Issue #70: project viewport does not clip sidebar footer controls", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await openLayoutTarget(page);
+
+  await expect(page.getByRole("button", { name: "Collapse sidebar" })).toBeVisible();
+  await expectProjectShellFitsViewport(page);
 });
 
 test("Issue #69: File Preview then Explorer leaves Terminal filling workspace", async ({
