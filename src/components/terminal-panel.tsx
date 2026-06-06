@@ -61,7 +61,7 @@ export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
   return (
     <div
       data-testid="terminal-panel"
-      className="flex h-full flex-col"
+      className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
       style={{ backgroundColor: theme.colors.background }}
     >
       <div className="flex h-8 shrink-0 items-center justify-between border-b border-border bg-card/50 px-3">
@@ -103,8 +103,14 @@ export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
           )}
         </div>
       </div>
-      <div className="relative min-h-0 flex-1">
-        <div ref={containerRef} data-testid="terminal-container" className="h-full w-full p-1" />
+      <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+        <div className="h-full w-full min-h-0 min-w-0 overflow-hidden p-1">
+          <div
+            ref={containerRef}
+            data-testid="terminal-container"
+            className="h-full w-full min-h-0 min-w-0 overflow-hidden"
+          />
+        </div>
         {showFallbackNotice && (
           <div
             className="absolute top-2 left-1/2 z-10 -translate-x-1/2 rounded bg-yellow-900/90 px-3 py-1 text-xs text-yellow-200"

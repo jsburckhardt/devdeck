@@ -233,7 +233,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
   }, [activeWorktree, project.slug, showExplorer, showFileViewer, showTerminal]);
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
       {/* Panel toggle bar */}
       <div className="flex h-8 shrink-0 items-center gap-1 border-b border-border bg-card/30 px-2">
         <PanelToggle
@@ -259,7 +259,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
         />
       </div>
 
-      <Group orientation="horizontal" className="min-h-0 flex-1">
+      <Group orientation="horizontal" className="min-h-0 min-w-0 flex-1 overflow-hidden">
         {/* File Explorer stays mounted even when collapsed. Spinner is gated SOLELY by
             `fileTreeLoading` (initial-load). `fileTreeRefreshing` is
             intentionally NOT surfaced here so background refreshes after
@@ -270,6 +270,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
           collapsedSize={0}
           defaultSize={20}
           minSize={12}
+          className="min-h-0 min-w-0 overflow-hidden"
         >
           <ExplorerContent
             loading={fileTreeLoading}
@@ -292,6 +293,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
           collapsedSize={0}
           defaultSize={48}
           minSize={20}
+          className="min-h-0 min-w-0 overflow-hidden"
         >
           <ErrorBoundary>
             <FileViewer />
@@ -311,6 +313,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
           collapsedSize={0}
           defaultSize={32}
           minSize={15}
+          className="min-h-0 min-w-0 overflow-hidden"
         >
           <ErrorBoundary>
             <TerminalPanel slug={project.slug} worktree={activeWorktree ?? undefined} />

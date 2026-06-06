@@ -36,20 +36,26 @@ vi.mock("@/components/file-viewer", () => ({
 }));
 
 vi.mock("react-resizable-panels", () => ({
-  Group: ({ children }: React.PropsWithChildren) => {
+  Group: ({ children, className }: React.PropsWithChildren<{ className?: string }>) => {
     panelMockState.panelIndex = 0;
     panelMockState.separatorIndex = 0;
-    return <div>{children}</div>;
+    return (
+      <div data-testid="panel-group" className={className}>
+        {children}
+      </div>
+    );
   },
   Panel: ({
     children,
     panelRef,
     collapsible,
     collapsedSize,
+    className,
   }: React.PropsWithChildren<{
     panelRef?: React.Ref<unknown>;
     collapsible?: boolean;
     collapsedSize?: number;
+    className?: string;
   }>) => {
     const index = panelMockState.panelIndex++;
     const handle =
@@ -70,6 +76,7 @@ vi.mock("react-resizable-panels", () => ({
         data-testid={`panel-${index}`}
         data-collapsible={String(Boolean(collapsible))}
         data-collapsed-size={String(collapsedSize ?? "")}
+        className={className}
       >
         {children}
       </div>
@@ -336,6 +343,23 @@ describe("WorkspaceLayout", () => {
     rerender(<WorkspaceLayout project={project} />);
 
     expect(screen.getByTestId("terminal-panel")).toBeInTheDocument();
+  });
+
+  it("Issue #67: workspace terminal layout chain remains bounded while terminal stays mounted", () => {
+    mockUseWorkspace.mockReturnValue(makeContext({ showTerminal: true }));
+
+    const { container, rerender } = render(<WorkspaceLayout project={project} />);
+
+    expect(container.firstElementChild).toHaveClass("min-h-0", "min-w-0", "overflow-hidden");
+    expect(screen.getByTestId("panel-group")).toHaveClass("min-h-0", "min-w-0", "overflow-hidden");
+    expect(screen.getByTestId("panel-2")).toHaveClass("min-h-0", "min-w-0", "overflow-hidden");
+    expect(screen.getByTestId("terminal-panel")).toBeInTheDocument();
+
+    mockUseWorkspace.mockReturnValue(makeContext({ showTerminal: false }));
+    rerender(<WorkspaceLayout project={project} />);
+
+    expect(screen.getByTestId("terminal-panel")).toBeInTheDocument();
+    expect(panelMockState.panelHandles[2].collapse).toHaveBeenCalled();
   });
 
   it("T10: FileViewer stays mounted when showFileViewer toggles off and back on", () => {

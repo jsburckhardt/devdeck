@@ -72,7 +72,7 @@ export default function ProjectPage({ params }: { params: Promise<{ slug: string
   return (
     <>
       <Header backAction={() => router.push("/")} title={project.name} />
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
         <WorkspaceLayout project={project} />
       </div>
     </>
