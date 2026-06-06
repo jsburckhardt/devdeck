@@ -55,16 +55,21 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - The server MUST reset the idle timer on every `onData` call that matches a Copilot CLI pattern
 - The `useTerminal` hook MUST handle `"status"` messages in its `onmessage` dispatch and expose `copilotStatus: CopilotCliState` on its return type
 - The `useTerminal` hook MUST reset `copilotStatus` to `"idle"` at the start of each `connect()` attempt
+- The `useTerminal` hook MUST expose `sendInput(data: string): boolean` for UI helpers to send raw terminal input through the existing authenticated binary WebSocket frame path
+- `sendInput(data)` MUST encode strings with `TextEncoder` and send only when the active WebSocket is open
+- `sendInput(data)` MUST return `false` without throwing when the active WebSocket is absent or not open, and MUST NOT queue stale input across reconnects
+- The `useTerminal` hook MUST expose `focusTerminal(): boolean` so terminal helper controls can restore xterm focus after touch or pointer activation
 
 ### Interfaces
 - **WebSocket endpoint:** `/api/terminal?token=<bearer>&slug=<project-slug>&worktree=<relative-path>&cols=<N>&rows=<N>` — accepts WebSocket upgrade requests with valid token (via query param or cookie); `slug` is optional and selects per-project CWD and tmux session; `worktree` is optional and, when combined with `slug`, overrides CWD to the worktree directory in shell-only mode; `cols`/`rows` are optional initial dimensions (clamped server-side, defaults to 80×24)
 - **Token handshake:** On upgrade, server extracts `token` from query string or `devdeck_token` cookie, validates via `crypto.timingSafeEqual`, rejects with close code 4401 if invalid
-- **Frontend hook:** `useTerminal(options?: { slug?, worktree?, wsUrl?, theme? })` — manages xterm.js instance, WebSocket connection, token injection, addon lifecycle, and exposes `containerRef`, `terminalMode`, and `isFallback` state; when `worktree` is provided, the WebSocket URL includes it as a query parameter
+- **Frontend hook:** `useTerminal(options?: { slug?, worktree?, wsUrl?, theme? })` — manages xterm.js instance, WebSocket connection, token injection, addon lifecycle, and exposes `containerRef`, `terminalMode`, `isFallback`, `sendInput(data)`, and `focusTerminal()` state/actions; when `worktree` is provided, the WebSocket URL includes it as a query parameter
 - **Message format:** Raw binary data (ArrayBuffer) for terminal I/O; JSON for control messages (resize, ping)
 - **Setup message (server → client):** `{ type: "setup", mode: "tmux" | "shell", fallback?: true, reason?: string }` — sent as a JSON text frame immediately after PTY spawn and on any session mode transition (e.g., tmux fallback to shell)
 - **Status message (server → client):** `{ type: "status", copilotState: "idle" | "running" | "waiting" }` — sent as a JSON text frame whenever the server detects a Copilot CLI state change via PTY output pattern matching
 - **CopilotCliState type:** `"idle" | "running" | "waiting"` — inlined in `terminal-server.mts` (no `@/` imports) and exported from `src/lib/types.ts` for client-side use
 - **Frontend hook (extended):** `useTerminal(options?)` additionally returns `copilotStatus: CopilotCliState` (`"idle"` by default, updated on `"status"` frames)
+- **Helper input actions:** `sendInput(data: string): boolean` returns `true` only after sending encoded bytes to the active open WebSocket; `focusTerminal(): boolean` returns `true` only after focusing the active xterm instance
 - **Terminal server configuration:** startup resolves ADR-0006 config values and forwards them as `DEVDECK_TOKEN`, `TERMINAL_HOST`, `TERMINAL_PORT`, `DEVDECK_PROJECTS_DIR`, `DEVDECK_DATA_DIR`, and `DEVDECK_WORKSPACE_ROOT`; `TerminalServerOptions` remain available for direct test overrides.
 
 ### Expectations
