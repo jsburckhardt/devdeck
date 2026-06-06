@@ -52,6 +52,18 @@ async function expectNoTerminalHorizontalOverflow(page: Page) {
     .toEqual([]);
 }
 
+async function expectTerminalLine(page: Page, expectedLine: string) {
+  await expect
+    .poll(
+      async () =>
+        page
+          .locator('[data-testid="terminal-container"] .xterm-rows > div')
+          .evaluateAll((rows) => rows.map((row) => row.textContent?.trim() ?? "")),
+      { timeout: 5000 },
+    )
+    .toContain(expectedLine);
+}
+
 test("terminal connects, fits without horizontal overflow, and executes commands", async ({
   page,
 }) => {
@@ -64,7 +76,7 @@ test("terminal connects, fits without horizontal overflow, and executes commands
   await page.keyboard.type("echo hello-devdeck\n");
 
   // Wait for output
-  await expect(page.locator("text=hello-devdeck")).toBeVisible({ timeout: 5000 });
+  await expectTerminalLine(page, "hello-devdeck");
   await expectNoTerminalHorizontalOverflow(page);
 });
 
