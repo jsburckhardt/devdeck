@@ -118,6 +118,43 @@ async function waitForWs(): Promise<MockWS> {
   return getLatestWs();
 }
 
+function mockRect(width: number, height: number): DOMRect {
+  return {
+    width,
+    height,
+    top: 0,
+    left: 0,
+    right: width,
+    bottom: height,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  } as DOMRect;
+}
+
+function resizeMessages(ws: MockWS): Array<{ cols: number; rows: number }> {
+  return ws.send.mock.calls.flatMap((call: unknown[]) => {
+    if (typeof call[0] !== "string") {
+      return [];
+    }
+
+    try {
+      const payload = JSON.parse(call[0] as string) as {
+        type?: string;
+        cols?: number;
+        rows?: number;
+      };
+      if (payload.type === "resize" && payload.cols != null && payload.rows != null) {
+        return [{ cols: payload.cols, rows: payload.rows }];
+      }
+    } catch {
+      // Ignore non-JSON string frames.
+    }
+
+    return [];
+  });
+}
+
 describe("useTerminal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -133,6 +170,7 @@ describe("useTerminal", () => {
     fakeTerminal.onResize.mockClear();
     fakeTerminal.loadAddon.mockClear();
     fakeTerminal.attachCustomKeyEventHandler.mockClear();
+    resizeObserverCallback = null;
     fakeTerminal.cols = 80;
     fakeTerminal.rows = 24;
     fakeTerminal.unicode.activeVersion = "6";
@@ -231,6 +269,31 @@ describe("useTerminal", () => {
       }
     });
     expect(resizeCall).toBeDefined();
+  });
+
+  it("Issue #67: duplicate terminal resize events do not send duplicate messages", async () => {
+    renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+
+    const ws = await waitForWs();
+    await act(async () => {
+      ws.onopen?.();
+    });
+
+    // Clear the initial resize message sent on open while preserving the
+    // hook's internal last-sent dimensions.
+    ws.send.mockClear();
+
+    await act(async () => {
+      fakeTerminalHandlers.resize?.({ cols: 80, rows: 24 });
+      fakeTerminalHandlers.resize?.({ cols: 120, rows: 40 });
+      fakeTerminalHandlers.resize?.({ cols: 120, rows: 40 });
+      fakeTerminalHandlers.resize?.({ cols: 121, rows: 40 });
+    });
+
+    expect(resizeMessages(ws)).toEqual([
+      { cols: 120, rows: 40 },
+      { cols: 121, rows: 40 },
+    ]);
   });
 
   it("T14: unexpected close triggers reconnection", async () => {
@@ -514,6 +577,7 @@ describe("useTerminal", () => {
 
   it("T26: onResize is registered before fitAddon.fit() is called", async () => {
     const container = document.createElement("div");
+    vi.spyOn(container, "getBoundingClientRect").mockReturnValue(mockRect(800, 400));
 
     const { result } = renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
 
@@ -655,7 +719,7 @@ describe("useTerminal", () => {
     }
   });
 
-  it("T30: ResizeObserver skips fit() when container has zero dimensions", async () => {
+  it("T30: ResizeObserver skips zero dimensions, refits when visible, and suppresses unchanged sizes", async () => {
     vi.useFakeTimers();
     try {
       const container = document.createElement("div");
@@ -687,19 +751,10 @@ describe("useTerminal", () => {
       });
 
       fakeFitAddon.fit.mockClear();
+      const rectSpy = vi.spyOn(container, "getBoundingClientRect");
 
       // Simulate collapsed panel (0×0 dimensions)
-      vi.spyOn(container, "getBoundingClientRect").mockReturnValue({
-        width: 0,
-        height: 0,
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        x: 0,
-        y: 0,
-        toJSON: () => ({}),
-      });
+      rectSpy.mockReturnValue(mockRect(0, 0));
 
       // Trigger ResizeObserver callback
       expect(resizeObserverCallback).not.toBeNull();
@@ -714,17 +769,7 @@ describe("useTerminal", () => {
       expect(fakeFitAddon.fit).not.toHaveBeenCalled();
 
       // Now simulate non-zero dimensions
-      vi.spyOn(container, "getBoundingClientRect").mockReturnValue({
-        width: 800,
-        height: 400,
-        top: 0,
-        left: 0,
-        right: 800,
-        bottom: 400,
-        x: 0,
-        y: 0,
-        toJSON: () => ({}),
-      });
+      rectSpy.mockReturnValue(mockRect(800, 400));
 
       resizeObserverCallback!();
 
@@ -732,8 +777,27 @@ describe("useTerminal", () => {
         await vi.advanceTimersByTimeAsync(200);
       });
 
-      // fit() SHOULD be called with valid dimensions
-      expect(fakeFitAddon.fit).toHaveBeenCalled();
+      // fit() SHOULD be called once with valid dimensions
+      expect(fakeFitAddon.fit).toHaveBeenCalledTimes(1);
+
+      // Repeating the same dimensions should not refit.
+      resizeObserverCallback!();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200);
+      });
+
+      expect(fakeFitAddon.fit).toHaveBeenCalledTimes(1);
+
+      // A real size change should fit again.
+      rectSpy.mockReturnValue(mockRect(900, 400));
+      resizeObserverCallback!();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200);
+      });
+
+      expect(fakeFitAddon.fit).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();
     }

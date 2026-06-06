@@ -148,4 +148,46 @@ describe("TerminalPanel", () => {
 
     expect(mockUpdateCopilotStatus).toHaveBeenCalledWith("test-project", "idle");
   });
+
+  it("Issue #67: terminal container is unpadded and bounded", () => {
+    render(<TerminalPanel slug="test" />);
+
+    const panel = screen.getByTestId("terminal-panel");
+    const container = screen.getByTestId("terminal-container");
+
+    expect(panel).toHaveClass("min-h-0", "min-w-0", "overflow-hidden");
+    expect(container).toHaveClass("h-full", "w-full", "min-h-0", "min-w-0", "overflow-hidden");
+    expect(container.className).not.toMatch(/\bp(?:[trblxy])?-/);
+    expect(container.getAttribute("style") ?? "").not.toMatch(/padding/i);
+    expect(container.parentElement).toHaveClass(
+      "h-full",
+      "w-full",
+      "min-h-0",
+      "min-w-0",
+      "overflow-hidden",
+      "p-1",
+    );
+  });
+
+  it("Issue #67: status overlays and terminal controls remain accessible", () => {
+    const retry = vi.fn();
+    mockUseTerminal.mockReturnValue(
+      defaultMockReturn({
+        status: "failed",
+        isConnected: false,
+        error: "Connection lost",
+        retry,
+      }),
+    );
+
+    render(<TerminalPanel slug="test" />);
+
+    expect(screen.getByLabelText("Terminal theme")).toBeInTheDocument();
+    expect(screen.getByTestId("status-overlay")).toBeInTheDocument();
+    expect(screen.getByText("Connection lost")).toBeInTheDocument();
+
+    screen.getByRole("button", { name: "Retry" }).click();
+
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
 });

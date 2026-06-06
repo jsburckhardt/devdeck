@@ -39,6 +39,29 @@ const WS_CLOSE_UNAUTHORIZED = 4401;
 
 const DEFAULT_THEME = TERMINAL_THEMES[0].colors;
 
+interface ContainerSizeSnapshot {
+  width: number;
+  height: number;
+}
+
+interface TerminalSizeSnapshot {
+  cols: number;
+  rows: number;
+}
+
+function normalizeContainerSize(
+  rect: Pick<DOMRectReadOnly, "width" | "height">,
+): ContainerSizeSnapshot | null {
+  if (rect.width <= 0 || rect.height <= 0) {
+    return null;
+  }
+
+  return {
+    width: Math.max(1, Math.round(rect.width)),
+    height: Math.max(1, Math.round(rect.height)),
+  };
+}
+
 function buildWsUrl(slug?: string, worktree?: string, cols?: number, rows?: number): string {
   if (typeof window === "undefined") return "ws://localhost:8001/api/terminal";
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -73,11 +96,91 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
   const reconnectAttemptRef = useRef(0);
   const connectRef = useRef<(() => void) | null>(null);
   const themeRef = useRef<ITheme | undefined>(options?.theme);
+  const lastFitContainerSizeRef = useRef<ContainerSizeSnapshot | null>(null);
+  const resizeDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSentTerminalSizeRef = useRef<TerminalSizeSnapshot | null>(null);
 
   // Keep themeRef in sync so connect() always sees the latest theme
   useEffect(() => {
     themeRef.current = options?.theme;
   }, [options?.theme]);
+
+  const clearResizeDebounce = useCallback(() => {
+    if (resizeDebounceTimerRef.current) {
+      clearTimeout(resizeDebounceTimerRef.current);
+      resizeDebounceTimerRef.current = null;
+    }
+  }, []);
+
+  const disconnectResizeObserver = useCallback(() => {
+    clearResizeDebounce();
+    if (resizeObserverRef.current) {
+      resizeObserverRef.current.disconnect();
+      resizeObserverRef.current = null;
+    }
+  }, [clearResizeDebounce]);
+
+  const readContainerSize = useCallback(() => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    return rect ? normalizeContainerSize(rect) : null;
+  }, []);
+
+  const fitContainerToUsableSize = useCallback(
+    ({ force = false }: { force?: boolean } = {}) => {
+      if (!fitAddonRef.current || !termRef.current) {
+        return false;
+      }
+
+      const size = readContainerSize();
+      if (!size) {
+        lastFitContainerSizeRef.current = null;
+        return false;
+      }
+
+      const previousSize = lastFitContainerSizeRef.current;
+      if (
+        !force &&
+        previousSize &&
+        previousSize.width === size.width &&
+        previousSize.height === size.height
+      ) {
+        return false;
+      }
+
+      try {
+        fitAddonRef.current.fit();
+        lastFitContainerSizeRef.current = size;
+        return true;
+      } catch {
+        // ignore fit errors during rapid resize or teardown
+        return false;
+      }
+    },
+    [readContainerSize],
+  );
+
+  const scheduleFit = useCallback(() => {
+    clearResizeDebounce();
+    resizeDebounceTimerRef.current = setTimeout(() => {
+      resizeDebounceTimerRef.current = null;
+      fitContainerToUsableSize();
+    }, 150);
+  }, [clearResizeDebounce, fitContainerToUsableSize]);
+
+  const sendResizeMessage = useCallback((cols: number, rows: number) => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+
+    const previousSize = lastSentTerminalSizeRef.current;
+    if (previousSize && previousSize.cols === cols && previousSize.rows === rows) {
+      return false;
+    }
+
+    wsRef.current.send(JSON.stringify({ type: "resize", cols, rows }));
+    lastSentTerminalSizeRef.current = { cols, rows };
+    return true;
+  }, []);
 
   const connect = useCallback(async () => {
     const gen = ++generationRef.current;
@@ -87,6 +190,9 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
     setTerminalMode("unknown");
     setIsFallback(false);
     setCopilotStatus("idle");
+    lastFitContainerSizeRef.current = null;
+    lastSentTerminalSizeRef.current = null;
+    disconnectResizeObserver();
 
     try {
       const { Terminal } = await import("@xterm/xterm");
@@ -103,6 +209,7 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
         termRef.current.dispose();
         termRef.current = null;
       }
+      fitAddonRef.current = null;
 
       const term = new Terminal({
         cursorBlink: true,
@@ -153,44 +260,22 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
       // Register onResize BEFORE fitAddon.fit() so the handler captures
       // the first resize event triggered by fit().
       term.onResize(({ cols, rows }: { cols: number; rows: number }) => {
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({ type: "resize", cols, rows }));
-        }
+        sendResizeMessage(cols, rows);
       });
 
       if (containerRef.current) {
-        fitAddon.fit();
+        fitContainerToUsableSize({ force: true });
       }
 
       // Set up ResizeObserver
-      if (resizeObserverRef.current) {
-        resizeObserverRef.current.disconnect();
-      }
       if (containerRef.current) {
-        let resizeTimer: ReturnType<typeof setTimeout> | null = null;
         const observer = new ResizeObserver(() => {
           if (fitAddonRef.current && termRef.current) {
-            if (resizeTimer) clearTimeout(resizeTimer);
-            resizeTimer = setTimeout(() => {
-              try {
-                const rect = containerRef.current?.getBoundingClientRect();
-                if (!rect || rect.width <= 0 || rect.height <= 0) return;
-                fitAddonRef.current?.fit();
-              } catch {
-                // ignore fit errors during rapid resize
-              }
-            }, 150);
+            scheduleFit();
           }
         });
         observer.observe(containerRef.current);
         resizeObserverRef.current = observer;
-
-        // Store the timer cleanup for the effect cleanup
-        const originalDisconnect = observer.disconnect.bind(observer);
-        observer.disconnect = () => {
-          if (resizeTimer) clearTimeout(resizeTimer);
-          originalDisconnect();
-        };
       }
 
       // Close any existing WebSocket before creating a new one
@@ -227,7 +312,7 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
         reconnectAttemptRef.current = 0;
         setReconnectAttempt(0);
         // Send initial resize
-        ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+        sendResizeMessage(term.cols, term.rows);
       };
 
       ws.onmessage = (event: MessageEvent) => {
@@ -317,7 +402,13 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
       setStatus("failed");
       setError(String(err));
     }
-  }, [baseWsUrl]);
+  }, [
+    baseWsUrl,
+    disconnectResizeObserver,
+    fitContainerToUsableSize,
+    scheduleFit,
+    sendResizeMessage,
+  ]);
 
   useEffect(() => {
     connectRef.current = connect;
@@ -352,16 +443,16 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
         wsRef.current.close();
         wsRef.current = null;
       }
-      if (resizeObserverRef.current) {
-        resizeObserverRef.current.disconnect();
-        resizeObserverRef.current = null;
-      }
+      disconnectResizeObserver();
+      lastFitContainerSizeRef.current = null;
+      lastSentTerminalSizeRef.current = null;
       if (termRef.current) {
         termRef.current.dispose();
         termRef.current = null;
       }
+      fitAddonRef.current = null;
     };
-  }, [connect]);
+  }, [connect, disconnectResizeObserver]);
 
   // Runtime theme update without reconnection
   useEffect(() => {
