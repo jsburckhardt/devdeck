@@ -99,6 +99,7 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
   const reconnectAttemptRef = useRef(0);
   const connectRef = useRef<(() => void) | null>(null);
   const themeRef = useRef<ITheme | undefined>(options?.theme);
+  const inputEncoderRef = useRef<TextEncoder | null>(null);
   const lastFitContainerSizeRef = useRef<ContainerSizeSnapshot | null>(null);
   const resizeDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSentTerminalSizeRef = useRef<TerminalSizeSnapshot | null>(null);
@@ -115,7 +116,8 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
     }
 
     try {
-      ws.send(new TextEncoder().encode(data));
+      inputEncoderRef.current ??= new TextEncoder();
+      ws.send(inputEncoderRef.current.encode(data));
       return true;
     } catch {
       return false;

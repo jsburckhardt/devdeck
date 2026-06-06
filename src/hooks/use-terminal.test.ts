@@ -271,6 +271,40 @@ describe("useTerminal", () => {
     );
   });
 
+  it("Issue #75 review: sendInput reuses one TextEncoder for terminal input", async () => {
+    const OriginalTextEncoder = globalThis.TextEncoder;
+    const encode = vi.fn((input?: string) => new OriginalTextEncoder().encode(input));
+    const MockTextEncoder = vi.fn(function MockTextEncoder() {
+      return { encode };
+    }) as unknown as typeof TextEncoder;
+    vi.stubGlobal("TextEncoder", MockTextEncoder);
+
+    try {
+      const { result } = renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+
+      const ws = await waitForWs();
+      await act(async () => {
+        ws.onopen?.();
+      });
+      ws.send.mockClear();
+
+      await act(async () => {
+        expect(result.current.sendInput("helper-one")).toBe(true);
+        fakeTerminalHandlers.data?.("typed-input");
+        expect(result.current.sendInput("helper-two")).toBe(true);
+      });
+
+      expect(MockTextEncoder).toHaveBeenCalledTimes(1);
+      expect(encode).toHaveBeenCalledTimes(3);
+      expect(ws.send).toHaveBeenCalledTimes(3);
+      expect(Array.from(ws.send.mock.calls[1][0] as Uint8Array)).toEqual(
+        Array.from(new OriginalTextEncoder().encode("typed-input")),
+      );
+    } finally {
+      vi.stubGlobal("TextEncoder", OriginalTextEncoder);
+    }
+  });
+
   it("Issue #68: sendInput no-ops when the terminal input path is unavailable", async () => {
     const { result, unmount } = renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
 
