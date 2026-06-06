@@ -2,17 +2,15 @@
 name: bootstrap
 description: "Bootstrap a new project from the Soft Factory template by gathering project identity, tech stack, and cross-cutting concerns, then scaffolding the codebase and seeding architectural artifacts."
 tools:
-  - search/codebase
-  - search/fileSearch
-  - search/textSearch
-  - read/readFile
-  - edit/createDirectory
-  - edit/createFile
-  - edit/editFiles
-  - execute/runInTerminal
-  - execute/getTerminalOutput
-  - web/fetch
-  - todo
+  - grep
+  - glob
+  - view
+  - bash
+  - read_bash
+  - create
+  - edit
+  - web_fetch
+  - sql
 user-invocable: true
 disable-model-invocation: true
 target: vscode
@@ -351,8 +349,8 @@ RETURN: format="BOOTSTRAP_REPORT", project_name=PROJECT_NAME, project_descriptio
 </process>
 
 <process id="check-bootstrapped" name="Check if project has already been bootstrapped">
-USE `search/fileSearch` where: pattern="project/architecture/ADR/ADR-0002-*.md"
-CAPTURE EXISTING_ADRS from `search/fileSearch`
+USE `glob` where: pattern="project/architecture/ADR/ADR-0002-*.md"
+CAPTURE EXISTING_ADRS from `glob`
 IF EXISTING_ADRS is not empty:
   SET IS_BOOTSTRAPPED := true (from "Agent Inference")
   SET BOOTSTRAP_EVIDENCE := <EVIDENCE> (from "Agent Inference" using EXISTING_ADRS)
@@ -375,86 +373,86 @@ SET VERIFICATION_COMMANDS := <DEFAULTS> (from "Agent Inference" using LANGUAGE, 
 </process>
 
 <process id="scaffold-project" name="Initialize the project using the chosen tech stack">
-USE `execute/runInTerminal` where: command=INIT_COMMAND
-CAPTURE SCAFFOLD_OUTPUT from `execute/getTerminalOutput`
+USE `bash` where: command=INIT_COMMAND
+CAPTURE SCAFFOLD_OUTPUT from `bash`
 SET UPDATED_FILES := UPDATED_FILES + ["Project scaffold"] (from "Agent Inference")
 </process>
 
 <process id="create-tech-stack-adr" name="Create the foundational tech stack ADR">
-USE `read/readFile` where: filePath=ADR_TEMPLATE_PATH
-CAPTURE ADR_TEMPLATE from `read/readFile`
+USE `view` where: path=ADR_TEMPLATE_PATH
+CAPTURE ADR_TEMPLATE from `view`
 SET ADR_CONTENT := <CONTENT> (from "Agent Inference" using ADR_TEMPLATE, LANGUAGE, FRAMEWORK, PACKAGE_MANAGER, TEST_RUNNER, NEXT_ADR_NUMBER)
 SET ADR_FILE := <PATH> (from "Agent Inference" using ADR_DIR, NEXT_ADR_NUMBER)
-USE `edit/createFile` where: content=ADR_CONTENT, filePath=ADR_FILE
+USE `create` where: content=ADR_CONTENT, filePath=ADR_FILE
 SET CREATED_ADRS := CREATED_ADRS + [ADR_FILE] (from "Agent Inference")
 SET NEXT_ADR_NUMBER := NEXT_ADR_NUMBER + 1 (from "Agent Inference")
 </process>
 
 <process id="create-core-components" name="Create core-component files for each cross-cutting concern">
-USE `read/readFile` where: filePath=CORE_COMPONENT_TEMPLATE_PATH
-CAPTURE CC_TEMPLATE from `read/readFile`
+USE `view` where: path=CORE_COMPONENT_TEMPLATE_PATH
+CAPTURE CC_TEMPLATE from `view`
 FOREACH concern IN CROSS_CUTTING_CONCERNS:
   SET CC_CONTENT := <CONTENT> (from "Agent Inference" using CC_TEMPLATE, concern, NEXT_CC_NUMBER, CREATED_ADRS)
   SET CC_FILE := <PATH> (from "Agent Inference" using CORE_COMPONENT_DIR, NEXT_CC_NUMBER, concern)
-  USE `edit/createFile` where: content=CC_CONTENT, filePath=CC_FILE
+  USE `create` where: content=CC_CONTENT, filePath=CC_FILE
   SET CREATED_CORE_COMPONENTS := CREATED_CORE_COMPONENTS + [CC_FILE] (from "Agent Inference")
   SET NEXT_CC_NUMBER := NEXT_CC_NUMBER + 1 (from "Agent Inference")
 </process>
 
 <process id="create-development-standards" name="Create the development standards core-component">
-USE `read/readFile` where: filePath=CORE_COMPONENT_TEMPLATE_PATH
-CAPTURE CC_TEMPLATE from `read/readFile`
+USE `view` where: path=CORE_COMPONENT_TEMPLATE_PATH
+CAPTURE CC_TEMPLATE from `view`
 SET DEV_STD_CONTENT := <CONTENT> (from "Agent Inference" using CC_TEMPLATE, DEVELOPMENT_STANDARDS, LANGUAGE, NEXT_CC_NUMBER, CREATED_ADRS)
 SET DEV_STD_FILE := <PATH> (from "Agent Inference" using CORE_COMPONENT_DIR, NEXT_CC_NUMBER, "development-standards")
-USE `edit/createFile` where: content=DEV_STD_CONTENT, filePath=DEV_STD_FILE
+USE `create` where: content=DEV_STD_CONTENT, filePath=DEV_STD_FILE
 SET CREATED_CORE_COMPONENTS := CREATED_CORE_COMPONENTS + [DEV_STD_FILE] (from "Agent Inference")
 SET DEV_STD_DECISIONS := <DECISIONS> (from "Agent Inference" using DEVELOPMENT_STANDARDS, NEXT_CC_NUMBER)
 SET NEXT_CC_NUMBER := NEXT_CC_NUMBER + 1 (from "Agent Inference")
 </process>
 
 <process id="update-decision-log" name="Update DECISION-LOG.md with all new ADRs and core-components">
-USE `read/readFile` where: filePath=DECISION_LOG_PATH
-CAPTURE CURRENT_LOG from `read/readFile`
+USE `view` where: path=DECISION_LOG_PATH
+CAPTURE CURRENT_LOG from `view`
 SET UPDATED_LOG := <LOG> (from "Agent Inference" using CURRENT_LOG, CREATED_ADRS, CREATED_CORE_COMPONENTS, DEV_STD_DECISIONS)
-USE `edit/editFiles` where: filePath=DECISION_LOG_PATH
+USE `edit` where: filePath=DECISION_LOG_PATH
 SET UPDATED_FILES := UPDATED_FILES + [DECISION_LOG_PATH] (from "Agent Inference")
 </process>
 
 <process id="update-project-docs" name="Update README, application docs, AGENTS.md, and LLM.txt">
-USE `read/readFile` where: filePath=README_PATH
-CAPTURE CURRENT_README from `read/readFile`
+USE `view` where: path=README_PATH
+CAPTURE CURRENT_README from `view`
 SET UPDATED_README := <CONTENT> (from "Agent Inference" using CURRENT_README, PROJECT_NAME, PROJECT_DESCRIPTION, PROJECT_GOAL)
-USE `edit/editFiles` where: filePath=README_PATH
+USE `edit` where: filePath=README_PATH
 SET UPDATED_FILES := UPDATED_FILES + [README_PATH] (from "Agent Inference")
-USE `read/readFile` where: filePath=APP_DOCS_PATH
-CAPTURE CURRENT_APP_DOCS from `read/readFile`
+USE `view` where: path=APP_DOCS_PATH
+CAPTURE CURRENT_APP_DOCS from `view`
 SET UPDATED_APP_DOCS := <CONTENT> (from "Agent Inference" using CURRENT_APP_DOCS, PROJECT_NAME, PROJECT_DESCRIPTION, PROJECT_GOAL, LANGUAGE, FRAMEWORK)
-USE `edit/editFiles` where: filePath=APP_DOCS_PATH
+USE `edit` where: filePath=APP_DOCS_PATH
 SET UPDATED_FILES := UPDATED_FILES + [APP_DOCS_PATH] (from "Agent Inference")
-USE `read/readFile` where: filePath=AGENTS_MD_PATH
-CAPTURE CURRENT_AGENTS from `read/readFile`
+USE `view` where: path=AGENTS_MD_PATH
+CAPTURE CURRENT_AGENTS from `view`
 SET UPDATED_AGENTS := <CONTENT> (from "Agent Inference" using CURRENT_AGENTS, CREATED_ADRS, CREATED_CORE_COMPONENTS)
-USE `edit/editFiles` where: filePath=AGENTS_MD_PATH
+USE `edit` where: filePath=AGENTS_MD_PATH
 SET UPDATED_FILES := UPDATED_FILES + [AGENTS_MD_PATH] (from "Agent Inference")
-USE `read/readFile` where: filePath=LLM_TXT_PATH
-CAPTURE CURRENT_LLM_TXT from `read/readFile`
+USE `view` where: path=LLM_TXT_PATH
+CAPTURE CURRENT_LLM_TXT from `view`
 SET UPDATED_LLM_TXT := <CONTENT> (from "Agent Inference" using CURRENT_LLM_TXT, CREATED_ADRS, CREATED_CORE_COMPONENTS, LANGUAGE)
-USE `edit/editFiles` where: filePath=LLM_TXT_PATH
+USE `edit` where: filePath=LLM_TXT_PATH
 SET UPDATED_FILES := UPDATED_FILES + [LLM_TXT_PATH] (from "Agent Inference")
 </process>
 
 <process id="tailor-devcontainer" name="Tailor devcontainer.json to the chosen tech stack">
-USE `read/readFile` where: filePath=DEVCONTAINER_PATH
-CAPTURE CURRENT_DEVCONTAINER from `read/readFile`
+USE `view` where: path=DEVCONTAINER_PATH
+CAPTURE CURRENT_DEVCONTAINER from `view`
 SET UPDATED_DEVCONTAINER := <CONTENT> (from "Agent Inference" using CURRENT_DEVCONTAINER, LANGUAGE, FRAMEWORK, PACKAGE_MANAGER)
-USE `edit/editFiles` where: filePath=DEVCONTAINER_PATH
+USE `edit` where: filePath=DEVCONTAINER_PATH
 SET UPDATED_FILES := UPDATED_FILES + [DEVCONTAINER_PATH] (from "Agent Inference")
 </process>
 
 <process id="configure-verification" name="Write project verification config file">
-USE `edit/createDirectory` where: dirPath=".github/soft-factory"
+USE `bash` where: command="mkdir -p .github/soft-factory"
 SET VERIFICATION_YAML := <CONTENT> (from "Agent Inference" using VERIFICATION_COMMANDS)
-USE `edit/createFile` where: content=VERIFICATION_YAML, filePath=VERIFICATION_CONFIG_PATH
+USE `create` where: content=VERIFICATION_YAML, filePath=VERIFICATION_CONFIG_PATH
 SET UPDATED_FILES := UPDATED_FILES + [VERIFICATION_CONFIG_PATH] (from "Agent Inference")
 </process>
 </processes>

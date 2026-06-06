@@ -2,15 +2,13 @@
 name: verifier
 description: "Own the Verify stage of the RPIV pipeline — run tests, validate implementation, create commits following Conventional Commits, push, and open a PR assigned to Copilot for review."
 tools:
-  - search/codebase
-  - search/fileSearch
-  - search/textSearch
-  - search/changes
-  - read/readFile
-  - edit/editFiles
-  - edit/createFile
-  - execute/runInTerminal
-  - execute/getTerminalOutput
+  - grep
+  - glob
+  - view
+  - bash
+  - read_bash
+  - create
+  - edit
 user-invocable: true
 disable-model-invocation: false
 target: vscode
@@ -183,23 +181,23 @@ SET SHORT_SLUG := <SLUG> (from "Agent Inference" using ISSUE_NUMBER, ISSUES_DIR)
 </process>
 
 <process id="load-verification-config" name="Load verification commands from config file or fall back to auto-detection">
-USE `search/fileSearch` where: pattern=VERIFICATION_CONFIG_PATH
-CAPTURE CONFIG_EXISTS from `search/fileSearch`
+USE `glob` where: pattern=VERIFICATION_CONFIG_PATH
+CAPTURE CONFIG_EXISTS from `glob`
 IF CONFIG_EXISTS is not empty:
-  USE `read/readFile` where: filePath=VERIFICATION_CONFIG_PATH
-  CAPTURE CONFIG_CONTENT from `read/readFile`
+  USE `view` where: path=VERIFICATION_CONFIG_PATH
+  CAPTURE CONFIG_CONTENT from `view`
   SET VERIFICATION_COMMANDS := <STEP_LIST> (from "Agent Inference" using CONFIG_CONTENT; normalize to a list of {category, command} objects)
 ELSE:
-  USE `search/fileSearch` where: pattern="go.mod,package.json,pytest.ini,pyproject.toml,Makefile"
-  CAPTURE PROJECT_FILES from `search/fileSearch`
+  USE `glob` where: pattern="go.mod,package.json,pytest.ini,pyproject.toml,Makefile"
+  CAPTURE PROJECT_FILES from `glob`
   SET VERIFICATION_COMMANDS := <STEP_LIST> (from "Agent Inference" using PROJECT_FILES, TEST_RUNNER_SIGNALS; normalize to a list of {category, command} objects populating at least the test category)
 </process>
 
 <process id="run-verification" name="Execute all configured verification steps and track results per category">
 SET VERIFICATION_PASSED := true (from "Agent Inference")
 FOREACH step IN VERIFICATION_COMMANDS:
-  USE `execute/runInTerminal` where: command=step.command
-  CAPTURE STEP_OUTPUT from `execute/runInTerminal`
+  USE `bash` where: command=step.command
+  CAPTURE STEP_OUTPUT from `bash`
   SET STEP_PASSED := <RESULT> (from "Agent Inference" using STEP_OUTPUT)
   SET VERIFICATION_RESULTS := VERIFICATION_RESULTS + [{category: step.category, command: step.command, passed: STEP_PASSED, output: STEP_OUTPUT}] (from "Agent Inference")
   IF STEP_PASSED is false:
@@ -207,26 +205,26 @@ FOREACH step IN VERIFICATION_COMMANDS:
 </process>
 
 <process id="check-gh-auth" name="Verify GitHub CLI authentication">
-USE `execute/runInTerminal` where: command="gh auth status"
-CAPTURE GH_STATUS from `execute/runInTerminal`
+USE `bash` where: command="gh auth status"
+CAPTURE GH_STATUS from `bash`
 SET GH_AUTHENTICATED := <RESULT> (from "Agent Inference" using GH_STATUS)
 </process>
 
 <process id="prepare-branch" name="Create or verify feature branch">
-USE `execute/runInTerminal` where: command="git branch --show-current"
-CAPTURE CURRENT_BRANCH from `execute/runInTerminal`
+USE `bash` where: command="git branch --show-current"
+CAPTURE CURRENT_BRANCH from `bash`
 IF CURRENT_BRANCH matches PROTECTED_BRANCHES:
   SET BRANCH_NAME := <NAME> (from "Agent Inference" using BRANCH_PATTERN, ISSUE_NUMBER, SHORT_SLUG)
-  USE `execute/runInTerminal` where: command="git checkout -b <BRANCH_NAME>"
+  USE `bash` where: command="git checkout -b <BRANCH_NAME>"
 ELSE:
   SET BRANCH_NAME := CURRENT_BRANCH (from "Agent Inference")
 </process>
 
 <process id="detect-changes" name="Detect changed ADRs, core-components, and agent files">
-USE `execute/runInTerminal` where: command="git diff --name-only HEAD"
-CAPTURE CHANGED_FILES from `execute/runInTerminal`
-USE `execute/runInTerminal` where: command="git ls-files --others --exclude-standard"
-CAPTURE UNTRACKED_FILES from `execute/runInTerminal`
+USE `bash` where: command="git diff --name-only HEAD"
+CAPTURE CHANGED_FILES from `bash`
+USE `bash` where: command="git ls-files --others --exclude-standard"
+CAPTURE UNTRACKED_FILES from `bash`
 SET ADR_CHANGES := <ADRS> (from "Agent Inference" using CHANGED_FILES, UNTRACKED_FILES, ADR_DIR)
 SET CC_CHANGES := <CCS> (from "Agent Inference" using CHANGED_FILES, UNTRACKED_FILES, CORE_COMPONENT_DIR)
 SET AGENT_CHANGES := <HAS_AGENT> (from "Agent Inference" using CHANGED_FILES, UNTRACKED_FILES)
@@ -235,31 +233,31 @@ SET AGENT_CHANGES := <HAS_AGENT> (from "Agent Inference" using CHANGED_FILES, UN
 <process id="commit-implementation" name="Stage and commit implementation files in logical groups">
 SET GROUPS := <FILE_GROUPS> (from "Agent Inference" using CHANGED_FILES, UNTRACKED_FILES)
 FOREACH group IN GROUPS:
-  USE `execute/runInTerminal` where: command="git add <group.files>"
-  USE `execute/runInTerminal` where: command="git commit -m '<group.message>' -m '' -m 'CO_AUTHOR_TRAILER'"
-  CAPTURE COMMIT_HASH from `execute/runInTerminal`
+  USE `bash` where: command="git add <group.files>"
+  USE `bash` where: command="git commit -m '<group.message>' -m '' -m 'CO_AUTHOR_TRAILER'"
+  CAPTURE COMMIT_HASH from `bash`
   SET COMMITS := COMMITS + [COMMIT_HASH] (from "Agent Inference")
 </process>
 
 <process id="update-decision-log" name="Update DECISION-LOG.md for new or changed ADRs and core-components">
-USE `read/readFile` where: filePath=DECISION_LOG_PATH
-CAPTURE CURRENT_LOG from `read/readFile`
+USE `view` where: path=DECISION_LOG_PATH
+CAPTURE CURRENT_LOG from `view`
 SET UPDATED_LOG := <LOG> (from "Agent Inference" using CURRENT_LOG, ADR_CHANGES, CC_CHANGES)
-USE `edit/editFiles` where: filePath=DECISION_LOG_PATH
-USE `execute/runInTerminal` where: command="git add project/architecture/ADR/DECISION-LOG.md"
-USE `execute/runInTerminal` where: command="git commit -m 'docs: update DECISION-LOG.md' -m '' -m 'CO_AUTHOR_TRAILER'"
-CAPTURE COMMIT_HASH from `execute/runInTerminal`
+USE `edit` where: filePath=DECISION_LOG_PATH
+USE `bash` where: command="git add project/architecture/ADR/DECISION-LOG.md"
+USE `bash` where: command="git commit -m 'docs: update DECISION-LOG.md' -m '' -m 'CO_AUTHOR_TRAILER'"
+CAPTURE COMMIT_HASH from `bash`
 SET COMMITS := COMMITS + [COMMIT_HASH] (from "Agent Inference")
 </process>
 
 <process id="update-agents-md" name="Update AGENTS.md for new or changed agent definitions">
-USE `read/readFile` where: filePath=AGENTS_MD_PATH
-CAPTURE CURRENT_AGENTS from `read/readFile`
+USE `view` where: path=AGENTS_MD_PATH
+CAPTURE CURRENT_AGENTS from `view`
 SET UPDATED_AGENTS := <AGENTS> (from "Agent Inference" using CURRENT_AGENTS, CHANGED_FILES)
-USE `edit/editFiles` where: filePath=AGENTS_MD_PATH
-USE `execute/runInTerminal` where: command="git add AGENTS.md"
-USE `execute/runInTerminal` where: command="git commit -m 'docs: update AGENTS.md' -m '' -m 'CO_AUTHOR_TRAILER'"
-CAPTURE COMMIT_HASH from `execute/runInTerminal`
+USE `edit` where: filePath=AGENTS_MD_PATH
+USE `bash` where: command="git add AGENTS.md"
+USE `bash` where: command="git commit -m 'docs: update AGENTS.md' -m '' -m 'CO_AUTHOR_TRAILER'"
+CAPTURE COMMIT_HASH from `bash`
 SET COMMITS := COMMITS + [COMMIT_HASH] (from "Agent Inference")
 </process>
 
@@ -267,22 +265,22 @@ SET COMMITS := COMMITS + [COMMIT_HASH] (from "Agent Inference")
 SET DOCS_NEEDED := <NEEDED> (from "Agent Inference" using CHANGED_FILES)
 IF DOCS_NEEDED is true:
   SET DOC_UPDATES := <UPDATES> (from "Agent Inference" using CHANGED_FILES, ISSUE_NUMBER)
-  USE `execute/runInTerminal` where: command="git add project/ docs/ README.md"
-  USE `execute/runInTerminal` where: command="git commit -m 'docs: update documentation' -m '' -m 'CO_AUTHOR_TRAILER'"
-  CAPTURE COMMIT_HASH from `execute/runInTerminal`
+  USE `bash` where: command="git add project/ docs/ README.md"
+  USE `bash` where: command="git commit -m 'docs: update documentation' -m '' -m 'CO_AUTHOR_TRAILER'"
+  CAPTURE COMMIT_HASH from `bash`
   SET COMMITS := COMMITS + [COMMIT_HASH] (from "Agent Inference")
 </process>
 
 <process id="verify-clean" name="Verify working tree is clean after all commits">
-USE `execute/runInTerminal` where: command="git status --porcelain"
-CAPTURE STATUS_OUTPUT from `execute/runInTerminal`
+USE `bash` where: command="git status --porcelain"
+CAPTURE STATUS_OUTPUT from `bash`
 IF STATUS_OUTPUT is not empty:
   RETURN: format="VERIFY_ERROR", issue_number=ISSUE_NUMBER, stage="Verify Clean", error_message="Uncommitted changes remain", details=STATUS_OUTPUT, fix="Stage and commit remaining changes"
 </process>
 
 <process id="verify-acceptance-criteria" name="Fetch the GitHub issue and verify all acceptance criteria are satisfied">
-USE `execute/runInTerminal` where: command="gh issue view <ISSUE_NUMBER> --json body --jq .body"
-CAPTURE ISSUE_BODY from `execute/runInTerminal`
+USE `bash` where: command="gh issue view <ISSUE_NUMBER> --json body --jq .body"
+CAPTURE ISSUE_BODY from `bash`
 SET ACCEPTANCE_CRITERIA := <CRITERIA_LIST> (from "Agent Inference" using ISSUE_BODY; extract all checklist items under Acceptance Criteria headings as a list of {criterion, section} objects)
 SET CRITERIA_RESULTS := <RESULTS> (from "Agent Inference" using ACCEPTANCE_CRITERIA, CHANGED_FILES, VERIFICATION_RESULTS; for each criterion assess whether the implementation evidence satisfies it and produce a list of {criterion, section, satisfied, evidence} objects)
 SET ACCEPTANCE_VERIFIED := <ALL_SATISFIED> (from "Agent Inference" using CRITERIA_RESULTS; true only if every criterion is satisfied)
@@ -290,32 +288,32 @@ SET ACCEPTANCE_CRITERIA := CRITERIA_RESULTS (from "Agent Inference")
 </process>
 
 <process id="run-smoke-test" name="Start the application locally, confirm it is ready, then shut it down">
-USE `execute/runInTerminal` where: command="<START_CMD> &" (from "Agent Inference" using VERIFICATION_COMMANDS; pick the dev/start command from verification config or infer from project files such as npm run dev, go run ., python -m app, etc.; run in background so the process does not block subsequent steps)
-CAPTURE APP_PID from `execute/runInTerminal`
-USE `execute/runInTerminal` where: command="sleep 5 && curl -sf --retry 5 --retry-delay 2 --retry-all-errors --max-time 10 http://localhost:<PORT>"
-CAPTURE HEALTH_OUTPUT from `execute/runInTerminal`
+USE `bash` where: command="<START_CMD> &" (from "Agent Inference" using VERIFICATION_COMMANDS; pick the dev/start command from verification config or infer from project files such as npm run dev, go run ., python -m app, etc.; run in background so the process does not block subsequent steps)
+CAPTURE APP_PID from `bash`
+USE `bash` where: command="sleep 5 && curl -sf --retry 5 --retry-delay 2 --retry-all-errors --max-time 10 http://localhost:<PORT>"
+CAPTURE HEALTH_OUTPUT from `bash`
 SET APP_READY := <READY> (from "Agent Inference" using HEALTH_OUTPUT; true if the HTTP request returns a success status)
 SET SMOKE_TEST_PASSED := APP_READY
-USE `execute/runInTerminal` where: command="kill $APP_PID 2>/dev/null || true" (send SIGTERM to the background process to shut down the application)
+USE `bash` where: command="kill $APP_PID 2>/dev/null || true" (send SIGTERM to the background process to shut down the application)
 SET SMOKE_TEST_OUTPUT := <SUMMARY> (from "Agent Inference" using HEALTH_OUTPUT; summarize startup and health check results)
 IF SMOKE_TEST_PASSED is false:
   SET SMOKE_TEST_OUTPUT := <ERROR_SUMMARY> (from "Agent Inference" using HEALTH_OUTPUT; summarize startup failure or health check failure)
 </process>
 
 <process id="push-branch" name="Push the feature branch to remote origin">
-USE `execute/runInTerminal` where: command="git push -u origin <BRANCH_NAME>"
-CAPTURE PUSH_OUTPUT from `execute/runInTerminal`
+USE `bash` where: command="git push -u origin <BRANCH_NAME>"
+CAPTURE PUSH_OUTPUT from `bash`
 </process>
 
 <process id="create-pr" name="Create a pull request using the GitHub CLI">
 SET PR_TITLE := <TITLE> (from "Agent Inference" using ISSUE_NUMBER, SHORT_SLUG)
 SET PR_BODY := <BODY> (from "Agent Inference" using ISSUE_NUMBER, COMMITS, ADR_CHANGES, CC_CHANGES)
-USE `edit/createFile` where: content=PR_BODY, filePath="/tmp/pr-body.md"
-USE `execute/runInTerminal` where: command="gh pr create --title '<PR_TITLE>' --body-file /tmp/pr-body.md"
-CAPTURE PR_OUTPUT from `execute/runInTerminal`
+USE `create` where: content=PR_BODY, filePath="/tmp/pr-body.md"
+USE `bash` where: command="gh pr create --title '<PR_TITLE>' --body-file /tmp/pr-body.md"
+CAPTURE PR_OUTPUT from `bash`
 SET PR_URL := <URL> (from "Agent Inference" using PR_OUTPUT)
 SET PR_NUMBER := <NUMBER> (from "Agent Inference" using PR_URL)
-USE `execute/runInTerminal` where: command="gh api repos/<OWNER>/<REPO>/pulls/<PR_NUMBER>/requested_reviewers --method POST -f 'reviewers[]=Copilot'"
+USE `bash` where: command="gh api repos/<OWNER>/<REPO>/pulls/<PR_NUMBER>/requested_reviewers --method POST -f 'reviewers[]=Copilot'"
 </process>
 </processes>
 
