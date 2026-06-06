@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 
 // Mock useTerminal hook
 const mockUseTerminal = vi.fn();
+const mockSendInput = vi.fn(() => true);
+const mockFocusTerminal = vi.fn(() => true);
 vi.mock("@/hooks/use-terminal", () => ({
   useTerminal: (...args: unknown[]) => mockUseTerminal(...args),
 }));
@@ -29,6 +31,7 @@ vi.mock("@phosphor-icons/react", () => ({
   LockSimple: () => <span data-testid="lock-icon" />,
   Palette: () => <span data-testid="palette-icon" />,
   Check: () => <span data-testid="check-icon" />,
+  Keyboard: () => <span data-testid="keyboard-icon" />,
 }));
 
 // Mock terminal theme hook
@@ -67,6 +70,8 @@ function defaultMockReturn(overrides: Record<string, unknown> = {}) {
     terminalMode: "unknown" as const,
     isFallback: false,
     copilotStatus: "idle" as const,
+    sendInput: mockSendInput,
+    focusTerminal: mockFocusTerminal,
     ...overrides,
   };
 }
@@ -167,6 +172,127 @@ describe("TerminalPanel", () => {
       "overflow-hidden",
       "p-1",
     );
+  });
+
+  it("Issue #68: keyboard helper toggle exposes accessibility state without remounting terminal", () => {
+    render(<TerminalPanel slug="test" />);
+
+    const toggle = screen.getByRole("button", { name: "Terminal keyboard helper" });
+    const terminalContainer = screen.getByTestId("terminal-container");
+
+    expect(toggle).toHaveAttribute("title", "Terminal keyboard helper");
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByTestId("terminal-keyboard-helper")).toBeNull();
+
+    fireEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("terminal-keyboard-helper")).toBeInTheDocument();
+    expect(screen.getByTestId("terminal-container")).toBe(terminalContainer);
+
+    fireEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByTestId("terminal-keyboard-helper")).toBeNull();
+    expect(screen.getByTestId("terminal-container")).toBe(terminalContainer);
+  });
+
+  it("Issue #68: plain helper keys send terminal escape sequences and restore focus", () => {
+    render(<TerminalPanel slug="test" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Terminal keyboard helper" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tab" }));
+    fireEvent.click(screen.getByRole("button", { name: "Up" }));
+    fireEvent.click(screen.getByRole("button", { name: "Right" }));
+
+    expect(mockSendInput.mock.calls.map((call) => call[0])).toEqual(["\x09", "\x1b[A", "\x1b[C"]);
+    expect(mockFocusTerminal).toHaveBeenCalledTimes(3);
+    expect(mockSendInput.mock.invocationCallOrder[0]).toBeLessThan(
+      mockFocusTerminal.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("Issue #68: Ctrl is sticky one-shot, cancelable, and sends supported chords", () => {
+    render(<TerminalPanel slug="test" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Terminal keyboard helper" }));
+    const ctrl = screen.getByRole("button", { name: "Ctrl" });
+
+    fireEvent.click(ctrl);
+    expect(ctrl).toHaveAttribute("aria-pressed", "true");
+    expect(mockSendInput).not.toHaveBeenCalled();
+
+    fireEvent.click(ctrl);
+    expect(ctrl).toHaveAttribute("aria-pressed", "false");
+    expect(mockSendInput).not.toHaveBeenCalled();
+
+    fireEvent.click(ctrl);
+    fireEvent.click(screen.getByRole("button", { name: "Tab" }));
+    expect(ctrl).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(ctrl);
+    fireEvent.click(screen.getByRole("button", { name: "Up" }));
+    expect(ctrl).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(ctrl);
+    fireEvent.click(screen.getByRole("button", { name: "Right" }));
+    expect(ctrl).toHaveAttribute("aria-pressed", "false");
+
+    expect(mockSendInput.mock.calls.map((call) => call[0])).toEqual([
+      "\x1b[27;5;9~",
+      "\x1b[1;5A",
+      "\x1b[1;5C",
+    ]);
+    expect(mockFocusTerminal).toHaveBeenCalledTimes(3);
+  });
+
+  it("Issue #68: disconnected helper keys are aria-disabled and do not send input", () => {
+    mockUseTerminal.mockReturnValue(
+      defaultMockReturn({ isConnected: false, status: "failed", error: "Connection lost" }),
+    );
+
+    render(<TerminalPanel slug="test" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Terminal keyboard helper" }));
+
+    for (const name of ["Ctrl", "Tab", "Up", "Right"]) {
+      const button = screen.getByRole("button", { name });
+      expect(button).toHaveAttribute("aria-disabled", "true");
+      expect(button).toHaveAttribute("tabindex", "-1");
+      fireEvent.click(button);
+    }
+
+    expect(mockSendInput).not.toHaveBeenCalled();
+    expect(mockFocusTerminal).not.toHaveBeenCalled();
+  });
+
+  it("Issue #68: helper close, context changes, and disconnect reset helper state", () => {
+    const { rerender } = render(<TerminalPanel slug="project-one" worktree=".trees/one" />);
+
+    const toggle = screen.getByRole("button", { name: "Terminal keyboard helper" });
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: "Ctrl" }));
+    expect(screen.getByRole("button", { name: "Ctrl" })).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(toggle);
+    expect(screen.queryByTestId("terminal-keyboard-helper")).toBeNull();
+
+    fireEvent.click(toggle);
+    expect(screen.getByRole("button", { name: "Ctrl" })).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(screen.getByRole("button", { name: "Ctrl" }));
+    rerender(<TerminalPanel slug="project-two" worktree=".trees/one" />);
+    expect(screen.queryByTestId("terminal-keyboard-helper")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Terminal keyboard helper" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ctrl" }));
+
+    mockUseTerminal.mockReturnValue(
+      defaultMockReturn({ isConnected: false, status: "reconnecting" }),
+    );
+    rerender(<TerminalPanel slug="project-two" worktree=".trees/one" />);
+
+    expect(screen.queryByTestId("terminal-keyboard-helper")).toBeNull();
   });
 
   it("Issue #67: status overlays and terminal controls remain accessible", () => {

@@ -95,6 +95,28 @@ test("terminal keeps fitting without horizontal overflow after layout changes", 
   await expect(page.locator('[data-testid="terminal-panel"]').getByText("Connected")).toBeVisible();
 });
 
+test("mobile keyboard helper sends an arrow key without disconnecting", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openFirstProjectTerminal(page);
+
+  const marker = "M68";
+  const rawModeProbe =
+    'node -e "console.log(\\\"RDY\\\");process.stdin.setRawMode(true);process.stdin.resume();let b=[];process.stdin.on(\\"data\\",d=>{b.push(...d);if(b.length>=3){console.log(b[0]===27&&b[1]===91&&b[2]===65?\\"M68\\":\\"BAD\\");process.exit(0)}})"';
+  const terminalContainer = page.locator("[data-testid=terminal-container]");
+  await terminalContainer.click();
+  await page.keyboard.type(rawModeProbe);
+  await page.keyboard.press("Enter");
+  await expectTerminalLine(page, "RDY");
+
+  await page.getByRole("button", { name: "Terminal keyboard helper" }).click();
+  await expect(page.getByRole("toolbar", { name: "Terminal keyboard helper keys" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Up" }).click();
+  await expectTerminalLine(page, marker);
+
+  await expect(page.locator("[data-testid=terminal-panel]").getByText("Connected")).toBeVisible();
+});
+
 test("rejects access without token", async ({ page }) => {
   // Clear cookies to ensure no existing auth
   await page.context().clearCookies();
