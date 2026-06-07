@@ -32,6 +32,8 @@ export interface UseTerminalReturn {
   terminalMode: TerminalMode;
   isFallback: boolean;
   copilotStatus: CopilotCliState;
+  sendInput: (data: string) => boolean;
+  focusTerminal: () => boolean;
 }
 
 const MAX_RECONNECT_ATTEMPTS = 3;
@@ -83,6 +85,7 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
   const [terminalMode, setTerminalMode] = useState<TerminalMode>("unknown");
   const [isFallback, setIsFallback] = useState(false);
   const [copilotStatus, setCopilotStatus] = useState<CopilotCliState>("idle");
+  const statusRef = useRef<TerminalStatus>("disconnected");
 
   const baseWsUrl = options?.wsUrl ?? buildWsUrl(options?.slug, options?.worktree);
 
@@ -96,9 +99,44 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
   const reconnectAttemptRef = useRef(0);
   const connectRef = useRef<(() => void) | null>(null);
   const themeRef = useRef<ITheme | undefined>(options?.theme);
+  const inputEncoderRef = useRef<TextEncoder | null>(null);
   const lastFitContainerSizeRef = useRef<ContainerSizeSnapshot | null>(null);
   const resizeDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSentTerminalSizeRef = useRef<TerminalSizeSnapshot | null>(null);
+
+  const setTerminalStatus = useCallback((nextStatus: TerminalStatus) => {
+    statusRef.current = nextStatus;
+    setStatus(nextStatus);
+  }, []);
+
+  const sendInput = useCallback((data: string) => {
+    const ws = wsRef.current;
+    if (!ws || statusRef.current !== "connected" || ws.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+
+    try {
+      inputEncoderRef.current ??= new TextEncoder();
+      ws.send(inputEncoderRef.current.encode(data));
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const focusTerminal = useCallback(() => {
+    const term = termRef.current;
+    if (!term) {
+      return false;
+    }
+
+    try {
+      term.focus();
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
 
   // Keep themeRef in sync so connect() always sees the latest theme
   useEffect(() => {
@@ -185,7 +223,7 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
   const connect = useCallback(async () => {
     const gen = ++generationRef.current;
 
-    setStatus("connecting");
+    setTerminalStatus("connecting");
     setError(null);
     setTerminalMode("unknown");
     setIsFallback(false);
@@ -302,12 +340,11 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
       ws.binaryType = "arraybuffer";
       wsRef.current = ws;
 
-      const encoder = new TextEncoder();
       const decoder = new TextDecoder();
 
       ws.onopen = () => {
         if (gen !== generationRef.current) return;
-        setStatus("connected");
+        setTerminalStatus("connected");
         setError(null);
         reconnectAttemptRef.current = 0;
         setReconnectAttempt(0);
@@ -358,13 +395,13 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
 
         // Unauthorized — do not reconnect
         if (event.code === WS_CLOSE_UNAUTHORIZED) {
-          setStatus("failed");
+          setTerminalStatus("failed");
           setError("Unauthorized — please reload with a valid token");
           return;
         }
 
         if (intentionalCloseRef.current) {
-          setStatus("disconnected");
+          setTerminalStatus("disconnected");
           return;
         }
         // Unexpected close — attempt reconnection
@@ -373,12 +410,12 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
         setReconnectAttempt(attempt);
 
         if (attempt > MAX_RECONNECT_ATTEMPTS) {
-          setStatus("failed");
+          setTerminalStatus("failed");
           setError("Connection lost after maximum retries");
           return;
         }
 
-        setStatus("reconnecting");
+        setTerminalStatus("reconnecting");
         const delay = 1000 * Math.pow(2, attempt - 1);
         reconnectTimerRef.current = setTimeout(() => {
           if (gen === generationRef.current) {
@@ -393,13 +430,13 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
       };
 
       term.onData((data: string) => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(encoder.encode(data));
+        if (gen === generationRef.current) {
+          sendInput(data);
         }
       });
     } catch (err) {
       if (gen !== generationRef.current) return;
-      setStatus("failed");
+      setTerminalStatus("failed");
       setError(String(err));
     }
   }, [
@@ -407,7 +444,9 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
     disconnectResizeObserver,
     fitContainerToUsableSize,
     scheduleFit,
+    sendInput,
     sendResizeMessage,
+    setTerminalStatus,
   ]);
 
   useEffect(() => {
@@ -434,6 +473,7 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
       intentionalCloseRef.current = true;
       // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: increment generation to invalidate stale closures
       generationRef.current++;
+      statusRef.current = "disconnected";
 
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current);
@@ -472,5 +512,7 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
     terminalMode,
     isFallback,
     copilotStatus,
+    sendInput,
+    focusTerminal,
   };
 }

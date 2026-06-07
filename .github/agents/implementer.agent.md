@@ -2,18 +2,14 @@
 name: implementer
 description: "Execute tasks from the plan, produce code and tests, and verify implementation against the test plan."
 tools:
-  - search/codebase
-  - search/fileSearch
-  - search/textSearch
-  - read/readFile
-  - read/problems
-  - edit/createDirectory
-  - edit/createFile
-  - edit/editFiles
-  - execute/runInTerminal
-  - execute/getTerminalOutput
-  - execute/testFailure
-  - todo
+  - grep
+  - glob
+  - view
+  - bash
+  - read_bash
+  - create
+  - edit
+  - sql
 user-invocable: true
 disable-model-invocation: false
 target: vscode
@@ -105,14 +101,14 @@ RETURN: CURRENT_TASK_ID, COMPLETED_TASKS
 
 <process id="load-impl-context" name="Load task breakdown and test plan">
 SET CURRENT_ISSUE_NUMBER := <ID> (from "Agent Inference")
-USE `read/readFile` where: filePath="project/issues/<ISSUE_NUMBER>/plan/02-task-breakdown.md"
-CAPTURE TASK_BREAKDOWN from `read/readFile`
-USE `read/readFile` where: filePath="project/issues/<ISSUE_NUMBER>/plan/03-test-plan.md"
-CAPTURE TEST_PLAN from `read/readFile`
-USE `search/fileSearch` where: pattern="project/architecture/ADR/ADR-*.md"
-CAPTURE ALL_ADRS from `search/fileSearch`
-USE `search/fileSearch` where: pattern="project/architecture/core-components/CORE-COMPONENT-*.md"
-CAPTURE ALL_CORE_COMPONENTS from `search/fileSearch`
+USE `view` where: path="project/issues/<ISSUE_NUMBER>/plan/02-task-breakdown.md"
+CAPTURE TASK_BREAKDOWN from `view`
+USE `view` where: path="project/issues/<ISSUE_NUMBER>/plan/03-test-plan.md"
+CAPTURE TEST_PLAN from `view`
+USE `glob` where: pattern="project/architecture/ADR/ADR-*.md"
+CAPTURE ALL_ADRS from `glob`
+USE `glob` where: pattern="project/architecture/core-components/CORE-COMPONENT-*.md"
+CAPTURE ALL_CORE_COMPONENTS from `glob`
 SET RELEVANT_ADRS := <ADRS> (from "Agent Inference" using TASK_BREAKDOWN, ALL_ADRS)
 SET RELEVANT_CORE_COMPONENTS := <COMPONENTS> (from "Agent Inference" using TASK_BREAKDOWN, ALL_CORE_COMPONENTS)
 </process>
@@ -127,26 +123,26 @@ SET CODE_CHANGES := <CHANGES> (from "Agent Inference" using TASK_SPEC, RELEVANT_
 
 <process id="verify-task" name="Run tests to verify the implemented task">
 SET TEST_COMMAND := <COMMAND> (from "Agent Inference" using TASK_BREAKDOWN, CURRENT_TASK_ID)
-USE `execute/runInTerminal` where: command=TEST_COMMAND
-CAPTURE TEST_OUTPUT from `execute/runInTerminal`
+USE `bash` where: command=TEST_COMMAND
+CAPTURE TEST_OUTPUT from `bash`
 SET TEST_PASSED := <RESULT> (from "Agent Inference" using TEST_OUTPUT, TEST_PLAN, CURRENT_TASK_ID)
 IF TEST_PASSED is false:
-  USE `execute/testFailure`
-  CAPTURE FAILURE_DETAILS from `execute/testFailure`
+  USE `bash`
+  CAPTURE FAILURE_DETAILS from `bash`
   SET FIX := <FIX> (from "Agent Inference" using FAILURE_DETAILS)
   RUN `verify-task`
 </process>
 
 <process id="update-impl-notes" name="Update implementation notes with task results">
 SET IMPL_ENTRY := <ENTRY> (from "Agent Inference" using CURRENT_TASK_ID, TEST_OUTPUT)
-USE `edit/createDirectory` where: dirPath="project/issues/<ISSUE_NUMBER>/implementation"
+USE `bash` where: command="mkdir -p project/issues/<ISSUE_NUMBER>/implementation"
 TRY:
-  USE `read/readFile` where: filePath="project/issues/<ISSUE_NUMBER>/implementation/README.md"
-  CAPTURE EXISTING_NOTES from `read/readFile`
+  USE `view` where: path="project/issues/<ISSUE_NUMBER>/implementation/README.md"
+  CAPTURE EXISTING_NOTES from `view`
   SET UPDATED_NOTES := <NOTES> (from "Agent Inference" using EXISTING_NOTES, IMPL_ENTRY)
-  USE `edit/editFiles` where: filePath="project/issues/<ISSUE_NUMBER>/implementation/README.md"
+  USE `edit` where: filePath="project/issues/<ISSUE_NUMBER>/implementation/README.md"
 RECOVER (err):
-  USE `edit/createFile` where: content=IMPL_ENTRY, filePath="project/issues/<ISSUE_NUMBER>/implementation/README.md"
+  USE `create` where: content=IMPL_ENTRY, filePath="project/issues/<ISSUE_NUMBER>/implementation/README.md"
 </process>
 </processes>
 

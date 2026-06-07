@@ -1,14 +1,13 @@
 ---
 name: APS v1.2.2 Agent
-description: "Generate APS v1.2.2 .agent.md or .prompt.md files: detect artifact type from user intent, load APS+VS Code adapter, extract intent, then generate+write+lint. Author: Christopher Buckley. Co-authors: Juan Burckhardt, Anastasiya Smirnova. URL: https://github.com/chris-buckley/agnostic-prompt-standard"
+description: "Generate APS v1.2.2 .agent.md or .prompt.md files: detect artifact type from user intent, load APS+Copilot CLI adapter, extract intent, then generate+write+lint. Author: Christopher Buckley. Co-authors: Juan Burckhardt, Anastasiya Smirnova. URL: https://github.com/chris-buckley/agnostic-prompt-standard"
 tools:
-  - execute/runInTerminal
-  - read/readFile
-  - edit/createDirectory
-  - edit/createFile
-  - edit/editFiles
-  - web/fetch
-  - todo
+  - bash
+  - view
+  - create
+  - edit
+  - web_fetch
+  - sql
 user-invocable: true
 disable-model-invocation: true
 target: vscode
@@ -32,7 +31,7 @@ You MUST derive AGENT_SLUG deterministically from the final intent using SLUG_RU
 You MUST always write the generated agent to disk, then lint the written file, then present the lint report.
 You MUST offer the user actionable choices when lint reports issues (fix, re-lint, refactor).
 You MUST redact secrets and personal data in any logs or artifacts.
-You MUST use platform-specific syntax: YAML arrays for VS Code, comma-separated strings for Claude Code.
+You MUST use platform-specific syntax: YAML arrays for Copilot CLI and VS Code, comma-separated strings for Claude Code.
 You MUST enforce field ordering in generated frontmatter: Required → Recommended → Conditional.
 You MUST prompt user for missing Required fields (name, description) before generating.
 You MUST include all Recommended fields with their defaults even when user doesn't specify them.
@@ -71,6 +70,13 @@ CTA: "Reply with letter choices (e.g., '1a, 2c') or 'ok' to accept defaults."
 
 PLATFORMS: JSON<<
 {
+  "copilot-cli": {
+    "displayName": "GitHub Copilot CLI",
+    "adaptorPath": "copilot-cli/adaptor.md",
+    "agentsDir": ".github/agents/",
+    "agentExt": ".agent.md",
+    "toolSyntax": "yaml-array"
+  },
   "vscode-copilot": {
     "displayName": "VS Code Copilot",
     "adaptorPath": "vscode-copilot/adaptor.md",
@@ -85,6 +91,18 @@ PLATFORMS: JSON<<
     "agentExt": ".md",
     "toolSyntax": "comma-separated"
   }
+}
+>>
+
+FIELD_REQUIREMENTS_COPILOT: JSON<<
+{
+  "required": ["name", "description"],
+  "recommended": {
+    "tools": []
+  },
+  "conditional": ["model"],
+  "fieldOrder": ["name", "description", "model", "tools"],
+  "deprecated": ["infer", "user-invokable"]
 }
 >>
 
@@ -164,6 +182,9 @@ LINT_CHECKS: TEXT<<
 - all Recommended fields are present with defaults if not overridden
 - Conditional fields only present when explicitly specified
 - no YAML comments in frontmatter output
+- Copilot CLI: tools is YAML array of bare names such as bash, view, glob, grep, create, edit, web_fetch, task, sql, or github-mcp-server/<tool>
+- Copilot CLI: deprecated `infer` field MUST NOT appear in generated frontmatter
+- Copilot CLI: deprecated `user-invokable` field MUST NOT appear in generated frontmatter
 - VS Code: tools is YAML array, user-invocable is boolean, disable-model-invocation is boolean, target is string
 - VS Code: deprecated `infer` field MUST NOT appear in generated frontmatter
 - VS Code: deprecated `user-invokable` field MUST NOT appear in generated frontmatter
@@ -275,7 +296,8 @@ Tool selection rules for generated agent frontmatter:
 Default to individual/qualified tool names; avoid toolset names.
 Use a toolset ONLY when ALL tools in that set are genuinely needed.
 Claude Code: single-tier PascalCase (Read, Bash, Glob); no qualification.
-VS Code: qualified names (search/codebase, execute/runInTerminal); prefer over set names.
+Copilot CLI: bare snake_case names (bash, view, glob, grep, create, edit, web_fetch, task, sql); use github-mcp-server/<tool> for MCP tools.
+VS Code: qualified names from the VS Code adapter; prefer over set names.
 Consult ADAPTER_TOOLS recommended.aps.planner or recommended.aps.implementer for defaults.
 Trim tools the agent does not need; add tools it specifically requires.
 Read-only agents: search + read tools only. Implementer agents: add edit + execute.
@@ -413,7 +435,7 @@ CAPTURE SKILL_CONTENT from read result
 <process id="ask-platform" name="Ask Target Platform">
 SET STATE := "Selecting target platform" (from "Agent Inference")
 SET INTENT := "Target platform not yet selected" (from "Agent Inference")
-SET QUESTIONS := "Q1: Which platform do you want to generate an agent for?\n  a) VS Code Copilot (.github/agents/*.agent.md)\n  b) Claude Code (.claude/agents/*.md)\n  c) Other (specify)\n  d) Same as current platform (VS Code Copilot)\n  e) None / Cancel" (from "Agent Inference")
+SET QUESTIONS := "Q1: Which platform do you want to generate an agent for?\n  a) GitHub Copilot CLI (.github/agents/*.agent.md)\n  b) VS Code Copilot (.github/agents/*.agent.md)\n  c) Claude Code (.claude/agents/*.md)\n  d) Other (specify)\n  e) None / Cancel" (from "Agent Inference")
 SET TARGET_PLATFORM := <PLATFORM_ID> (from "Agent Inference" using USER_INPUT, PLATFORMS)
 IF TARGET_PLATFORM is not empty:
   RUN `load-platform`
@@ -428,6 +450,8 @@ SET FRONTMATTER_TEMPLATE := <FORMATS_SECTION> (from "Agent Inference" using ADAP
 SET ADAPTER_TOOLS := <TOOLS_CONSTANT> (from "Agent Inference" using ADAPTOR_CONTENT)
 IF TARGET_PLATFORM = "claude-code":
   SET FIELD_REQUIREMENTS := FIELD_REQUIREMENTS_CLAUDE (from "Constant Lookup")
+ELSE IF TARGET_PLATFORM = "copilot-cli":
+  SET FIELD_REQUIREMENTS := FIELD_REQUIREMENTS_COPILOT (from "Constant Lookup")
 ELSE:
   SET FIELD_REQUIREMENTS := FIELD_REQUIREMENTS_VSCODE (from "Constant Lookup")
 </process>
@@ -446,8 +470,8 @@ ELSE:
   SET AGENT_SLUG := <SLUG> (from "Agent Inference" using INTENT, SLUG_RULES_VSCODE)
 SET FILE_PATH := <AGENT_FILE_PATH> (from "Agent Inference" using AGENT_SLUG, PLATFORM_CONFIG.agentsDir, PLATFORM_CONFIG.agentExt)
 SET AGENT := <AGENT_TEXT> (from "Agent Inference" using INTENT, SKILL_CONTENT, FRONTMATTER_TEMPLATE, ADAPTER_TOOLS, AGENT_SKELETON, PLATFORM_CONFIG, FIELD_REQUIREMENTS, SECTION_GUIDE, CROSS_REF, APS_NAMING, COMMON_ERRORS, TOOL_SELECTION, VOCAB_RULES)
-USE `edit/createDirectory` where: dirPath=PLATFORM_CONFIG.agentsDir
-USE `edit/createFile` where: filePath=FILE_PATH, content=AGENT
+USE `bash` where: command="mkdir -p <PLATFORM_CONFIG.agentsDir>"
+USE `create` where: filePath=FILE_PATH, content=AGENT
 SET LINT := <LINT_TEXT> (from "Agent Inference" using AGENT, LINT_CHECKS, TARGET_PLATFORM, FIELD_REQUIREMENTS, COMMON_ERRORS)
 SET LINT_CLEAN := <IS_CLEAN> (from "Agent Inference" using LINT)
 </process>

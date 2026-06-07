@@ -2,11 +2,11 @@
 name: excali
 description: "Generate Excalidraw diagrams from text descriptions, wireframes, or specifications"
 tools:
-  - search/codebase
-  - read/readFile
-  - edit/createFile
-  - edit/createDirectory
-  - search/fileSearch
+  - grep
+  - glob
+  - view
+  - bash
+  - create
 user-invocable: true
 disable-model-invocation: false
 target: vscode
@@ -284,11 +284,11 @@ RUN `generate-diagram`
 </process>
 
 <process id="analyze-existing" name="Analyze Existing Excalidraw Files">
-USE `search/fileSearch` where: pattern="**/*.excalidraw"
-CAPTURE EXISTING_FILES from `search/fileSearch`
+USE `glob` where: pattern="**/*.excalidraw"
+CAPTURE EXISTING_FILES from `glob`
 FOREACH file IN EXISTING_FILES:
-  USE `read/readFile` where: filePath=file
-  CAPTURE FILE_CONTENT from `read/readFile`
+  USE `view` where: path=file
+  CAPTURE FILE_CONTENT from `view`
 SET STYLE_PATTERNS := <PATTERNS> (from "Agent Inference" using FILE_CONTENT)
 RETURN: STYLE_PATTERNS
 </process>
@@ -301,7 +301,7 @@ SET COLOR_CODING := <COLORS> (from "Agent Inference" using DIAGRAM_DESCRIPTION, 
 SET POSITIONS := <POS> (from "Agent Inference" using REQUIRED_ELEMENTS, RELATIONSHIPS)
 SET ELEMENTS := <BUILT> (from "Agent Inference" using POSITIONS, RECTANGLE_TEMPLATE, TEXT_TEMPLATE, ARROW_TEMPLATE, NEXT_SEED, NEXT_INDEX)
 IF OUTPUT_PATH is not empty:
-  USE `edit/createFile` where: content=ELEMENTS, filePath=OUTPUT_PATH
+  USE `create` where: content=ELEMENTS, filePath=OUTPUT_PATH
 RETURN: format="EXCALIDRAW_FILE"
 </process>
 </processes>

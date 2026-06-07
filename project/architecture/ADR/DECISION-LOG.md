@@ -17,7 +17,7 @@ This file is the single registry of all architectural decisions and core-compone
 | ID | Title | Status | Date |
 |----|-------|--------|------|
 | CORE-COMPONENT-0002 | Commit Standards | Adopted | 2026-05-05 |
-| CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2026-05-24 |
+| CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2026-06-06 |
 | CORE-COMPONENT-0004 | Theming | Adopted (updated) | 2026-05-21 |
 | CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2025-07-16 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
@@ -184,3 +184,7 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 151 | Prohibit secrets, tokens, and raw logs in `.harness/evidence/` files | CORE-COMPONENT-0009 | 2026-06-07 |
 | 152 | Require harness to wrap existing project commands; prohibit inventing a new build system | CORE-COMPONENT-0009 | 2026-06-07 |
 | 153 | Fall back to `verification.yml` or auto-detection when the harness is absent | CORE-COMPONENT-0009 | 2026-06-07 |
+| 154 | Expose `useTerminal.sendInput(data)` for raw terminal helper input | CORE-COMPONENT-0003 | 2026-06-06 |
+| 155 | Route helper input through authenticated binary WebSocket frames | CORE-COMPONENT-0003 | 2026-06-06 |
+| 156 | Require helper input to no-op when no active WebSocket is open | CORE-COMPONENT-0003 | 2026-06-06 |
+| 157 | Expose `useTerminal.focusTerminal()` for terminal-helper focus restoration | CORE-COMPONENT-0003 | 2026-06-06 |

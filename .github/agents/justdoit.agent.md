@@ -2,17 +2,15 @@
 name: justdoit
 description: "Receive a GitHub issue and autonomously execute the full RPIV pipeline — Research, Plan, Implement, Verify — to deliver a complete feature end-to-end."
 tools:
-  - search/codebase
-  - search/fileSearch
-  - search/textSearch
-  - read/readFile
-  - read/problems
-  - execute/runInTerminal
-  - execute/getTerminalOutput
-  - edit/createDirectory
-  - agent/runSubagent
-  - todo
-  - agent
+  - grep
+  - glob
+  - view
+  - bash
+  - read_bash
+  - task
+  - read_agent
+  - list_agents
+  - sql
 user-invocable: true
 disable-model-invocation: true
 target: vscode
@@ -36,9 +34,9 @@ You MUST verify the output artifact of each stage exists before proceeding to th
 You MUST stop and report a PIPELINE_ERROR if any stage fails validation.
 You MUST NOT make architectural decisions; delegate them to the planner agent via the Plan stage.
 You MUST NOT modify application source code directly; delegate to the implementer agent via the Implement stage.
+You MUST track progress using the SQL-backed todo table throughout execution.
 You MUST prefer `./harness` over direct commands for testing, linting, building, and verification when the harness is available.
 You MUST instruct subagents to use `./harness` verbs when dispatching pipeline stages.
-You MUST track progress using the todo tool throughout execution.
 You MUST summarize each stage result before dispatching the next stage.
 You SHOULD provide the next stage agent with context from all prior stage outputs.
 You MAY retry a failed stage once before stopping with an error report.
@@ -174,13 +172,13 @@ RETURN: format="COMPLETION_REPORT", issue_number=ISSUE_NUMBER, task_description=
 </process>
 
 <process id="init-pipeline" name="Initialize the pipeline with context and issue number">
-USE `read/readFile` where: filePath=AGENTS_MD_PATH
-CAPTURE PIPELINE_SPEC from `read/readFile`
-USE `read/readFile` where: filePath=DECISION_LOG_PATH
-CAPTURE DECISION_LOG from `read/readFile`
+USE `view` where: path=AGENTS_MD_PATH
+CAPTURE PIPELINE_SPEC from `view`
+USE `view` where: path=DECISION_LOG_PATH
+CAPTURE DECISION_LOG from `view`
 SET ISSUE_NUMBER := <NUMBER> (from "Agent Inference" using USER_INPUT)
-USE `execute/runInTerminal` where: command="gh issue view <ISSUE_NUMBER> --json title,body,labels,assignees,milestone"
-CAPTURE ISSUE_JSON from `execute/runInTerminal`
+USE `bash` where: command="gh issue view <ISSUE_NUMBER> --json title,body,labels,assignees,milestone"
+CAPTURE ISSUE_JSON from `bash`
 SET TASK_DESCRIPTION := <DESC> (from "Agent Inference" using ISSUE_JSON)
 SET SCOPE_TYPE := <SCOPE> (from "Agent Inference" using ISSUE_JSON, DECISION_LOG)
 SET PIPELINE_STATUS := "running" (from "Agent Inference")
@@ -188,32 +186,32 @@ SET PIPELINE_STATUS := "running" (from "Agent Inference")
 
 <process id="dispatch-research" name="Dispatch the Research stage to the research agent">
 SET CURRENT_STAGE := "research" (from "Agent Inference")
-USE `agent/runSubagent` where: agent="research", prompt=TASK_DESCRIPTION
-CAPTURE RESEARCH_RESULT from `agent/runSubagent`
+USE `task` where: agent="research", prompt=TASK_DESCRIPTION
+CAPTURE RESEARCH_RESULT from `task`
 SET PIPELINE_STATUS := <STATUS> (from "Agent Inference" using RESEARCH_RESULT)
 IF PIPELINE_STATUS != "error":
-  USE `read/readFile` where: filePath="project/issues/<ISSUE_NUMBER>/research/00-research.md"
-  CAPTURE RESEARCH_BRIEF from `read/readFile`
+  USE `view` where: path="project/issues/<ISSUE_NUMBER>/research/00-research.md"
+  CAPTURE RESEARCH_BRIEF from `view`
   SET STAGE_RESULTS := STAGE_RESULTS + ["Research: OK"] (from "Agent Inference")
 </process>
 
 <process id="dispatch-plan" name="Dispatch the Plan stage to the planner agent">
 SET CURRENT_STAGE := "plan" (from "Agent Inference")
 SET PLAN_PROMPT := <PROMPT> (from "Agent Inference" using ISSUE_NUMBER, RESEARCH_RESULT)
-USE `agent/runSubagent` where: agent="planner", prompt=PLAN_PROMPT
-CAPTURE PLAN_RESULT from `agent/runSubagent`
+USE `task` where: agent="planner", prompt=PLAN_PROMPT
+CAPTURE PLAN_RESULT from `task`
 SET PIPELINE_STATUS := <STATUS> (from "Agent Inference" using PLAN_RESULT)
 IF PIPELINE_STATUS != "error":
-  USE `read/readFile` where: filePath="project/issues/<ISSUE_NUMBER>/plan/01-action-plan.md"
-  CAPTURE ACTION_PLAN from `read/readFile`
+  USE `view` where: path="project/issues/<ISSUE_NUMBER>/plan/01-action-plan.md"
+  CAPTURE ACTION_PLAN from `view`
   SET STAGE_RESULTS := STAGE_RESULTS + ["Plan: OK"] (from "Agent Inference")
 </process>
 
 <process id="dispatch-implement" name="Dispatch the Implement stage to the implementer agent">
 SET CURRENT_STAGE := "implement" (from "Agent Inference")
 SET IMPL_PROMPT := <PROMPT> (from "Agent Inference" using ISSUE_NUMBER, PLAN_RESULT)
-USE `agent/runSubagent` where: agent="implementer", prompt=IMPL_PROMPT
-CAPTURE IMPLEMENT_RESULT from `agent/runSubagent`
+USE `task` where: agent="implementer", prompt=IMPL_PROMPT
+CAPTURE IMPLEMENT_RESULT from `task`
 SET PIPELINE_STATUS := <STATUS> (from "Agent Inference" using IMPLEMENT_RESULT)
 IF PIPELINE_STATUS != "error":
   SET STAGE_RESULTS := STAGE_RESULTS + ["Implement: OK"] (from "Agent Inference")
@@ -222,8 +220,8 @@ IF PIPELINE_STATUS != "error":
 <process id="dispatch-verify" name="Dispatch the Verify stage to the verifier agent">
 SET CURRENT_STAGE := "verify" (from "Agent Inference")
 SET VERIFY_PROMPT := <PROMPT> (from "Agent Inference" using ISSUE_NUMBER)
-USE `agent/runSubagent` where: agent="verifier", prompt=VERIFY_PROMPT
-CAPTURE VERIFY_RESULT from `agent/runSubagent`
+USE `task` where: agent="verifier", prompt=VERIFY_PROMPT
+CAPTURE VERIFY_RESULT from `task`
 SET PIPELINE_STATUS := <STATUS> (from "Agent Inference" using VERIFY_RESULT)
 IF PIPELINE_STATUS != "error":
   SET PR_URL := <URL> (from "Agent Inference" using VERIFY_RESULT)

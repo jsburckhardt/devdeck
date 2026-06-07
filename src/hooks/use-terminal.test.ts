@@ -16,6 +16,7 @@ const fakeTerminal = {
   open: vi.fn(),
   write: vi.fn(),
   paste: vi.fn(),
+  focus: vi.fn(),
   clear: vi.fn(),
   dispose: vi.fn(),
   loadAddon: vi.fn(),
@@ -165,6 +166,7 @@ describe("useTerminal", () => {
     fakeTerminal.open.mockClear();
     fakeTerminal.write.mockClear();
     fakeTerminal.paste.mockClear();
+    fakeTerminal.focus.mockClear();
     fakeTerminal.clear.mockClear();
     fakeTerminal.onData.mockClear();
     fakeTerminal.onResize.mockClear();
@@ -245,6 +247,188 @@ describe("useTerminal", () => {
     const sent = binaryCall![0] as Uint8Array;
     const expected = new TextEncoder().encode("hello");
     expect(Array.from(sent)).toEqual(Array.from(expected));
+  });
+
+  it("Issue #68: sendInput sends binary frames through the active open WebSocket", async () => {
+    const { result } = renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+
+    const ws = await waitForWs();
+    await act(async () => {
+      ws.onopen?.();
+    });
+
+    ws.send.mockClear();
+
+    let didSend = false;
+    await act(async () => {
+      didSend = result.current.sendInput("helper");
+    });
+
+    expect(didSend).toBe(true);
+    expect(ws.send).toHaveBeenCalledTimes(1);
+    expect(Array.from(ws.send.mock.calls[0][0] as Uint8Array)).toEqual(
+      Array.from(new TextEncoder().encode("helper")),
+    );
+  });
+
+  it("Issue #75 review: sendInput reuses one TextEncoder for terminal input", async () => {
+    const OriginalTextEncoder = globalThis.TextEncoder;
+    const encode = vi.fn((input?: string) => new OriginalTextEncoder().encode(input));
+    const MockTextEncoder = vi.fn(function MockTextEncoder() {
+      return { encode };
+    }) as unknown as typeof TextEncoder;
+    vi.stubGlobal("TextEncoder", MockTextEncoder);
+
+    try {
+      const { result } = renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+
+      const ws = await waitForWs();
+      await act(async () => {
+        ws.onopen?.();
+      });
+      ws.send.mockClear();
+
+      await act(async () => {
+        expect(result.current.sendInput("helper-one")).toBe(true);
+        fakeTerminalHandlers.data?.("typed-input");
+        expect(result.current.sendInput("helper-two")).toBe(true);
+      });
+
+      expect(MockTextEncoder).toHaveBeenCalledTimes(1);
+      expect(encode).toHaveBeenCalledTimes(3);
+      expect(ws.send).toHaveBeenCalledTimes(3);
+      expect(Array.from(ws.send.mock.calls[1][0] as Uint8Array)).toEqual(
+        Array.from(new OriginalTextEncoder().encode("typed-input")),
+      );
+    } finally {
+      vi.stubGlobal("TextEncoder", OriginalTextEncoder);
+    }
+  });
+
+  it("Issue #68: sendInput no-ops when the terminal input path is unavailable", async () => {
+    const { result, unmount } = renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+
+    expect(result.current.sendInput("before-socket")).toBe(false);
+
+    const ws = await waitForWs();
+    expect(result.current.sendInput("before-open")).toBe(false);
+    expect(ws.send).not.toHaveBeenCalled();
+
+    await act(async () => {
+      ws.onopen?.();
+    });
+
+    ws.send.mockClear();
+    ws.readyState = MockWS.CONNECTING;
+    expect(result.current.sendInput("connecting")).toBe(false);
+    ws.readyState = MockWS.CLOSED;
+    expect(result.current.sendInput("closed")).toBe(false);
+    expect(ws.send).not.toHaveBeenCalled();
+
+    await act(async () => {
+      ws._triggerClose(4401, "Unauthorized");
+    });
+    expect(result.current.sendInput("unauthorized")).toBe(false);
+
+    unmount();
+    expect(result.current.sendInput("unmounted")).toBe(false);
+  });
+
+  it("Issue #68: sendInput does not send to stale WebSocket instances after reconnect", async () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(50);
+      });
+
+      const ws1 = getLatestWs();
+      await act(async () => {
+        ws1.onopen?.();
+      });
+      ws1.send.mockClear();
+
+      await act(async () => {
+        ws1._triggerClose(1006, "abnormal");
+      });
+      expect(result.current.sendInput("during-reconnect")).toBe(false);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1050);
+      });
+
+      const ws2 = getLatestWs();
+      expect(ws2).not.toBe(ws1);
+      await act(async () => {
+        ws2.onopen?.();
+      });
+      ws2.send.mockClear();
+
+      expect(result.current.sendInput("fresh")).toBe(true);
+      expect(ws1.send).not.toHaveBeenCalled();
+      expect(Array.from(ws2.send.mock.calls[0][0] as Uint8Array)).toEqual(
+        Array.from(new TextEncoder().encode("fresh")),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("Issue #68: sendInput uses the replacement WebSocket after project and worktree changes", async () => {
+    const { result, rerender } = renderHook(
+      ({ slug, worktree }) => useTerminal({ slug, worktree }),
+      { initialProps: { slug: "project-one", worktree: undefined as string | undefined } },
+    );
+
+    const ws1 = await waitForWs();
+    await act(async () => {
+      ws1.onopen?.();
+    });
+    ws1.send.mockClear();
+
+    rerender({ slug: "project-two", worktree: ".trees/feature" });
+
+    await waitFor(() => {
+      expect(wsInstances.length).toBeGreaterThan(1);
+    });
+
+    const ws2 = getLatestWs();
+    expect(ws2).not.toBe(ws1);
+    await act(async () => {
+      ws2.onopen?.();
+    });
+    ws2.send.mockClear();
+    ws1.send.mockClear();
+
+    expect(result.current.sendInput("context")).toBe(true);
+    expect(ws1.send).not.toHaveBeenCalled();
+    expect(Array.from(ws2.send.mock.calls[0][0] as Uint8Array)).toEqual(
+      Array.from(new TextEncoder().encode("context")),
+    );
+
+    const url = new URL(ws2.url);
+    expect(url.searchParams.get("slug")).toBe("project-two");
+    expect(url.searchParams.get("worktree")).toBe(".trees/feature");
+  });
+
+  it("Issue #68: focusTerminal focuses xterm when available and no-ops safely", async () => {
+    const { result, unmount } = renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+
+    expect(result.current.focusTerminal()).toBe(false);
+
+    await waitForWs();
+
+    expect(result.current.focusTerminal()).toBe(true);
+    expect(fakeTerminal.focus).toHaveBeenCalledTimes(1);
+
+    fakeTerminal.focus.mockImplementationOnce(() => {
+      throw new Error("focus failed");
+    });
+    expect(result.current.focusTerminal()).toBe(false);
+
+    unmount();
+    expect(result.current.focusTerminal()).toBe(false);
   });
 
   it("T13: resize sends JSON control message", async () => {

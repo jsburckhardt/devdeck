@@ -2,16 +2,13 @@
 name: planner
 description: "Own the Plan stage of the RPIV pipeline — read the research brief, commit architectural decisions via ADRs and core-components, then produce the action plan, task breakdown, and test plan."
 tools:
-  - search/codebase
-  - search/fileSearch
-  - search/textSearch
-  - search/usages
-  - read/readFile
-  - read/problems
-  - edit/createDirectory
-  - edit/createFile
-  - edit/editFiles
-  - todo
+  - grep
+  - glob
+  - view
+  - bash
+  - create
+  - edit
+  - sql
 user-invocable: true
 disable-model-invocation: false
 target: vscode
@@ -239,19 +236,19 @@ RETURN: CREATED_ADRS, CREATED_CORE_COMPONENTS, TASKS, TESTS
 
 <process id="load-context" name="Load research brief, templates, and existing artifacts">
 SET CURRENT_ISSUE_NUMBER := <ID> (from "Agent Inference")
-USE `read/readFile` where: filePath="project/issues/<ISSUE_NUMBER>/research/00-research.md"
-CAPTURE RESEARCH_BRIEF from `read/readFile`
-USE `read/readFile` where: filePath=ADR_TEMPLATE_PATH
-CAPTURE ADR_TEMPLATE from `read/readFile`
-USE `read/readFile` where: filePath=CORE_COMPONENT_TEMPLATE_PATH
-CAPTURE CORE_COMPONENT_TEMPLATE from `read/readFile`
-USE `read/readFile` where: filePath=DECISION_LOG_PATH
-CAPTURE DECISION_LOG from `read/readFile`
-USE `search/fileSearch` where: pattern="project/architecture/ADR/ADR-*.md"
-CAPTURE EXISTING_ADRS from `search/fileSearch`
+USE `view` where: path="project/issues/<ISSUE_NUMBER>/research/00-research.md"
+CAPTURE RESEARCH_BRIEF from `view`
+USE `view` where: path=ADR_TEMPLATE_PATH
+CAPTURE ADR_TEMPLATE from `view`
+USE `view` where: path=CORE_COMPONENT_TEMPLATE_PATH
+CAPTURE CORE_COMPONENT_TEMPLATE from `view`
+USE `view` where: path=DECISION_LOG_PATH
+CAPTURE DECISION_LOG from `view`
+USE `glob` where: pattern="project/architecture/ADR/ADR-*.md"
+CAPTURE EXISTING_ADRS from `glob`
 SET NEXT_ADR_NUMBER := <NUM> (from "Agent Inference" using EXISTING_ADRS)
-USE `search/fileSearch` where: pattern="project/architecture/core-components/CORE-COMPONENT-*.md"
-CAPTURE EXISTING_CORE_COMPONENTS from `search/fileSearch`
+USE `glob` where: pattern="project/architecture/core-components/CORE-COMPONENT-*.md"
+CAPTURE EXISTING_CORE_COMPONENTS from `glob`
 SET NEXT_CORE_COMPONENT_NUMBER := <NUM> (from "Agent Inference" using EXISTING_CORE_COMPONENTS)
 </process>
 
@@ -259,30 +256,30 @@ SET NEXT_CORE_COMPONENT_NUMBER := <NUM> (from "Agent Inference" using EXISTING_C
 SET ADR_CONTENT := <CONTENT> (from "Agent Inference" using RESEARCH_BRIEF, ADR_TEMPLATE, NEXT_ADR_NUMBER)
 IF ADR_CONTENT is not empty:
   SET ADR_FILE_PATH := <PATH> (from "Agent Inference" using ADR_DIR, NEXT_ADR_NUMBER, ADR_PATTERN)
-  USE `edit/createDirectory` where: dirPath=ADR_DIR
-  USE `edit/createFile` where: content=ADR_CONTENT, filePath=ADR_FILE_PATH
+  USE `bash` where: command="mkdir -p project/architecture/ADR"
+  USE `create` where: content=ADR_CONTENT, filePath=ADR_FILE_PATH
   SET CREATED_ADRS := CREATED_ADRS + [ADR_FILE_PATH] (from "Agent Inference")
 SET CORE_COMPONENT_CONTENT := <CONTENT> (from "Agent Inference" using RESEARCH_BRIEF, CORE_COMPONENT_TEMPLATE, NEXT_CORE_COMPONENT_NUMBER)
 IF CORE_COMPONENT_CONTENT is not empty:
   SET CORE_COMPONENT_FILE_PATH := <PATH> (from "Agent Inference" using CORE_COMPONENT_DIR, NEXT_CORE_COMPONENT_NUMBER, CORE_COMPONENT_PATTERN)
-  USE `edit/createDirectory` where: dirPath=CORE_COMPONENT_DIR
-  USE `edit/createFile` where: content=CORE_COMPONENT_CONTENT, filePath=CORE_COMPONENT_FILE_PATH
+  USE `bash` where: command="mkdir -p project/architecture/core-components"
+  USE `create` where: content=CORE_COMPONENT_CONTENT, filePath=CORE_COMPONENT_FILE_PATH
   SET CREATED_CORE_COMPONENTS := CREATED_CORE_COMPONENTS + [CORE_COMPONENT_FILE_PATH] (from "Agent Inference")
 SET CREATED_DECISIONS := <DECISIONS> (from "Agent Inference" using CREATED_ADRS, CREATED_CORE_COMPONENTS, DECISION_GUIDANCE)
 SET ARCHITECTURE_COMPLETE := true (from "Agent Inference")
 </process>
 
 <process id="update-decision-log" name="Update the decision log with new entries">
-USE `read/readFile` where: filePath=DECISION_LOG_PATH
-CAPTURE CURRENT_LOG from `read/readFile`
+USE `view` where: path=DECISION_LOG_PATH
+CAPTURE CURRENT_LOG from `view`
 SET UPDATED_LOG := <LOG> (from "Agent Inference" using CURRENT_LOG, CREATED_ADRS, CREATED_CORE_COMPONENTS, CREATED_DECISIONS)
-USE `edit/editFiles` where: filePath=DECISION_LOG_PATH
+USE `edit` where: filePath=DECISION_LOG_PATH
 </process>
 
 <process id="create-action-plan" name="Create the action plan for the issue">
 SET PLAN_CONTENT := <CONTENT> (from "Agent Inference" using RESEARCH_BRIEF, CREATED_ADRS, CREATED_CORE_COMPONENTS)
-USE `edit/createDirectory` where: dirPath="project/issues/<ISSUE_NUMBER>/plan"
-USE `edit/createFile` where: content=PLAN_CONTENT, filePath="project/issues/<ISSUE_NUMBER>/plan/01-action-plan.md"
+USE `bash` where: command="mkdir -p project/issues/<ISSUE_NUMBER>/plan"
+USE `create` where: content=PLAN_CONTENT, filePath="project/issues/<ISSUE_NUMBER>/plan/01-action-plan.md"
 SET ACTION_PLAN := PLAN_CONTENT (from "Agent Inference")
 </process>
 
@@ -291,14 +288,14 @@ SET RELEVANT_ADRS := <ADRS> (from "Agent Inference" using ACTION_PLAN, CREATED_A
 SET RELEVANT_CORE_COMPONENTS := <COMPONENTS> (from "Agent Inference" using ACTION_PLAN, CREATED_CORE_COMPONENTS)
 SET TASKS := <TASK_LIST> (from "Agent Inference" using ACTION_PLAN, RELEVANT_ADRS, RELEVANT_CORE_COMPONENTS)
 SET BREAKDOWN_CONTENT := <CONTENT> (from "Agent Inference" using TASKS)
-USE `edit/createFile` where: content=BREAKDOWN_CONTENT, filePath="project/issues/<ISSUE_NUMBER>/plan/02-task-breakdown.md"
+USE `create` where: content=BREAKDOWN_CONTENT, filePath="project/issues/<ISSUE_NUMBER>/plan/02-task-breakdown.md"
 SET BREAKDOWN_COMPLETE := true (from "Agent Inference")
 </process>
 
 <process id="create-test-plan" name="Create the test plan document">
 SET TESTS := <TEST_LIST> (from "Agent Inference" using TASKS, RELEVANT_ADRS, RELEVANT_CORE_COMPONENTS)
 SET TEST_PLAN_CONTENT := <CONTENT> (from "Agent Inference" using TESTS)
-USE `edit/createFile` where: content=TEST_PLAN_CONTENT, filePath="project/issues/<ISSUE_NUMBER>/plan/03-test-plan.md"
+USE `create` where: content=TEST_PLAN_CONTENT, filePath="project/issues/<ISSUE_NUMBER>/plan/03-test-plan.md"
 SET TEST_PLAN_COMPLETE := true (from "Agent Inference")
 </process>
 </processes>

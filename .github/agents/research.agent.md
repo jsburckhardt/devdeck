@@ -2,19 +2,17 @@
 name: research
 description: "Fetch a GitHub issue, explore the problem space, classify scope, and produce a research brief that hands off cleanly to the Plan stage."
 tools:
-  - search/codebase
-  - search/fileSearch
-  - search/textSearch
-  - search/usages
-  - read/readFile
-  - read/problems
-  - web/fetch
-  - web/githubRepo
-  - execute/runInTerminal
-  - execute/getTerminalOutput
-  - edit/createDirectory
-  - edit/createFile
-  - todo
+  - grep
+  - glob
+  - view
+  - bash
+  - read_bash
+  - web_fetch
+  - github-mcp-server/search_code
+  - github-mcp-server/get_file_contents
+  - create
+  - edit
+  - sql
 user-invocable: true
 disable-model-invocation: false
 target: vscode
@@ -128,19 +126,19 @@ RETURN: CURRENT_ISSUE_NUMBER, SCOPE_CLASSIFICATION
 
 <process id="fetch-issue" name="Fetch GitHub issue details">
 SET CURRENT_ISSUE_NUMBER := <NUMBER> (from "Agent Inference" using USER_INPUT)
-USE `execute/runInTerminal` where: command="gh issue view <CURRENT_ISSUE_NUMBER> --json title,body,labels,assignees,milestone"
-CAPTURE ISSUE_JSON from `execute/runInTerminal`
+USE `bash` where: command="gh issue view <CURRENT_ISSUE_NUMBER> --json title,body,labels,assignees,milestone"
+CAPTURE ISSUE_JSON from `bash`
 SET ISSUE_TITLE := <TITLE> (from "Agent Inference" using ISSUE_JSON)
 SET ISSUE_BODY := <BODY> (from "Agent Inference" using ISSUE_JSON)
 </process>
 
 <process id="gather-context" name="Gather existing context from repo">
-USE `search/fileSearch` where: pattern="project/architecture/ADR/ADR-*.md"
-CAPTURE EXISTING_ADRS from `search/fileSearch`
-USE `search/fileSearch` where: pattern="project/architecture/core-components/CORE-COMPONENT-*.md"
-CAPTURE EXISTING_CORE_COMPONENTS from `search/fileSearch`
-USE `read/readFile` where: filePath="project/architecture/ADR/DECISION-LOG.md"
-CAPTURE DECISION_LOG from `read/readFile`
+USE `glob` where: pattern="project/architecture/ADR/ADR-*.md"
+CAPTURE EXISTING_ADRS from `glob`
+USE `glob` where: pattern="project/architecture/core-components/CORE-COMPONENT-*.md"
+CAPTURE EXISTING_CORE_COMPONENTS from `glob`
+USE `view` where: path="project/architecture/ADR/DECISION-LOG.md"
+CAPTURE DECISION_LOG from `view`
 </process>
 
 <process id="classify-scope" name="Classify issue scope">
@@ -149,8 +147,8 @@ SET SCOPE_CLASSIFICATION := <SCOPE> (from "Agent Inference" using ISSUE_TITLE, I
 
 <process id="produce-brief" name="Produce the research brief document">
 SET BRIEF_CONTENT := <CONTENT> (from "Agent Inference" using CURRENT_ISSUE_NUMBER, ISSUE_TITLE, ISSUE_BODY, SCOPE_CLASSIFICATION, EXISTING_ADRS, EXISTING_CORE_COMPONENTS)
-USE `edit/createDirectory` where: dirPath="project/issues/<ISSUE_NUMBER>/research"
-USE `edit/createFile` where: content=BRIEF_CONTENT, filePath="project/issues/<ISSUE_NUMBER>/research/00-research.md"
+USE `bash` where: command="mkdir -p project/issues/<ISSUE_NUMBER>/research"
+USE `create` where: content=BRIEF_CONTENT, filePath="project/issues/<ISSUE_NUMBER>/research/00-research.md"
 SET RESEARCH_COMPLETE := true (from "Agent Inference")
 </process>
 </processes>

@@ -12,6 +12,7 @@ import {
   LockSimple,
   Palette,
   Check,
+  Keyboard,
 } from "@phosphor-icons/react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 
@@ -19,6 +20,19 @@ interface TerminalPanelProps {
   slug?: string;
   worktree?: string;
 }
+
+type TerminalHelperKey = "tab" | "up" | "right";
+
+const TERMINAL_HELPER_KEYS: TerminalHelperKey[] = ["tab", "up", "right"];
+
+const TERMINAL_HELPER_SEQUENCES: Record<
+  TerminalHelperKey,
+  { label: string; display: string; plain: string; ctrl: string }
+> = {
+  tab: { label: "Tab", display: "Tab", plain: "\x09", ctrl: "\x1b[27;5;9~" },
+  up: { label: "Up", display: "↑", plain: "\x1b[A", ctrl: "\x1b[1;5A" },
+  right: { label: "Right", display: "→", plain: "\x1b[C", ctrl: "\x1b[1;5C" },
+};
 
 export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
   const { themeId, theme, setThemeId, themes } = useTerminalTheme();
@@ -33,6 +47,8 @@ export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
     terminalMode,
     isFallback,
     copilotStatus,
+    sendInput,
+    focusTerminal,
   } = useTerminal({ slug, worktree, theme: theme.colors });
   const { updateCopilotStatus } = useOpenProjects();
 
@@ -42,6 +58,79 @@ export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
       updateCopilotStatus(slug, isConnected ? copilotStatus : "idle");
     }
   }, [slug, copilotStatus, isConnected, updateCopilotStatus]);
+
+  const [isKeyboardHelperOpen, setKeyboardHelperOpen] = useState(false);
+  const [isCtrlActive, setCtrlActive] = useState(false);
+  const isTerminalInputUnavailable = !isConnected;
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset transient helper UI when terminal context changes
+    setKeyboardHelperOpen(false);
+    setCtrlActive(false);
+  }, [slug, worktree]);
+
+  useEffect(() => {
+    if (!isConnected) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- close helper when terminal input becomes unavailable
+      setKeyboardHelperOpen(false);
+      setCtrlActive(false);
+    }
+  }, [isConnected]);
+
+  function closeKeyboardHelper() {
+    setKeyboardHelperOpen(false);
+    setCtrlActive(false);
+  }
+
+  useEffect(() => {
+    if (!isKeyboardHelperOpen) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setKeyboardHelperOpen(false);
+        setCtrlActive(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isKeyboardHelperOpen]);
+
+  function toggleKeyboardHelper() {
+    if (isKeyboardHelperOpen) {
+      closeKeyboardHelper();
+      return;
+    }
+
+    setKeyboardHelperOpen(true);
+  }
+
+  function handleCtrlPress() {
+    if (isTerminalInputUnavailable) {
+      return;
+    }
+
+    setCtrlActive((active) => !active);
+  }
+
+  function handleHelperKeyPress(key: TerminalHelperKey) {
+    if (isTerminalInputUnavailable) {
+      return;
+    }
+
+    const sequence = isCtrlActive
+      ? TERMINAL_HELPER_SEQUENCES[key].ctrl
+      : TERMINAL_HELPER_SEQUENCES[key].plain;
+
+    sendInput(sequence);
+    focusTerminal();
+
+    if (isCtrlActive) {
+      setCtrlActive(false);
+    }
+  }
 
   const isUnauthorized = error?.toLowerCase().includes("unauthorized");
 
@@ -72,6 +161,17 @@ export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
           <ThemePicker themes={themes} activeThemeId={themeId} onSelect={setThemeId} />
         </div>
         <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={toggleKeyboardHelper}
+            className="flex items-center rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            title="Terminal keyboard helper"
+            aria-label="Terminal keyboard helper"
+            aria-pressed={isKeyboardHelperOpen}
+            data-testid="keyboard-helper-toggle"
+          >
+            <Keyboard size={14} aria-hidden="true" />
+          </button>
           <span
             className={`inline-block h-2 w-2 rounded-full ${
               isConnected
@@ -103,14 +203,25 @@ export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
           )}
         </div>
       </div>
-      <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-        <div className="h-full w-full min-h-0 min-w-0 overflow-hidden p-1">
-          <div
-            ref={containerRef}
-            data-testid="terminal-container"
-            className="h-full w-full min-h-0 min-w-0 overflow-hidden"
-          />
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+          <div className="h-full w-full min-h-0 min-w-0 overflow-hidden p-1">
+            <div
+              ref={containerRef}
+              data-testid="terminal-container"
+              className="h-full w-full min-h-0 min-w-0 overflow-hidden"
+            />
+          </div>
         </div>
+        {isKeyboardHelperOpen && (
+          <TerminalKeyboardHelper
+            ctrlActive={isCtrlActive}
+            disabled={isTerminalInputUnavailable}
+            onClose={closeKeyboardHelper}
+            onCtrlPress={handleCtrlPress}
+            onKeyPress={handleHelperKeyPress}
+          />
+        )}
         {showFallbackNotice && (
           <div
             className="absolute top-2 left-1/2 z-10 -translate-x-1/2 rounded bg-yellow-900/90 px-3 py-1 text-xs text-yellow-200"
@@ -154,6 +265,102 @@ export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
         )}
       </div>
     </div>
+  );
+}
+
+interface TerminalKeyboardHelperProps {
+  ctrlActive: boolean;
+  disabled: boolean;
+  onClose: () => void;
+  onCtrlPress: () => void;
+  onKeyPress: (key: TerminalHelperKey) => void;
+}
+
+function TerminalKeyboardHelper({
+  ctrlActive,
+  disabled,
+  onClose,
+  onCtrlPress,
+  onKeyPress,
+}: TerminalKeyboardHelperProps) {
+  return (
+    <div
+      data-testid="terminal-keyboard-helper"
+      role="toolbar"
+      aria-label="Terminal keyboard helper keys"
+      className="shrink-0 border-t border-border bg-card/95 px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(0,0,0,0.18)]"
+    >
+      <div className="flex items-center gap-1 overflow-x-auto">
+        <HelperKeyButton
+          label="Ctrl"
+          title="Ctrl modifier"
+          disabled={disabled}
+          pressed={ctrlActive}
+          onClick={onCtrlPress}
+          data-testid="terminal-helper-key-ctrl"
+        >
+          Ctrl
+        </HelperKeyButton>
+        {TERMINAL_HELPER_KEYS.map((key) => {
+          const definition = TERMINAL_HELPER_SEQUENCES[key];
+          return (
+            <HelperKeyButton
+              key={key}
+              label={definition.label}
+              title={definition.label}
+              disabled={disabled}
+              onClick={() => onKeyPress(key)}
+              data-testid={"terminal-helper-key-" + key}
+            >
+              {definition.display}
+            </HelperKeyButton>
+          );
+        })}
+        <button
+          type="button"
+          onClick={onClose}
+          className="ml-auto rounded border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          title="Close keyboard helper"
+          aria-label="Close keyboard helper"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function HelperKeyButton({
+  children,
+  disabled,
+  label,
+  pressed,
+  title,
+  onClick,
+  ...buttonProps
+}: {
+  children: React.ReactNode;
+  disabled: boolean;
+  label: string;
+  pressed?: boolean;
+  title: string;
+  onClick: () => void;
+} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      type="button"
+      {...buttonProps}
+      disabled={disabled}
+      aria-disabled={disabled ? "true" : "false"}
+      aria-label={label}
+      aria-pressed={pressed}
+      tabIndex={disabled ? -1 : undefined}
+      title={title}
+      onClick={disabled ? undefined : onClick}
+      className="rounded border border-border bg-background/80 px-3 py-1.5 font-mono text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {children}
+    </button>
   );
 }
 

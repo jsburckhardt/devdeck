@@ -2,21 +2,19 @@
 name: issue-generator
 description: "Analyze codebase history for recurring pitfalls, draft a comprehensive GitHub issue, dispatch a rubber-duck subagent to critique it, then create the issue via gh."
 tools:
-  - search/codebase
-  - search/textSearch
-  - search/fileSearch
-  - search/changes
-  - search/usages
-  - read/readFile
-  - read/problems
-  - execute/runInTerminal
-  - execute/getTerminalOutput
-  - edit/createDirectory
-  - edit/createFile
-  - web/fetch
-  - web/githubRepo
-  - agent/runSubagent
-  - todo
+  - grep
+  - glob
+  - view
+  - bash
+  - read_bash
+  - create
+  - web_fetch
+  - github-mcp-server/search_code
+  - github-mcp-server/get_file_contents
+  - task
+  - read_agent
+  - list_agents
+  - sql
 user-invocable: true
 disable-model-invocation: false
 target: vscode
@@ -224,21 +222,21 @@ RETURN: format="ISSUE_CREATED", issue_title=DRAFT_TITLE, issue_url=ISSUE_URL, is
 </process>
 
 <process id="analyze-context" name="Read project context and existing issues">
-USE `read/readFile` where: filePath=DECISION_LOG_PATH
-CAPTURE DECISION_LOG from `read/readFile`
-USE `read/readFile` where: filePath="AGENTS.md"
-CAPTURE AGENTS_SPEC from `read/readFile`
-USE `read/readFile` where: filePath="LLM.txt"
-CAPTURE REPO_MAP from `read/readFile`
+USE `view` where: path=DECISION_LOG_PATH
+CAPTURE DECISION_LOG from `view`
+USE `view` where: path="AGENTS.md"
+CAPTURE AGENTS_SPEC from `view`
+USE `view` where: path="LLM.txt"
+CAPTURE REPO_MAP from `view`
 SET FEATURE_DESCRIPTION := <DESC> (from "Agent Inference" using USER_INPUT)
 </process>
 
 <process id="analyze-history" name="Run git history analysis for pitfall detection">
 FOREACH cmd IN HISTORY_COMMANDS:
-  USE `execute/runInTerminal` where: command=cmd.command
-  CAPTURE cmd_output from `execute/runInTerminal`
-USE `execute/runInTerminal` where: command="git --no-pager log --all --format='%h %s' | grep -i 'fix:\\|address\\|correct\\|align' | head -30"
-CAPTURE FIX_PATTERNS from `execute/runInTerminal`
+  USE `bash` where: command=cmd.command
+  CAPTURE cmd_output from `bash`
+USE `bash` where: command="git --no-pager log --all --format='%h %s' | grep -i 'fix:\\|address\\|correct\\|align' | head -30"
+CAPTURE FIX_PATTERNS from `bash`
 SET HISTORY_ANALYSIS := <ANALYSIS> (from "Agent Inference" using FIX_PATTERNS, KNOWN_PITFALLS)
 </process>
 
@@ -249,8 +247,8 @@ SET DRAFT_BODY := <BODY> (from "Agent Inference" using FEATURE_DESCRIPTION, HIST
 
 <process id="rubber-duck-review" name="Dispatch subagent to critique the draft">
 SET REVIEW_PROMPT := <PROMPT> (from "Agent Inference" using RUBBER_DUCK_PROMPT, DRAFT_TITLE, DRAFT_BODY)
-USE `agent/runSubagent` where: prompt=REVIEW_PROMPT
-CAPTURE RUBBER_DUCK_RESULT from `agent/runSubagent`
+USE `task` where: prompt=REVIEW_PROMPT
+CAPTURE RUBBER_DUCK_RESULT from `task`
 SET RUBBER_DUCK_OK := <IS_APPROVED> (from "Agent Inference" using RUBBER_DUCK_RESULT)
 </process>
 
@@ -262,8 +260,8 @@ IF RUBBER_DUCK_OK is false:
 </process>
 
 <process id="create-issue" name="Create the issue via GitHub CLI">
-USE `execute/runInTerminal` where: command="gh issue create --title '<DRAFT_TITLE>' --body '<DRAFT_BODY>'"
-CAPTURE CREATE_OUTPUT from `execute/runInTerminal`
+USE `bash` where: command="gh issue create --title '<DRAFT_TITLE>' --body '<DRAFT_BODY>'"
+CAPTURE CREATE_OUTPUT from `bash`
 SET ISSUE_URL := <URL> (from "Agent Inference" using CREATE_OUTPUT)
 SET ISSUE_NUMBER := <NUMBER> (from "Agent Inference" using CREATE_OUTPUT)
 </process>
