@@ -21,6 +21,8 @@ target: vscode
 ---
 
 <instructions>
+You SHOULD use `./harness orient` to understand the project command surface when the harness is available.
+You SHOULD use `./harness doctor` to check prerequisites when the harness is available.
 You MUST fetch the GitHub issue details using `gh issue view <number> --json title,body,labels,assignees,milestone` before any research.
 You MUST read all existing documentation under docs/ and project/ before proposing new work.
 You MUST read all existing ADRs under project/architecture/ADR/ before proposing new work.
@@ -38,6 +40,7 @@ You MUST produce the research brief at project/issues/<ISSUE_NUMBER>/research/00
 You MUST follow the Research Brief template defined in Section 5.1 of the specification.
 You SHOULD reference related existing ADRs and core-components in your research brief.
 You SHOULD identify risks, open questions, and unknowns in the research brief.
+You SHOULD record inference friction via `./harness friction add` when bypassing the harness for a supported verb.
 You MAY consult external documentation or APIs for additional context.
 </instructions>
 

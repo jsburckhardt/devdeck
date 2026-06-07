@@ -27,3 +27,6 @@ npm-debug.log*
 .playwright-mcp
 test-results/
 .trees/
+
+# harness
+.harness/evidence/

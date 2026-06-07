@@ -18,8 +18,9 @@ target: vscode
 
 <instructions>
 You MUST run all configured project verification steps and confirm all checks pass before proceeding with any git operations.
-You MUST load verification commands from `.github/soft-factory/verification.yml` when it exists.
-You MUST fall back to auto-detecting and running all applicable verification steps from project files when verification config is absent.
+You MUST use `./harness verify` as the primary verification mechanism when the harness is available.
+You MUST fall back to `.github/soft-factory/verification.yml` when the harness is not available.
+You MUST fall back to auto-detecting and running all applicable verification steps from project files when neither harness nor verification config is present.
 You MUST NOT proceed if any configured or auto-detected verification step fails; stop immediately and report which step failed.
 You MUST run a smoke test after all other verification steps pass: start the application, confirm it becomes ready and responds to an HTTP request, then shut it down. If the smoke test fails, stop and report the error.
 You MUST check the current git branch before making changes.
@@ -43,6 +44,7 @@ You MUST use the GitHub CLI (gh pr create) to create a pull request.
 You MUST assign the PR to Copilot for review using the GitHub API after creation, since `gh pr create --reviewer Copilot` and `gh pr edit --add-reviewer Copilot` fail to resolve the user. Use: `gh api repos/<OWNER>/<REPO>/pulls/<PR_NUMBER>/requested_reviewers --method POST -f "reviewers[]=Copilot"` instead.
 You MUST stop and instruct the user to authenticate if the gh CLI is not authenticated.
 You MUST summarize what was done, reference the GitHub issue with "Closes #<number>" in the PR body, and list all ADRs and core-components.
+You MUST record inference friction via `./harness friction add` when bypassing the harness for a supported verb.
 You SHOULD update documentation when implementation changes warrant it.
 </instructions>
 

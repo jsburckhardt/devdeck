@@ -2,6 +2,12 @@ AGENTS.md                                                   — Agent definition
 CONTRIBUTING.md                                             — Human contribution guide
 LLM.txt                                                     — This file; repo map for AI agents
 README.md                                                   — Project overview
+harness                                                     — Engineering harness CLI (preferred operating surface for humans and agents)
+.harness/contract.yml                                       — Machine-readable harness command contract
+.harness/README.md                                          — Harness usage documentation
+.harness/friction.jsonl                                     — Inference friction log (JSONL)
+.harness/evidence/                                          — Verification evidence directory (gitignored)
+.github/copilot-instructions.md                             — Agent instructions requiring ./harness usage
 justfile                                                    — Development task runner (just)
 vitest.config.ts                                            — Vitest test configuration
 package.json                                                — Node.js dependencies and scripts
@@ -37,6 +43,7 @@ project/architecture/core-components/CORE-COMPONENT-0004-theming.md — Theming 
 project/architecture/core-components/CORE-COMPONENT-0005-error-handling.md — Error handling patterns (reconnection, boundaries, toasts)
 project/architecture/core-components/CORE-COMPONENT-0006-development-standards.md — Development standards (lint, format, test, commit)
 project/architecture/core-components/CORE-COMPONENT-0007-shell-layout.md — Shell layout core-component
+project/architecture/core-components/CORE-COMPONENT-0009-engineering-harness.md — Engineering harness core-component (./harness as preferred operating surface)
 project/architecture/core-components/README.md                 — Core-components index
 project/issues/README.md                                       — Issues index and canonical structure
 src/app/layout.tsx                                             — Next.js root layout

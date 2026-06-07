@@ -47,6 +47,7 @@ You MUST ensure every task has acceptance criteria.
 You MUST ensure every task has explicit test coverage requirements.
 You MUST ensure every task references relevant ADRs and core-components.
 You SHOULD reference related existing ADRs when creating new ones.
+You SHOULD reference `./harness` verbs in task acceptance criteria when the harness is available.
 You SHOULD order tasks by dependency so blocked tasks appear after their dependencies.
 You SHOULD estimate relative complexity for each task.
 You MAY split large tasks into smaller subtasks for clarity.

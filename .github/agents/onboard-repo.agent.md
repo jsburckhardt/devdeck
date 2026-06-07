@@ -45,6 +45,7 @@ You MUST update README.md to reflect the project name and description discovered
 You MUST NOT edit template files; copy and rename them.
 You MUST NOT make feature-level decisions; only document existing architectural decisions.
 You MUST NOT skip user confirmation before writing any files.
+You SHOULD use `./harness orient` to inspect the repository command surface when the harness is available.
 You SHOULD present an onboarding summary for user confirmation before writing files.
 You SHOULD identify risks, gaps, and open questions discovered during analysis.
 You MAY consult external documentation to clarify inferred tech stack choices.

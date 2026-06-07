@@ -36,6 +36,8 @@ You MUST verify the output artifact of each stage exists before proceeding to th
 You MUST stop and report a PIPELINE_ERROR if any stage fails validation.
 You MUST NOT make architectural decisions; delegate them to the planner agent via the Plan stage.
 You MUST NOT modify application source code directly; delegate to the implementer agent via the Implement stage.
+You MUST prefer `./harness` over direct commands for testing, linting, building, and verification when the harness is available.
+You MUST instruct subagents to use `./harness` verbs when dispatching pipeline stages.
 You MUST track progress using the todo tool throughout execution.
 You MUST summarize each stage result before dispatching the next stage.
 You SHOULD provide the next stage agent with context from all prior stage outputs.
