@@ -82,6 +82,22 @@ export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
     setCtrlActive(false);
   }
 
+  useEffect(() => {
+    if (!isKeyboardHelperOpen) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setKeyboardHelperOpen(false);
+        setCtrlActive(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isKeyboardHelperOpen]);
+
   function toggleKeyboardHelper() {
     if (isKeyboardHelperOpen) {
       closeKeyboardHelper();
@@ -272,7 +288,7 @@ function TerminalKeyboardHelper({
       data-testid="terminal-keyboard-helper"
       role="toolbar"
       aria-label="Terminal keyboard helper keys"
-      className="shrink-0 border-t border-border bg-card/95 px-2 py-1.5 shadow-[0_-8px_24px_rgba(0,0,0,0.18)]"
+      className="shrink-0 border-t border-border bg-card/95 px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(0,0,0,0.18)]"
     >
       <div className="flex items-center gap-1 overflow-x-auto">
         <HelperKeyButton

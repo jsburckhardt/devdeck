@@ -197,6 +197,35 @@ describe("TerminalPanel", () => {
     expect(screen.getByTestId("terminal-container")).toBe(terminalContainer);
   });
 
+  it("Issue #75 review: Escape closes the keyboard helper and clears Ctrl state", () => {
+    render(<TerminalPanel slug="test" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Terminal keyboard helper" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ctrl" }));
+    expect(screen.getByRole("button", { name: "Ctrl" })).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(screen.queryByTestId("terminal-keyboard-helper")).toBeNull();
+    expect(screen.getByRole("button", { name: "Terminal keyboard helper" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Terminal keyboard helper" }));
+    expect(screen.getByRole("button", { name: "Ctrl" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("Issue #75 review: keyboard helper reserves iOS safe-area bottom inset", () => {
+    render(<TerminalPanel slug="test" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Terminal keyboard helper" }));
+
+    expect(screen.getByTestId("terminal-keyboard-helper").className).toContain(
+      "env(safe-area-inset-bottom)",
+    );
+  });
+
   it("Issue #68: plain helper keys send terminal escape sequences and restore focus", () => {
     render(<TerminalPanel slug="test" />);
 
