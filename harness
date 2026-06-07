@@ -143,7 +143,7 @@ cmd_orient() {
   if $JSON_MODE; then
     local surfaces
     surfaces=$(cat <<'ORIENT_JSON'
-{"verb":"orient","verdict":"pass","command":null,"steps":[],"evidence":null,"message":"Detected project surfaces for DevDeck","timestamp":"__TS__","surfaces":{"package_json":{"detected":true,"scripts":["dev","build","start","terminal","dev:all","lint","format","format:check","test","test:watch","test:coverage"]},"justfile":{"detected":true,"recipes":["dev","dev-next","dev-terminal","build","start","test","test-watch","test-coverage","lint","format","format-check","check","install","clean","reinstall","info"]},"verification_yml":{"detected":true,"steps":["lint","format_check","build","test","smoke"]},"devcontainer":{"detected":true},"ci_workflows":{"detected":true,"files":["ci.yml"]}}}
+{"verb":"orient","verdict":"pass","command":null,"steps":[],"evidence":null,"message":"Detected project surfaces for DevDeck","timestamp":"__TS__","surfaces":{"package_json":{"detected":true,"scripts":["dev","build","analyze","start","terminal","dev:all","lint","format","format:check","test","test:watch","test:coverage"]},"justfile":{"detected":true,"recipes":["dev","dev-next","dev-terminal","build","start","test","test-watch","test-coverage","lint","format","format-check","check","install","clean","reinstall","info"]},"verification_yml":{"detected":true,"steps":["lint","format_check","build","test","smoke"]},"devcontainer":{"detected":true},"ci_workflows":{"detected":true,"files":["ci.yml"]}}}
 ORIENT_JSON
 )
     local ts
@@ -160,7 +160,7 @@ ORIENT_JSON
   echo "┌─────────────────────────────────────────────────────────────┐"
   echo "│ $(_bold "Surface")              │ $(_bold "Status")   │ $(_bold "Details")                    │"
   echo "├─────────────────────────────────────────────────────────────┤"
-  echo "│ package.json          │ $(_green "detected") │ 11 scripts                    │"
+  echo "│ package.json          │ $(_green "detected") │ 12 scripts                    │"
   echo "│ justfile              │ $(_green "detected") │ 16 recipes                    │"
   echo "│ verification.yml      │ $(_green "detected") │ 5 steps                       │"
   echo "│ devcontainer.json     │ $(_green "detected") │ node, just, tmux, gh          │"
@@ -563,10 +563,10 @@ cmd_status() {
 
 # ── Verb: clean ────────────────────────────────────────────────
 cmd_clean() {
-  # Safety: refuse to run outside repo root
-  if [[ ! -f "$HARNESS_DIR/harness" ]]; then
+  # Safety: refuse to run if cwd is not the repo root
+  if [[ ! -f "$(pwd)/harness" ]]; then
     if $JSON_MODE; then
-      _json_result "clean" "fail" "" "Refusing to clean: ./harness not found in working directory"
+      _json_result "clean" "fail" "" "Refusing to clean: ./harness not found in current working directory"
     else
       echo ""
       echo "Verdict: $(_verdict_label "fail") — Refusing to clean: not in repo root"
@@ -644,11 +644,18 @@ cmd_clean() {
 # ── Verb: friction ─────────────────────────────────────────────
 cmd_friction() {
   local subcmd="${1:-}"
-  shift 2>/dev/null || true
+  shift 1 2>/dev/null || true
 
   case "$subcmd" in
     add)
-      local message="$*"
+      local verb_name="unknown"
+      local message=""
+      # If first arg looks like a verb name (no spaces, short), treat it as the verb
+      if [[ $# -ge 2 ]] && [[ "$1" != *" "* ]] && [[ ${#1} -le 30 ]]; then
+        verb_name="$1"
+        shift
+      fi
+      message="$*"
       if [[ -z "$message" ]]; then
         if $JSON_MODE; then
           _json_result "friction add" "fail" "" "Usage: ./harness friction add \"<message>\""
@@ -661,8 +668,8 @@ cmd_friction() {
       fi
       local ts
       ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-      printf '{"timestamp":"%s","verb":"friction","inference":"%s","question":"What did the agent have to infer that the harness should have proved?"}\n' \
-        "$ts" "$(_json_escape "$message")" >> "$FRICTION_PATH"
+      printf '{"timestamp":"%s","verb":"%s","inference":"%s","question":"What did the agent have to infer that the harness should have proved?"}\n' \
+        "$ts" "$(_json_escape "$verb_name")" "$(_json_escape "$message")" >> "$FRICTION_PATH"
       if $JSON_MODE; then
         _json_result "friction add" "pass" "" "Friction recorded"
       else
@@ -725,7 +732,7 @@ cmd_friction() {
 
 # ── Main dispatch ──────────────────────────────────────────────
 VERB="${1:-}"
-shift 2>/dev/null || true
+shift 1 2>/dev/null || true
 
 case "$VERB" in
   help|--help|-h|"")

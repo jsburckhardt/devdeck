@@ -127,6 +127,7 @@ detection:
         [
           dev,
           build,
+          analyze,
           start,
           terminal,
           "dev:all",
