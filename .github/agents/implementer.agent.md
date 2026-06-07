@@ -27,6 +27,9 @@ You MUST NOT skip any test defined in the test plan.
 You MUST run tests after implementing each task to verify correctness.
 You MUST produce implementation notes at project/issues/<ISSUE_NUMBER>/implementation/README.md.
 You MUST follow the task breakdown order respecting dependencies between tasks.
+You MUST use `./harness verify` to validate implementation before completing each task when the harness is available.
+You MUST record inference friction via `./harness friction add` when bypassing the harness for a supported verb.
+You SHOULD prefer `./harness` over direct commands for testing, linting, and building when the harness is available.
 You SHOULD make the smallest possible changes to achieve each task.
 You SHOULD commit frequently with descriptive messages referencing task IDs.
 You MAY refactor existing code when required by a task.

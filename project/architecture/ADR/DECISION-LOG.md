@@ -23,6 +23,7 @@ This file is the single registry of all architectural decisions and core-compone
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
 | CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-05-30 |
 | CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-05-30 |
+| CORE-COMPONENT-0009 | Engineering Harness | Adopted | 2026-06-07 |
 
 ## Decisions
 
@@ -175,7 +176,15 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 143 | Include showExplorer in workspace state save and restore caching | CORE-COMPONENT-0008 | 2026-05-30 |
 | 144 | Resize the remaining visible shell panel to 100% when visibility, project, or worktree changes leave exactly one expanded workspace panel | CORE-COMPONENT-0007 | 2026-05-30 |
 | 145 | Restore invalid all-hidden cached workspace visibility as Terminal visible before first render | CORE-COMPONENT-0008 | 2026-05-30 |
-| 146 | Expose `useTerminal.sendInput(data)` for raw terminal helper input | CORE-COMPONENT-0003 | 2026-06-06 |
-| 147 | Route helper input through authenticated binary WebSocket frames | CORE-COMPONENT-0003 | 2026-06-06 |
-| 148 | Require helper input to no-op when no active WebSocket is open | CORE-COMPONENT-0003 | 2026-06-06 |
-| 149 | Expose `useTerminal.focusTerminal()` for terminal-helper focus restoration | CORE-COMPONENT-0003 | 2026-06-06 |
+| 146 | Require `./harness` as the preferred operating surface for humans and agents | CORE-COMPONENT-0009 | 2026-06-07 |
+| 147 | Require `./harness verify` as the primary verification mechanism in Implement and Verify pipeline stages | CORE-COMPONENT-0009 | 2026-06-07 |
+| 148 | Allow direct project commands only when the harness lacks a verb, reports degraded, or diagnostic depth requires raw output | CORE-COMPONENT-0009 | 2026-06-07 |
+| 149 | Record harness bypass reasons as friction via `./harness friction add` | CORE-COMPONENT-0009 | 2026-06-07 |
+| 150 | Require every harness command to return exactly one verdict: pass (0), fail (1), degraded (2), or unknown (3) | CORE-COMPONENT-0009 | 2026-06-07 |
+| 151 | Prohibit secrets, tokens, and raw logs in `.harness/evidence/` files | CORE-COMPONENT-0009 | 2026-06-07 |
+| 152 | Require harness to wrap existing project commands; prohibit inventing a new build system | CORE-COMPONENT-0009 | 2026-06-07 |
+| 153 | Fall back to `verification.yml` or auto-detection when the harness is absent | CORE-COMPONENT-0009 | 2026-06-07 |
+| 154 | Expose `useTerminal.sendInput(data)` for raw terminal helper input | CORE-COMPONENT-0003 | 2026-06-06 |
+| 155 | Route helper input through authenticated binary WebSocket frames | CORE-COMPONENT-0003 | 2026-06-06 |
+| 156 | Require helper input to no-op when no active WebSocket is open | CORE-COMPONENT-0003 | 2026-06-06 |
+| 157 | Expose `useTerminal.focusTerminal()` for terminal-helper focus restoration | CORE-COMPONENT-0003 | 2026-06-06 |

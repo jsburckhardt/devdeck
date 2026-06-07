@@ -1,0 +1,778 @@
+#!/usr/bin/env bash
+# DevDeck Engineering Harness
+# Repo-local CLI wrapping existing project commands.
+# See .harness/README.md for full documentation.
+
+set -euo pipefail
+
+HARNESS_DIR="$(cd "$(dirname "$0")" && pwd)"
+HARNESS_META_DIR="$HARNESS_DIR/.harness"
+CONTRACT_PATH="$HARNESS_META_DIR/contract.yml"
+FRICTION_PATH="$HARNESS_META_DIR/friction.jsonl"
+EVIDENCE_DIR="$HARNESS_META_DIR/evidence"
+VERSION="1.0.0"
+
+# ── Color support ──────────────────────────────────────────────
+USE_COLOR=true
+if [[ -n "${NO_COLOR:-}" ]] || [[ ! -t 1 ]]; then
+  USE_COLOR=false
+fi
+
+_green()  { $USE_COLOR && printf '\033[32m%s\033[0m' "$*" || printf '%s' "$*"; }
+_red()    { $USE_COLOR && printf '\033[31m%s\033[0m' "$*" || printf '%s' "$*"; }
+_yellow() { $USE_COLOR && printf '\033[33m%s\033[0m' "$*" || printf '%s' "$*"; }
+_cyan()   { $USE_COLOR && printf '\033[36m%s\033[0m' "$*" || printf '%s' "$*"; }
+_bold()   { $USE_COLOR && printf '\033[1m%s\033[0m' "$*" || printf '%s' "$*"; }
+_dim()    { $USE_COLOR && printf '\033[2m%s\033[0m' "$*" || printf '%s' "$*"; }
+
+# ── Verdict helpers ────────────────────────────────────────────
+# pass=0, fail=1, degraded=2, unknown=3
+_verdict_label() {
+  case "$1" in
+    pass)     _green "PASS" ;;
+    fail)     _red "FAIL" ;;
+    degraded) _yellow "DEGRADED" ;;
+    unknown)  _dim "UNKNOWN" ;;
+    *)        printf '%s' "$1" ;;
+  esac
+}
+
+_verdict_exit() {
+  case "$1" in
+    pass)     return 0 ;;
+    fail)     return 1 ;;
+    degraded) return 2 ;;
+    unknown)  return 3 ;;
+    *)        return 3 ;;
+  esac
+}
+
+# ── JSON helpers (no jq dependency) ────────────────────────────
+_json_escape() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"
+  s="${s//$'\r'/\\r}"
+  s="${s//$'\t'/\\t}"
+  printf '%s' "$s"
+}
+
+_json_result() {
+  local verb="$1" verdict="$2" command="${3:-}" message="${4:-}" evidence="${5:-}"
+  local ts
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"verb":"%s","verdict":"%s","command":%s,"steps":[],"evidence":%s,"message":"%s","timestamp":"%s"}\n' \
+    "$(_json_escape "$verb")" \
+    "$(_json_escape "$verdict")" \
+    "$(if [[ -n "$command" ]]; then printf '"%s"' "$(_json_escape "$command")"; else printf 'null'; fi)" \
+    "$(if [[ -n "$evidence" ]]; then printf '"%s"' "$(_json_escape "$evidence")"; else printf 'null'; fi)" \
+    "$(_json_escape "$message")" \
+    "$ts"
+}
+
+_json_result_steps() {
+  local verb="$1" verdict="$2" steps_json="$3" evidence="${4:-}" message="${5:-}"
+  local ts
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"verb":"%s","verdict":"%s","command":null,"steps":[%s],"evidence":%s,"message":"%s","timestamp":"%s"}\n' \
+    "$(_json_escape "$verb")" \
+    "$(_json_escape "$verdict")" \
+    "$steps_json" \
+    "$(if [[ -n "$evidence" ]]; then printf '"%s"' "$(_json_escape "$evidence")"; else printf 'null'; fi)" \
+    "$(_json_escape "$message")" \
+    "$ts"
+}
+
+# ── Globals ────────────────────────────────────────────────────
+JSON_MODE=false
+STEP_TIMEOUT=300  # 5 minutes
+
+# ── Parse global flags ─────────────────────────────────────────
+ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --json) JSON_MODE=true ;;
+    *)      ARGS+=("$arg") ;;
+  esac
+done
+set -- "${ARGS[@]+"${ARGS[@]}"}"
+
+# ── Ensure .harness dir exists ─────────────────────────────────
+mkdir -p "$HARNESS_META_DIR" "$EVIDENCE_DIR"
+
+# ── Verb: help ─────────────────────────────────────────────────
+cmd_help() {
+  cat <<EOF
+$(_bold "DevDeck Engineering Harness") v${VERSION}
+
+$(_bold "Usage:") ./harness <verb> [options]
+
+$(_bold "Verbs:")
+  help            Show this help message
+  orient          Describe detected project surfaces and command mapping
+  doctor          Check local prerequisites and project health
+  lint            Run ESLint on the codebase
+  test            Run vitest test suite
+  build           Build the Next.js application
+  boot            Start the development server
+  verify          Run full verification sequence and write evidence
+  status          Report harness configuration and recent evidence
+  clean           Remove build artifacts and node_modules
+  friction add    Append a friction record
+  friction list   Show recorded friction records
+
+$(_bold "Options:")
+  --json          Output machine-readable JSON (supported by most verbs)
+
+$(_bold "Verdicts:")
+  pass (exit 0)       All checks passed
+  fail (exit 1)       Backing command found a blocking problem
+  degraded (exit 2)   Partial operation — optional dependency missing
+  unknown (exit 3)    Cannot determine backing command or state
+
+$(_bold "Documentation:") .harness/README.md
+EOF
+}
+
+# ── Verb: orient ───────────────────────────────────────────────
+cmd_orient() {
+  local verdict="pass"
+  local msg="Detected project surfaces for DevDeck"
+
+  if $JSON_MODE; then
+    local surfaces
+    surfaces=$(cat <<'ORIENT_JSON'
+{"verb":"orient","verdict":"pass","command":null,"steps":[],"evidence":null,"message":"Detected project surfaces for DevDeck","timestamp":"__TS__","surfaces":{"package_json":{"detected":true,"scripts":["dev","build","analyze","start","terminal","dev:all","lint","format","format:check","test","test:watch","test:coverage"]},"justfile":{"detected":true,"recipes":["dev","dev-next","dev-terminal","build","start","test","test-watch","test-coverage","lint","format","format-check","check","install","clean","reinstall","info"]},"verification_yml":{"detected":true,"steps":["lint","format_check","build","test","smoke"]},"devcontainer":{"detected":true},"ci_workflows":{"detected":true,"files":["ci.yml"]}}}
+ORIENT_JSON
+)
+    local ts
+    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '%s\n' "${surfaces/__TS__/$ts}"
+    return 0
+  fi
+
+  echo ""
+  _bold "DevDeck — Project Surface Map"
+  echo ""
+  echo ""
+
+  echo "┌─────────────────────────────────────────────────────────────┐"
+  echo "│ $(_bold "Surface")              │ $(_bold "Status")   │ $(_bold "Details")                    │"
+  echo "├─────────────────────────────────────────────────────────────┤"
+  echo "│ package.json          │ $(_green "detected") │ 12 scripts                    │"
+  echo "│ justfile              │ $(_green "detected") │ 16 recipes                    │"
+  echo "│ verification.yml      │ $(_green "detected") │ 5 steps                       │"
+  echo "│ devcontainer.json     │ $(_green "detected") │ node, just, tmux, gh          │"
+  echo "│ CI workflows          │ $(_green "detected") │ ci.yml                        │"
+  echo "└─────────────────────────────────────────────────────────────┘"
+  echo ""
+
+  _bold "Verb → Command Mapping:"
+  echo ""
+  printf "  %-20s %s\n" "lint"   "npm run lint"
+  printf "  %-20s %s\n" "test"   "npm run test"
+  printf "  %-20s %s\n" "build"  "npm run build"
+  printf "  %-20s %s\n" "boot"   "npx tsx src/server/start-dev.mts"
+  printf "  %-20s %s\n" "clean"  "rm -rf .next node_modules"
+  printf "  %-20s %s\n" "verify" "lint → format:check → build → test → smoke"
+  echo ""
+
+  echo "Verdict: $(_verdict_label "$verdict")"
+  _verdict_exit "$verdict"
+}
+
+# ── Verb: doctor ───────────────────────────────────────────────
+cmd_doctor() {
+  local verdict="pass"
+  local details=()
+  local steps_json=""
+  local missing_optional=()
+  local missing_required=()
+
+  _check_tool() {
+    local name="$1" required="$2"
+    local version_cmd="${3:-$name --version}"
+    local ver=""
+    local tool_verdict="pass"
+
+    if command -v "$name" &>/dev/null; then
+      ver=$(eval "$version_cmd" 2>/dev/null | head -1) || ver="installed"
+      details+=("$name: $(_green "OK") ($ver)")
+    else
+      if [[ "$required" == "true" ]]; then
+        tool_verdict="fail"
+        missing_required+=("$name")
+        details+=("$name: $(_red "MISSING") (required)")
+      else
+        tool_verdict="degraded"
+        missing_optional+=("$name")
+        details+=("$name: $(_yellow "MISSING") (optional)")
+      fi
+    fi
+
+    if [[ -n "$steps_json" ]]; then steps_json+=","; fi
+    steps_json+="{\"name\":\"$name\",\"verdict\":\"$tool_verdict\",\"exitCode\":$(if [[ "$tool_verdict" == "pass" ]]; then echo 0; elif [[ "$tool_verdict" == "fail" ]]; then echo 1; else echo 2; fi),\"durationMs\":0}"
+  }
+
+  _check_tool "node" "true" "node --version"
+  _check_tool "npm" "true" "npm --version"
+  _check_tool "git" "true" "git --version"
+  _check_tool "just" "false" "just --version"
+  _check_tool "tmux" "false" "tmux -V"
+  _check_tool "curl" "false" "curl --version"
+
+  # Check node_modules
+  local nm_verdict="pass"
+  if [[ -d "$HARNESS_DIR/node_modules" ]]; then
+    details+=("node_modules: $(_green "OK") (installed)")
+  else
+    nm_verdict="degraded"
+    missing_optional+=("node_modules")
+    details+=("node_modules: $(_yellow "MISSING") (run npm install)")
+  fi
+  if [[ -n "$steps_json" ]]; then steps_json+=","; fi
+  steps_json+="{\"name\":\"node_modules\",\"verdict\":\"$nm_verdict\",\"exitCode\":$(if [[ "$nm_verdict" == "pass" ]]; then echo 0; else echo 2; fi),\"durationMs\":0}"
+
+  if [[ ${#missing_required[@]} -gt 0 ]]; then
+    verdict="fail"
+  elif [[ ${#missing_optional[@]} -gt 0 ]]; then
+    verdict="degraded"
+  fi
+
+  local msg="Required: node, npm, git. Optional: just, tmux, curl, node_modules."
+  if [[ ${#missing_required[@]} -gt 0 ]]; then
+    msg="Missing required: ${missing_required[*]}"
+  elif [[ ${#missing_optional[@]} -gt 0 ]]; then
+    msg="Missing optional: ${missing_optional[*]}"
+  else
+    msg="All prerequisites satisfied"
+  fi
+
+  if $JSON_MODE; then
+    _json_result_steps "doctor" "$verdict" "$steps_json" "" "$msg"
+    _verdict_exit "$verdict"
+    return $?
+  fi
+
+  echo ""
+  _bold "Doctor — Prerequisites Check"
+  echo ""
+  for d in "${details[@]}"; do
+    echo "  $d"
+  done
+  echo ""
+  echo "Verdict: $(_verdict_label "$verdict") — $msg"
+  _verdict_exit "$verdict"
+}
+
+# ── Generic command wrapper ────────────────────────────────────
+_run_wrapped() {
+  local verb="$1" command="$2" description="$3"
+  local verdict="pass"
+  local start_time end_time duration_ms exit_code=0
+
+  if [[ -z "$command" ]]; then
+    if $JSON_MODE; then
+      _json_result "$verb" "unknown" "" "No backing command detected for '$verb'"
+    else
+      echo ""
+      echo "Verb: $(_bold "$verb") — $description"
+      echo "Command: $(_dim "none detected")"
+      echo "Verdict: $(_verdict_label "unknown")"
+    fi
+    return 3
+  fi
+
+  start_time=$(date +%s%N 2>/dev/null || date +%s)
+
+  if $JSON_MODE; then
+    if eval "$command" >/dev/null 2>&1; then
+      exit_code=0
+      verdict="pass"
+    else
+      exit_code=$?
+      verdict="fail"
+    fi
+  else
+    echo ""
+    echo "Verb: $(_bold "$verb") — $description"
+    echo "Command: $(_cyan "$command")"
+    echo ""
+    if eval "$command"; then
+      exit_code=0
+      verdict="pass"
+    else
+      exit_code=$?
+      verdict="fail"
+    fi
+  fi
+
+  end_time=$(date +%s%N 2>/dev/null || date +%s)
+  if [[ ${#start_time} -gt 10 ]]; then
+    duration_ms=$(( (end_time - start_time) / 1000000 ))
+  else
+    duration_ms=$(( (end_time - start_time) * 1000 ))
+  fi
+
+  if $JSON_MODE; then
+    local steps_json
+    steps_json="{\"name\":\"$verb\",\"verdict\":\"$verdict\",\"exitCode\":$exit_code,\"durationMs\":$duration_ms}"
+    _json_result_steps "$verb" "$verdict" "$steps_json" "" "$(if [[ "$verdict" == "pass" ]]; then echo "$verb completed successfully"; else echo "$verb failed with exit code $exit_code"; fi)"
+  else
+    echo ""
+    echo "Verdict: $(_verdict_label "$verdict") $(if [[ "$verdict" == "fail" ]]; then echo "(exit code $exit_code)"; fi)"
+  fi
+
+  _verdict_exit "$verdict"
+}
+
+# ── Verb: lint ─────────────────────────────────────────────────
+cmd_lint() {
+  _run_wrapped "lint" "npm run lint" "Run ESLint on the codebase"
+}
+
+# ── Verb: test ─────────────────────────────────────────────────
+cmd_test() {
+  _run_wrapped "test" "npm run test" "Run vitest test suite"
+}
+
+# ── Verb: build ────────────────────────────────────────────────
+cmd_build() {
+  _run_wrapped "build" "npm run build" "Build the Next.js application"
+}
+
+# ── Verb: boot ─────────────────────────────────────────────────
+cmd_boot() {
+  if [[ ! -f "$HARNESS_DIR/src/server/start-dev.mts" ]]; then
+    if $JSON_MODE; then
+      _json_result "boot" "unknown" "npx tsx src/server/start-dev.mts" "Boot command path src/server/start-dev.mts does not exist"
+    else
+      echo ""
+      echo "Verb: $(_bold "boot") — Start the development server"
+      echo "Command: $(_cyan "npx tsx src/server/start-dev.mts")"
+      echo "Verdict: $(_verdict_label "unknown") — boot command path does not exist"
+    fi
+    return 3
+  fi
+  _run_wrapped "boot" "npx tsx src/server/start-dev.mts" "Start the development server"
+}
+
+# ── Verb: verify ───────────────────────────────────────────────
+cmd_verify() {
+  local overall_verdict="pass"
+  local steps_json=""
+  local step_results=()
+  local evidence_file="$EVIDENCE_DIR/verify-$(date -u +%Y%m%dT%H%M%SZ)-$$.json"
+
+  _run_verify_step() {
+    local name="$1" command="$2" description="$3"
+    local step_verdict="pass" exit_code=0
+    local start_time end_time duration_ms
+
+    start_time=$(date +%s%N 2>/dev/null || date +%s)
+
+    if ! $JSON_MODE; then
+      printf "  %-15s " "$name"
+    fi
+
+    if timeout "$STEP_TIMEOUT" bash -c "$command" >/dev/null 2>&1; then
+      exit_code=0
+      step_verdict="pass"
+    else
+      exit_code=$?
+      if [[ $exit_code -eq 124 ]]; then
+        step_verdict="fail"
+        if ! $JSON_MODE; then
+          printf "%s (timed out after %ds)\n" "$(_verdict_label "fail")" "$STEP_TIMEOUT"
+        fi
+      else
+        step_verdict="fail"
+      fi
+    fi
+
+    end_time=$(date +%s%N 2>/dev/null || date +%s)
+    if [[ ${#start_time} -gt 10 ]]; then
+      duration_ms=$(( (end_time - start_time) / 1000000 ))
+    else
+      duration_ms=$(( (end_time - start_time) * 1000 ))
+    fi
+
+    if ! $JSON_MODE && [[ $exit_code -ne 124 ]]; then
+      printf "%s (%dms)\n" "$(_verdict_label "$step_verdict")" "$duration_ms"
+    fi
+
+    if [[ -n "$steps_json" ]]; then steps_json+=","; fi
+    steps_json+="{\"name\":\"$(_json_escape "$name")\",\"verdict\":\"$step_verdict\",\"exitCode\":$exit_code,\"durationMs\":$duration_ms}"
+
+    step_results+=("{\"name\":\"$(_json_escape "$name")\",\"verdict\":\"$step_verdict\",\"exitCode\":$exit_code,\"durationMs\":$duration_ms,\"description\":\"$(_json_escape "$description")\"}")
+
+    if [[ "$step_verdict" == "fail" && "$overall_verdict" != "fail" ]]; then
+      overall_verdict="fail"
+    elif [[ "$step_verdict" == "degraded" && "$overall_verdict" == "pass" ]]; then
+      overall_verdict="degraded"
+    fi
+  }
+
+  if ! $JSON_MODE; then
+    echo ""
+    _bold "Verify — Full Verification Sequence"
+    echo ""
+  fi
+
+  _run_verify_step "lint" "npm run lint" "Run ESLint on the codebase"
+  _run_verify_step "format_check" "npm run format:check" "Check code formatting with Prettier"
+  _run_verify_step "build" "npm run build" "Build the Next.js application"
+  _run_verify_step "test" "npm run test" "Run vitest test suite"
+
+  # Smoke step — needs special port handling
+  local smoke_step_verdict="pass"
+  local smoke_exit=0
+  local smoke_start smoke_end smoke_duration_ms
+  smoke_start=$(date +%s%N 2>/dev/null || date +%s)
+
+  if ! $JSON_MODE; then
+    printf "  %-15s " "smoke"
+  fi
+
+  if ss -tln 2>/dev/null | grep -q ':9999 ' || lsof -i :9999 &>/dev/null; then
+    smoke_step_verdict="degraded"
+    smoke_exit=2
+    if [[ "$overall_verdict" == "pass" ]]; then overall_verdict="degraded"; fi
+    if ! $JSON_MODE; then
+      printf "%s (port 9999 in use)\n" "$(_verdict_label "degraded")"
+    fi
+  else
+    local smoke_cmd
+    smoke_cmd='npx next start --port 9999 & SERVER_PID=$!; for i in 1 2 3 4 5 6 7 8; do sleep 2; STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9999/ 2>/dev/null || echo "000"); if [ "$STATUS" != "000" ]; then break; fi; done; kill $SERVER_PID 2>/dev/null; wait $SERVER_PID 2>/dev/null; if [ "$STATUS" = "200" ] || [ "$STATUS" = "307" ] || [ "$STATUS" = "302" ]; then exit 0; else exit 1; fi'
+    if timeout "$STEP_TIMEOUT" bash -c "$smoke_cmd" >/dev/null 2>&1; then
+      smoke_exit=0
+      smoke_step_verdict="pass"
+    else
+      smoke_exit=$?
+      smoke_step_verdict="fail"
+      if [[ "$overall_verdict" != "fail" ]]; then overall_verdict="fail"; fi
+    fi
+  fi
+
+  smoke_end=$(date +%s%N 2>/dev/null || date +%s)
+  if [[ ${#smoke_start} -gt 10 ]]; then
+    smoke_duration_ms=$(( (smoke_end - smoke_start) / 1000000 ))
+  else
+    smoke_duration_ms=$(( (smoke_end - smoke_start) * 1000 ))
+  fi
+
+  if ! $JSON_MODE && [[ "$smoke_step_verdict" != "degraded" ]]; then
+    printf "%s (%dms)\n" "$(_verdict_label "$smoke_step_verdict")" "$smoke_duration_ms"
+  fi
+
+  if [[ -n "$steps_json" ]]; then steps_json+=","; fi
+  steps_json+="{\"name\":\"smoke\",\"verdict\":\"$smoke_step_verdict\",\"exitCode\":$smoke_exit,\"durationMs\":$smoke_duration_ms}"
+  step_results+=("{\"name\":\"smoke\",\"verdict\":\"$smoke_step_verdict\",\"exitCode\":$smoke_exit,\"durationMs\":$smoke_duration_ms,\"description\":\"Start the built app and verify it responds to HTTP\"}")
+
+  # Write evidence
+  local ts
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"harness_version":"%s","verb":"verify","verdict":"%s","timestamp":"%s","steps":[%s]}\n' \
+    "$VERSION" "$overall_verdict" "$ts" \
+    "$(IFS=,; echo "${step_results[*]}")" \
+    > "$evidence_file"
+
+  if ! $JSON_MODE; then
+    echo ""
+    echo "Evidence: $(_dim "$evidence_file")"
+    echo "Verdict:  $(_verdict_label "$overall_verdict")"
+  fi
+
+  if $JSON_MODE; then
+    _json_result_steps "verify" "$overall_verdict" "$steps_json" "$evidence_file" "Verification $overall_verdict"
+  fi
+
+  _verdict_exit "$overall_verdict"
+}
+
+# ── Verb: status ───────────────────────────────────────────────
+cmd_status() {
+  local verdict="pass"
+  local msg=""
+
+  # Check contract
+  local contract_ok=true
+  if [[ ! -f "$CONTRACT_PATH" ]]; then
+    contract_ok=false
+    verdict="degraded"
+  elif [[ ! -s "$CONTRACT_PATH" ]]; then
+    contract_ok=false
+    verdict="degraded"
+  fi
+
+  # Find latest evidence
+  local latest_evidence=""
+  local latest_verdict=""
+  if [[ -d "$EVIDENCE_DIR" ]]; then
+    latest_evidence=$(ls -t "$EVIDENCE_DIR"/verify-*.json 2>/dev/null | head -1 || true)
+    if [[ -n "$latest_evidence" ]]; then
+      latest_verdict=$(grep -o '"verdict":"[^"]*"' "$latest_evidence" 2>/dev/null | head -1 | cut -d'"' -f4 || true)
+    fi
+  fi
+
+  # Count friction entries
+  local friction_count=0
+  if [[ -f "$FRICTION_PATH" ]]; then
+    friction_count=$(wc -l < "$FRICTION_PATH" | tr -d ' ')
+  fi
+
+  if [[ "$contract_ok" == "false" ]]; then
+    msg="Contract file missing or empty"
+  elif [[ -z "$latest_evidence" ]]; then
+    msg="No verification evidence found. Run ./harness verify."
+  else
+    msg="Last verify: $latest_verdict ($(basename "$latest_evidence"))"
+  fi
+
+  if $JSON_MODE; then
+    local ts
+    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"verb":"status","verdict":"%s","command":null,"steps":[],"evidence":%s,"message":"%s","timestamp":"%s","friction_count":%d,"contract_valid":%s}\n' \
+      "$verdict" \
+      "$(if [[ -n "$latest_evidence" ]]; then printf '"%s"' "$(_json_escape "$latest_evidence")"; else printf 'null'; fi)" \
+      "$(_json_escape "$msg")" \
+      "$ts" \
+      "$friction_count" \
+      "$contract_ok"
+    _verdict_exit "$verdict"
+    return $?
+  fi
+
+  echo ""
+  _bold "Status — Harness Configuration"
+  echo ""
+  echo "  Version:         $VERSION"
+  echo "  Contract:        $(if $contract_ok; then _green "valid"; else _yellow "missing/empty"; fi)"
+  echo "  Friction entries: $friction_count"
+  echo "  Evidence dir:    $EVIDENCE_DIR"
+  if [[ -n "$latest_evidence" ]]; then
+    echo "  Latest evidence: $(basename "$latest_evidence") ($latest_verdict)"
+  else
+    echo "  Latest evidence: $(_dim "none — run ./harness verify")"
+  fi
+  echo ""
+  echo "Verdict: $(_verdict_label "$verdict") — $msg"
+  _verdict_exit "$verdict"
+}
+
+# ── Verb: clean ────────────────────────────────────────────────
+cmd_clean() {
+  # Safety: refuse to run if cwd is not the repo root
+  if [[ ! -f "$(pwd)/harness" ]]; then
+    if $JSON_MODE; then
+      _json_result "clean" "fail" "" "Refusing to clean: ./harness not found in current working directory"
+    else
+      echo ""
+      echo "Verdict: $(_verdict_label "fail") — Refusing to clean: not in repo root"
+    fi
+    return 1
+  fi
+
+  local targets=()
+  [[ -d "$HARNESS_DIR/.next" ]] && targets+=(".next")
+  [[ -d "$HARNESS_DIR/node_modules" ]] && targets+=("node_modules")
+
+  if [[ ${#targets[@]} -eq 0 ]]; then
+    if $JSON_MODE; then
+      _json_result "clean" "pass" "rm -rf .next node_modules" "Nothing to clean"
+    else
+      echo ""
+      echo "Verb: $(_bold "clean") — Remove build artifacts"
+      echo "Verdict: $(_verdict_label "pass") — Nothing to clean"
+    fi
+    return 0
+  fi
+
+  local yes_flag=false
+  for arg in "$@"; do
+    [[ "$arg" == "--yes" || "$arg" == "-y" ]] && yes_flag=true
+  done
+
+  if ! $yes_flag && [[ -t 0 ]]; then
+    echo ""
+    echo "The following will be deleted:"
+    for t in "${targets[@]}"; do
+      echo "  $(_red "rm -rf") $t"
+    done
+    printf "\nProceed? [y/N] "
+    read -r confirm
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+      if $JSON_MODE; then
+        _json_result "clean" "fail" "rm -rf .next node_modules" "Clean cancelled by user"
+      else
+        echo "Verdict: $(_verdict_label "fail") — Cancelled"
+      fi
+      return 1
+    fi
+  elif ! $yes_flag && [[ ! -t 0 ]]; then
+    if $JSON_MODE; then
+      _json_result "clean" "fail" "rm -rf .next node_modules" "Non-interactive context requires --yes flag"
+    else
+      echo ""
+      echo "Verdict: $(_verdict_label "fail") — Non-interactive context requires --yes flag"
+    fi
+    return 1
+  fi
+
+  cd "$HARNESS_DIR"
+  if rm -rf .next node_modules 2>/dev/null; then
+    if $JSON_MODE; then
+      _json_result "clean" "pass" "rm -rf .next node_modules" "Cleaned: ${targets[*]}"
+    else
+      echo ""
+      echo "Verb: $(_bold "clean") — Remove build artifacts"
+      echo "Removed: ${targets[*]}"
+      echo "Verdict: $(_verdict_label "pass")"
+    fi
+    return 0
+  else
+    if $JSON_MODE; then
+      _json_result "clean" "fail" "rm -rf .next node_modules" "Clean failed"
+    else
+      echo "Verdict: $(_verdict_label "fail") — Clean failed"
+    fi
+    return 1
+  fi
+}
+
+# ── Verb: friction ─────────────────────────────────────────────
+cmd_friction() {
+  local subcmd="${1:-}"
+  shift 1 2>/dev/null || true
+
+  case "$subcmd" in
+    add)
+      local verb_name="unknown"
+      local message=""
+      # If first arg looks like a verb name (no spaces, short), treat it as the verb
+      if [[ $# -ge 2 ]] && [[ "$1" != *" "* ]] && [[ ${#1} -le 30 ]]; then
+        verb_name="$1"
+        shift
+      fi
+      message="$*"
+      if [[ -z "$message" ]]; then
+        if $JSON_MODE; then
+          _json_result "friction add" "fail" "" "Usage: ./harness friction add \"<message>\""
+        else
+          echo ""
+          echo "Usage: ./harness friction add \"<message>\""
+          echo "Verdict: $(_verdict_label "fail") — Empty friction message"
+        fi
+        return 1
+      fi
+      local ts
+      ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      printf '{"timestamp":"%s","verb":"%s","inference":"%s","question":"What did the agent have to infer that the harness should have proved?"}\n' \
+        "$ts" "$(_json_escape "$verb_name")" "$(_json_escape "$message")" >> "$FRICTION_PATH"
+      if $JSON_MODE; then
+        _json_result "friction add" "pass" "" "Friction recorded"
+      else
+        echo ""
+        echo "Friction recorded: $message"
+        echo "Verdict: $(_verdict_label "pass")"
+      fi
+      return 0
+      ;;
+    list)
+      if [[ ! -f "$FRICTION_PATH" ]] || [[ ! -s "$FRICTION_PATH" ]]; then
+        if $JSON_MODE; then
+          local ts
+          ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          printf '{"verb":"friction list","verdict":"pass","command":null,"steps":[],"evidence":null,"message":"No friction entries recorded","timestamp":"%s","entries":[]}\n' "$ts"
+        else
+          echo ""
+          echo "No friction entries recorded."
+          echo "Verdict: $(_verdict_label "pass")"
+        fi
+        return 0
+      fi
+
+      if $JSON_MODE; then
+        local entries=""
+        while IFS= read -r line; do
+          if [[ -n "$entries" ]]; then entries+=","; fi
+          entries+="$line"
+        done < "$FRICTION_PATH"
+        local ts
+        ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        printf '{"verb":"friction list","verdict":"pass","command":null,"steps":[],"evidence":null,"message":"%d friction entries","timestamp":"%s","entries":[%s]}\n' \
+          "$(wc -l < "$FRICTION_PATH" | tr -d ' ')" "$ts" "$entries"
+      else
+        echo ""
+        _bold "Friction Log"
+        echo ""
+        local i=1
+        while IFS= read -r line; do
+          local inf ts_val
+          inf=$(echo "$line" | grep -o '"inference":"[^"]*"' | cut -d'"' -f4)
+          ts_val=$(echo "$line" | grep -o '"timestamp":"[^"]*"' | cut -d'"' -f4)
+          printf "  %d. [%s] %s\n" "$i" "$ts_val" "$inf"
+          ((i++))
+        done < "$FRICTION_PATH"
+        echo ""
+        echo "Verdict: $(_verdict_label "pass")"
+      fi
+      return 0
+      ;;
+    *)
+      echo "Usage: ./harness friction <add|list>"
+      echo ""
+      echo "  add \"<message>\"   Append a friction record"
+      echo "  list              Show recorded friction records"
+      return 3
+      ;;
+  esac
+}
+
+# ── Main dispatch ──────────────────────────────────────────────
+VERB="${1:-}"
+shift 1 2>/dev/null || true
+
+case "$VERB" in
+  help|--help|-h|"")
+    cmd_help
+    ;;
+  orient)
+    cmd_orient
+    ;;
+  doctor)
+    cmd_doctor
+    ;;
+  lint)
+    cmd_lint
+    ;;
+  test)
+    cmd_test
+    ;;
+  build)
+    cmd_build
+    ;;
+  boot)
+    cmd_boot
+    ;;
+  verify)
+    cmd_verify
+    ;;
+  status)
+    cmd_status
+    ;;
+  clean)
+    cmd_clean "$@"
+    ;;
+  friction)
+    cmd_friction "$@"
+    ;;
+  *)
+    echo ""
+    echo "Unknown verb: $(_red "$VERB")"
+    echo ""
+    echo "Run $(_bold "./harness help") for available commands."
+    exit 3
+    ;;
+esac

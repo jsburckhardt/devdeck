@@ -54,6 +54,10 @@
   },
   "remoteEnv": {
     "HOST_PROJECT_PATH": "${localWorkspaceFolder}",
+    "COPILOT_OTEL_ENABLED": "${localEnv:COPILOT_OTEL_ENABLED}",
+    "COPILOT_OTEL_EXPORTER_TYPE": "${localEnv:COPILOT_OTEL_EXPORTER_TYPE}",
+    "OTEL_EXPORTER_OTLP_ENDPOINT": "${localEnv:OTEL_EXPORTER_OTLP_ENDPOINT}",
+    "OTEL_SERVICE_NAME": "${localEnv:OTEL_SERVICE_NAME}",
     "GIT_PAGER": "",
     "GH_PAGER": ""
   },

@@ -190,10 +190,12 @@ implementer:
     - code generation and editing
     - build and test execution
     - file creation
+    - ./harness CLI
   read_paths:
     - project/issues/<ISSUE_NUMBER>/plan/
     - project/architecture/ADR/
     - project/architecture/core-components/
+    - .harness/contract.yml
     - application source code
   write_paths:
     - application source code
@@ -205,6 +207,8 @@ implementer:
     - deviations from ADRs or core-components require returning to the Plan stage
     - implementation must satisfy the test plan
     - must not skip tests defined in the test plan
+    - must use ./harness verify as the primary verification mechanism when the harness is available
+    - must record friction via ./harness friction add when bypassing the harness for a supported verb
 verifier:
   file: .github/agents/verifier.agent.md
   purpose: Verify completed work — run tests, create commits following Conventional Commits, push, and open a PR assigned to Copilot for review.
@@ -212,6 +216,7 @@ verifier:
     - terminal execution (git, gh, test runners)
     - file reading and editing
     - codebase exploration
+    - ./harness CLI
   read_paths:
     - project/architecture/ADR/DECISION-LOG.md
     - project/architecture/ADR/
@@ -219,6 +224,7 @@ verifier:
     - AGENTS.md
     - project/issues/<ISSUE_NUMBER>/
     - .github/soft-factory/verification.yml
+    - .harness/contract.yml
     - application source code and test files
   write_paths:
     - project/architecture/ADR/DECISION-LOG.md
@@ -228,9 +234,10 @@ verifier:
     - README.md
   templates: []
   guardrails:
-    - must not proceed if any configured or auto-detected verification step fails
-    - must load verification commands from .github/soft-factory/verification.yml when present
-    - must fall back to auto-detecting applicable verification steps from project files when verification config is absent
+    - must use ./harness verify as the primary verification mechanism when the harness is available
+    - must fall back to .github/soft-factory/verification.yml when the harness is not available
+    - must fall back to auto-detecting applicable verification steps when neither harness nor verification config is present
+    - must not proceed if any verification step fails
     - must not push directly to main or master
     - must create feature branches following pattern <type>/<ISSUE_NUMBER>-<short-slug>
     - must follow Conventional Commits for all commit messages and the PR title

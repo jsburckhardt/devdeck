@@ -1,0 +1,188 @@
+# Harness Contract — DevDeck
+# Machine-readable command and evidence contract.
+# Version: 1.0.0
+
+harness:
+  version: "1.0.0"
+  entrypoint: "./harness"
+
+verdicts:
+  - name: pass
+    exit_code: 0
+    meaning: All required checks passed
+  - name: fail
+    exit_code: 1
+    meaning: Backing command found a blocking problem
+  - name: degraded
+    exit_code: 2
+    meaning: Optional dependency missing or partial operation
+  - name: unknown
+    exit_code: 3
+    meaning: Cannot determine backing command or state
+
+verbs:
+  - name: help
+    command: null
+    description: Show available verbs and options
+    json: false
+    source: built-in
+
+  - name: orient
+    command: null
+    description: Describe detected project surfaces and command mapping
+    json: true
+    source: built-in
+
+  - name: doctor
+    command: null
+    description: Check local prerequisites and project health
+    json: true
+    source: inferred
+    required_tools:
+      - node
+      - npm
+      - git
+    optional_tools:
+      - just
+      - tmux
+      - curl
+
+  - name: lint
+    command: "npm run lint"
+    description: Run ESLint on the codebase
+    json: true
+    source: package.json
+
+  - name: test
+    command: "npm run test"
+    description: Run vitest test suite
+    json: true
+    source: package.json
+
+  - name: build
+    command: "npm run build"
+    description: Build the Next.js application
+    json: true
+    source: package.json
+
+  - name: boot
+    command: "npx tsx src/server/start-dev.mts"
+    description: Start the development server (Next.js + terminal server)
+    json: true
+    source: justfile dev recipe
+    fallback: unknown if path missing
+
+  - name: verify
+    command: null
+    description: Run lint → format:check → build → test → smoke and write evidence
+    json: true
+    source: .github/soft-factory/verification.yml
+    steps:
+      - name: lint
+        command: "npm run lint"
+      - name: format_check
+        command: "npm run format:check"
+      - name: build
+        command: "npm run build"
+      - name: test
+        command: "npm run test"
+      - name: smoke
+        command: "npx next start --port 9999 (poll then kill)"
+    evidence_dir: .harness/evidence/
+    step_timeout_seconds: 300
+
+  - name: status
+    command: null
+    description: Report harness configuration and recent evidence
+    json: true
+    source: built-in
+
+  - name: clean
+    command: "rm -rf .next node_modules"
+    description: Remove build artifacts and node_modules
+    json: true
+    source: justfile clean recipe
+    safety:
+      confirmation: true
+      skip_flag: "--yes"
+      repo_root_guard: true
+
+  - name: friction add
+    command: null
+    description: Append a friction record to .harness/friction.jsonl
+    json: true
+    source: built-in
+
+  - name: friction list
+    command: null
+    description: Show recorded friction entries
+    json: true
+    source: built-in
+
+detection:
+  surfaces:
+    - file: package.json
+      detected: true
+      scripts:
+        [
+          dev,
+          build,
+          analyze,
+          start,
+          terminal,
+          "dev:all",
+          lint,
+          format,
+          "format:check",
+          test,
+          "test:watch",
+          "test:coverage",
+        ]
+
+    - file: justfile
+      detected: true
+      recipes:
+        [
+          dev,
+          dev-next,
+          dev-terminal,
+          build,
+          start,
+          test,
+          test-watch,
+          test-coverage,
+          lint,
+          format,
+          format-check,
+          check,
+          install,
+          clean,
+          reinstall,
+          info,
+        ]
+
+    - file: .github/soft-factory/verification.yml
+      detected: true
+      steps: [lint, format_check, build, test, smoke]
+
+    - file: .devcontainer/devcontainer.json
+      detected: true
+      features: [node, just, tmux, github-cli, copilot-cli]
+
+    - pattern: ".github/workflows/*.yml"
+      detected: true
+      files: [ci.yml]
+
+evidence:
+  directory: .harness/evidence/
+  format: JSON
+  naming: "verify-{ISO-timestamp}-{PID}.json"
+  retention: local-only (gitignored)
+  content_policy:
+    allowed: [command name, exit code, duration, verdict, timestamp, sanitized summary]
+    forbidden: [raw stdout/stderr, secrets, tokens, env vars, absolute home paths, credential URLs]
+
+friction:
+  path: .harness/friction.jsonl
+  format: JSONL
+  key_question: "What did the agent have to infer that the harness should have proved?"

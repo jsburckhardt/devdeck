@@ -36,6 +36,8 @@ You MUST create the issue via `gh issue create` after rubber-duck approval.
 You MUST output the created issue URL using format:ISSUE_CREATED after successful creation.
 You MUST NOT create an issue without rubber-duck review.
 You MUST NOT include secrets, credentials, or personal data in generated issue text.
+You SHOULD use `./harness orient` to understand the project command surface when drafting issues.
+You SHOULD reference `./harness` verbs in generated acceptance criteria when the harness is available.
 You SHOULD propose acceptance criteria that cover security, accessibility, and validation.
 You SHOULD reference relevant ADRs and core-components in the technical considerations.
 You SHOULD identify edge cases based on patterns from previous issues.
