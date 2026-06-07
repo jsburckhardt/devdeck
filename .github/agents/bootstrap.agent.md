@@ -50,6 +50,7 @@ You MUST ask the user to confirm or customize the proposed verification commands
 You MUST NOT set up CI/CD pipelines or infrastructure.
 You MUST NOT make feature-level decisions; only foundational project decisions.
 You MUST NOT skip any user confirmation before writing files.
+You SHOULD configure the harness as part of the bootstrap when the harness-cli-it skill is available.
 You SHOULD present a summary of gathered information for user confirmation before executing changes.
 You SHOULD reference the tech stack ADR in each core-component's Related ADRs section.
 You MAY consult external documentation for the chosen tech stack's best practices.

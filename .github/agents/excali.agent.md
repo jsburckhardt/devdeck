@@ -21,6 +21,7 @@ You MUST use arrows with proper startBinding and endBinding references when crea
 You MUST use boundElements on the shape and containerId on the text when adding text to shapes.
 You MUST use the EXCALIDRAW_TEMPLATE constant as the base structure for all generated diagrams.
 You SHOULD search for existing Excalidraw files in the workspace to match styling conventions.
+You MAY use `./harness orient` to understand the project structure when generating architecture diagrams.
 You SHOULD maintain minimum 20px gaps between elements for visual clarity.
 </instructions>
 
