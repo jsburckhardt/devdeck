@@ -2,13 +2,22 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { House, SidebarSimple, X } from "@phosphor-icons/react";
+import { House, Robot, SidebarSimple, X } from "@phosphor-icons/react";
 import { WorktreeTree } from "@/components/worktree-tree";
 import { closeNavigationTarget, projectRoute, useOpenProjects } from "@/lib/open-projects-context";
 import type { CopilotCliState } from "@/lib/types";
 import { languageColor } from "@/lib/utils";
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "devdeck-sidebar-collapsed";
+type ActiveCopilotCliState = Extract<CopilotCliState, "running" | "waiting">;
+
+function isActiveCopilotStatus(status: CopilotCliState): status is ActiveCopilotCliState {
+  return status === "running" || status === "waiting";
+}
+
+function copilotStatusLabel(status: ActiveCopilotCliState) {
+  return status === "running" ? "Copilot CLI running" : "Copilot CLI waiting for input";
+}
 
 function readPersistedCollapsedState(): boolean {
   if (typeof window === "undefined") {
@@ -97,6 +106,11 @@ export function ProjectSidebar() {
         {openProjects.map((project) => {
           const isActive = activeSlug === project.slug;
           const copilotStatus: CopilotCliState = getCopilotStatus(project.slug);
+          const hasActiveCopilotStatus = isActiveCopilotStatus(copilotStatus);
+          const activeCopilotLabel = hasActiveCopilotStatus
+            ? copilotStatusLabel(copilotStatus)
+            : undefined;
+
           return (
             <div key={project.slug} className="group relative mx-2 min-w-0">
               <button
@@ -114,11 +128,32 @@ export function ProjectSidebar() {
               >
                 <span className="relative">
                   <span
-                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-[10px] font-bold text-white ${languageColor(project.language)}`}
+                    data-testid={`project-badge-${project.slug}`}
+                    title={project.name}
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-[10px] font-bold text-white ${languageColor(project.language)} ${
+                      hasActiveCopilotStatus
+                        ? copilotStatus === "running"
+                          ? "animate-pulse"
+                          : "ring-2 ring-[oklch(0.75_0.18_55)]"
+                        : ""
+                    }`}
                   >
-                    {project.name.charAt(0).toUpperCase()}
+                    {hasActiveCopilotStatus ? (
+                      <Robot size={16} weight="bold" aria-hidden="true" />
+                    ) : (
+                      project.name.charAt(0).toUpperCase()
+                    )}
                   </span>
-                  {copilotStatus !== "idle" && <CopilotStatusIndicator status={copilotStatus} />}
+                  {activeCopilotLabel && (
+                    <span
+                      className="sr-only"
+                      role="status"
+                      aria-label={activeCopilotLabel}
+                      title={activeCopilotLabel}
+                    >
+                      {activeCopilotLabel}
+                    </span>
+                  )}
                 </span>
                 {!isCollapsed && <span className="truncate text-sm">{project.name}</span>}
               </button>
@@ -171,21 +206,5 @@ export function ProjectSidebar() {
         </button>
       </div>
     </nav>
-  );
-}
-
-function CopilotStatusIndicator({ status }: { status: CopilotCliState }) {
-  const label = status === "running" ? "Copilot CLI running" : "Copilot CLI waiting for input";
-  return (
-    <span
-      className={`absolute -top-0.5 -right-0.5 block h-1.5 w-1.5 rounded-full ${
-        status === "running"
-          ? "animate-pulse bg-[oklch(0.72_0.19_142)]"
-          : "bg-[oklch(0.75_0.18_55)]"
-      }`}
-      aria-label={label}
-      title={label}
-      role="status"
-    />
   );
 }
