@@ -2,7 +2,7 @@
 
 ## Status
 
-Adopted (updated) - 2026-05-30
+Adopted (updated) - 2026-06-09
 
 ## Purpose
 
@@ -42,8 +42,9 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - The sidebar MUST be a fixed-width vertical strip (~176px) on the left edge of the project layout
 - Sidebar collapse state MUST be global and MUST NOT be included in `PerProjectWorkspaceState`
 - Collapsed sidebar mode MUST hide Home text and project-name labels while preserving native `title` attributes
-- Collapsed sidebar tabs MUST keep language-color badges visible
-- Expanded sidebar tabs MUST display the project's language-color badge (first letter) and the project name as a visible truncated text label
+- Collapsed sidebar tabs MUST keep the project badge visible
+- Expanded sidebar tabs MUST display the project badge and the project name as a visible truncated text label
+- Sidebar project badges MUST render the first project-name letter when Copilot status is `"idle"` or unrecognized, and a `Robot` icon when Copilot status is `"running"` or `"waiting"`
 - Sidebar tabs MUST show the full project name via the native `title` attribute (no `@radix-ui/react-tooltip` dependency)
 - The active project tab MUST be visually distinguished (e.g., left border accent, brighter background)
 - Each tab MUST have a close button to remove the project from the open list
@@ -117,11 +118,14 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - `OpenProjectsContextValue` MUST expose `getCopilotStatus(slug: string): CopilotCliState` to read the cached Copilot status for a project (returns `"idle"` if not set)
 - `closeProject(slug)` MUST clear the cached `copilotStatus` for that slug by explicitly deleting the entry from the separate `copilotStatuses` Map
 - Direct URL navigation and cold-start sidebar hydration MUST display `"idle"` until a fresh `"status"` frame is received
-- Sidebar tabs MUST render a Copilot CLI status indicator adjacent to the project language badge
-- The status indicator MUST use theme-aware CSS custom properties (CORE-COMPONENT-0004) and MUST NOT rely on color alone for semantics — `aria-label` and `title` attributes MUST convey the state
-- The status indicator MUST be hidden (not rendered) when `copilotStatus` is `"idle"`
+- Sidebar tabs MUST render active Copilot CLI status by replacing the project badge's first-letter content with a `Robot` icon when `copilotStatus` is `"running"` or `"waiting"`
+- The robot badge MUST keep the existing `h-6 w-6` language-color badge wrapper, and the surrounding tab MUST keep the native project-name `title`
+- The robot badge MUST suppress the legacy adjacent/overlay dot indicator; only one Copilot badge indicator may render per active project tab
+- The active robot badge MUST expose `sr-only` text with `role="status"` describing `"Copilot CLI running"` or `"Copilot CLI waiting for input"` and MUST NOT rely on color alone
+- The running robot badge MUST use `animate-pulse`; the waiting robot badge MUST use an amber ring and MUST NOT pulse
+- The status indicator MUST be hidden when status is `"idle"` or unrecognized by rendering the existing first-letter badge with no Copilot `role="status"` element
 - The status indicator MUST be hidden when the terminal WebSocket is not connected (status is only meaningful with a live connection)
-- Sidebar Copilot status indicators MUST remain visible on project badges in expanded and collapsed modes
+- Sidebar Copilot robot badges MUST remain visible on project badges in expanded and collapsed modes
 - `WorktreeTree` MUST be rendered in `ProjectSidebar` for the active project, always mounted per Decision #84, hidden via CSS when the worktree list is empty or when the sidebar is collapsed, and MUST NOT render inside `ExplorerContent`
 - Worktree data MUST be fetched via `GET /api/worktrees?slug=<slug>` returning `Worktree[]`; an empty array MUST be returned (not a server error) when `.trees/` is absent or git is unavailable
 - A `useWorktrees(slug: string)` hook MUST be provided exposing `{ worktrees: Worktree[], loading: boolean, error: string | null, refresh: () => void }`
@@ -160,7 +164,7 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - **Worktree endpoint:** `GET /api/worktrees?slug=<slug>` → `Worktree[]` — parses `git worktree list --porcelain`, filters to `.trees/`-relative entries; returns `[]` on any error
 - **useWorktrees(slug: string):** Hook exposing `{ worktrees: Worktree[], loading: boolean, error: string | null, refresh: () => void }`
 - **WorktreeTree:** Collapsible selector component rendered in the project sidebar; lists project root and worktrees as filesystem-style selector nodes without nested inline file trees
-- **ProjectSidebar:** Component rendering the collapsible vertical tab strip plus the active project's CSS-hideable worktree selector; consumes `useOpenProjects()` and `usePathname()`
+- **ProjectSidebar:** Component rendering the collapsible vertical tab strip, conditional Copilot robot badge replacement, and the active project's CSS-hideable worktree selector; consumes `useOpenProjects()` and `usePathname()`
 - **languageColor(language?: string): string** — Shared utility extracted to `src/lib/utils.ts`
 
 ### Expectations
@@ -302,6 +306,7 @@ async function handleDirectoryClick(node: FileNode) {
 - [ ] Automated checks: ProjectSidebar tests must assert the active project's worktree selector renders in the project panel and WorkspaceLayout tests must assert it is absent from `ExplorerContent`
 - [ ] Automated checks: FileTree tests must assert `.trees` directory nodes render the `Tree` icon in expanded and collapsed states
 - [ ] Automated checks: ProjectSidebar tests must assert collapsed icon-only tabs, native titles, always-visible collapsed close buttons, visible Copilot badges, and CSS-hidden mounted WorktreeTree
+- [ ] Automated checks: ProjectSidebar tests must assert Robot badges for running/waiting, idle/unknown initial fallback, no overlay dot, `sr-only role="status"`, native titles, and independent per-project statuses
 - [ ] Test coverage requirements: Verification must include `npm run lint`, `npm run format:check`, `npm run build`, and `npm run test`
 
 ## Related ADRs
