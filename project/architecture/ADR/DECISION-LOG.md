@@ -21,8 +21,8 @@ This file is the single registry of all architectural decisions and core-compone
 | CORE-COMPONENT-0004 | Theming | Adopted (updated) | 2026-05-21 |
 | CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2025-07-16 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
-| CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-05-30 |
-| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-05-30 |
+| CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-06-09 |
+| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-06-09 |
 | CORE-COMPONENT-0009 | Engineering Harness | Adopted | 2026-06-07 |
 
 ## Decisions
@@ -188,3 +188,7 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 155 | Route helper input through authenticated binary WebSocket frames | CORE-COMPONENT-0003 | 2026-06-06 |
 | 156 | Require helper input to no-op when no active WebSocket is open | CORE-COMPONENT-0003 | 2026-06-06 |
 | 157 | Expose `useTerminal.focusTerminal()` for terminal-helper focus restoration | CORE-COMPONENT-0003 | 2026-06-06 |
+| 158 | Preserve h-6 w-6 language-color project badges for active Copilot robots | CORE-COMPONENT-0007 | 2026-06-09 |
+| 159 | Replace project badge initials with Robot icons for running or waiting Copilot | CORE-COMPONENT-0008 | 2026-06-09 |
+| 160 | Suppress overlay Copilot dots when active robot badges render | CORE-COMPONENT-0008 | 2026-06-09 |
+| 161 | Expose active Copilot robot state with sr-only role=status text | CORE-COMPONENT-0008 | 2026-06-09 |
