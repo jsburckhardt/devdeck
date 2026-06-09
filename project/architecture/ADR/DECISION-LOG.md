@@ -119,7 +119,7 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 86 | Add `worktree=<relative-path>` as an optional WebSocket query parameter on `/api/terminal`; server resolves it relative to the project root server-side | CORE-COMPONENT-0003 | 2026-05-23 |
 | 87 | Require `extractWorktree()` to reject paths containing `..` segments or resolving outside the project root; fall back to project root shell on rejection | CORE-COMPONENT-0003 | 2026-05-23 |
 | 88 | Require sidebar width of ~176 px with project names displayed as visible truncated text labels alongside the language-color badge | CORE-COMPONENT-0007 | 2026-05-23 |
-| 89 | Supersede Decision #47: sidebar tabs show language-color badge (initial letter) plus full project name text label, not initial letter only | CORE-COMPONENT-0007 | 2026-05-23 |
+| 89 | Supersede Decision #47: sidebar tabs show language-color badge (initial letter, or active Copilot robot replacement) plus full project name text label, not initial letter only | CORE-COMPONENT-0007 | 2026-05-23 |
 | 90 | Expose `activeWorktree: string \| null` and `setActiveWorktree` on WorkspaceContext for worktree terminal scoping | CORE-COMPONENT-0008 | 2026-05-23 |
 | 91 | Expose `worktreesSectionCollapsed: boolean` and `toggleWorktreesSection()` on WorkspaceContext | CORE-COMPONENT-0008 | 2026-05-23 |
 | 92 | Include `activeWorktree` and `worktreesSectionCollapsed` in `PerProjectWorkspaceState` for per-project cache persistence | CORE-COMPONENT-0008 | 2026-05-23 |
