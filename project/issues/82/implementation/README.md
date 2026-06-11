@@ -10,9 +10,9 @@
 ### Changes Summary
 
 - Added a trailing, always-visible Close Project action to the `WorkspaceLayout` panel control bar.
-- Reused `useOpenProjects()`, `closeNavigationTarget(openProjects, project.slug, project.slug)`, `closeProject(project.slug)`, and `useRouter().push(...)`.
-- Styled the close action as a destructive regular button distinct from `PanelToggle`, with no `aria-pressed`.
-- Added `aria-label` and native `title` text containing the current project name.
+- Reused the shared `useOpenProjects().requestProjectClose()` / `clearProjectCloseRequest()` path with `useRouter().push(...)`.
+- Styled the close action as a destructive regular button distinct from `PanelToggle`, with no `aria-pressed`, plus the required divider before the action.
+- Added safe `aria-label` and native `title` text containing the current project name fallback, and disabled the action for empty normalized slugs.
 
 ### Test Results
 
@@ -32,7 +32,7 @@
 ### Changes Summary
 
 - Mocked `next/navigation` and `@/lib/open-projects-context` for deterministic close-action tests.
-- Added coverage for close action rendering/accessibility, panel toggle semantics, adjacent-project navigation, and final-project navigation to `/`.
+- Added coverage for close action rendering/accessibility, panel toggle semantics, divider placement, empty-slug disabled state, navigation failure cleanup, adjacent-project navigation, and final-project navigation to `/`.
 
 ### Test Results
 

@@ -199,5 +199,9 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 166 | Require CI to run `./harness verify` instead of mirroring a separate verification config | CORE-COMPONENT-0009 | 2026-06-11 |
 | 167 | Expose an always-visible current-project close action in WorkspaceLayout controls | CORE-COMPONENT-0007 | 2026-06-11 |
 | 168 | Prohibit aria-pressed on WorkspaceLayout close actions | CORE-COMPONENT-0007 | 2026-06-11 |
-| 169 | Reuse closeNavigationTarget and closeProject for workspace close actions | CORE-COMPONENT-0008 | 2026-06-11 |
-| 170 | Require project-name aria-labels and titles on workspace close actions | CORE-COMPONENT-0008 | 2026-06-11 |
+| 169 | Route sidebar and workspace close actions through OpenProjectsProvider requestProjectClose | CORE-COMPONENT-0008 | 2026-06-11 |
+| 170 | Require safe project-name aria-labels and titles on workspace close actions | CORE-COMPONENT-0008 | 2026-06-11 |
+| 171 | Require provider-owned pending guards for duplicate project close requests | CORE-COMPONENT-0008 | 2026-06-11 |
+| 172 | Require normalized slug handling and stale-active fallback navigation for project close requests | CORE-COMPONENT-0008 | 2026-06-11 |
+| 173 | Require a non-interactive divider before WorkspaceLayout Close Project controls | CORE-COMPONENT-0007 | 2026-06-11 |
+| 174 | Render WorkspaceLayout Close Project disabled, not hidden, when the normalized slug is empty | CORE-COMPONENT-0007 | 2026-06-11 |

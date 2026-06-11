@@ -15,7 +15,7 @@ import {
 import { ErrorBoundary } from "@/components/error-boundary";
 import { FileTree } from "@/components/file-tree";
 import { TerminalPanel } from "@/components/terminal-panel";
-import { closeNavigationTarget, useOpenProjects } from "@/lib/open-projects-context";
+import { useOpenProjects } from "@/lib/open-projects-context";
 
 const FileViewer = dynamic(() => import("@/components/file-viewer"), {
   ssr: false,
@@ -127,7 +127,7 @@ interface WorkspaceLayoutProps {
 
 export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
   const router = useRouter();
-  const { openProjects, closeProject } = useOpenProjects();
+  const { requestProjectClose, clearProjectCloseRequest } = useOpenProjects();
   const {
     setProject,
     fileTree,
@@ -237,14 +237,37 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     }
   }, [activeWorktree, project.slug, showExplorer, showFileViewer, showTerminal]);
 
-  const closeProjectLabel = `Close project ${project.name}`;
+  const normalizedProjectSlug = project.slug.trim();
+  const safeProjectName = (project.name ?? "").trim() || normalizedProjectSlug;
+  const closeProjectLabel = `Close project ${safeProjectName}`;
+  const closeProjectDisabled = normalizedProjectSlug.length === 0;
   const handleCloseProject = useCallback(() => {
-    const navigationTarget = closeNavigationTarget(openProjects, project.slug, project.slug);
-    closeProject(project.slug);
-    if (navigationTarget) {
-      router.push(navigationTarget);
+    if (closeProjectDisabled) {
+      return;
     }
-  }, [closeProject, openProjects, project.slug, router]);
+
+    const request = requestProjectClose(project.slug, project.slug);
+    if (!request.accepted || !request.target) {
+      return;
+    }
+
+    try {
+      router.push(request.target);
+    } catch {
+      clearProjectCloseRequest(normalizedProjectSlug);
+      console.error("Failed to navigate after closing project", {
+        slug: normalizedProjectSlug,
+        target: request.target,
+      });
+    }
+  }, [
+    clearProjectCloseRequest,
+    closeProjectDisabled,
+    normalizedProjectSlug,
+    project.slug,
+    requestProjectClose,
+    router,
+  ]);
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
@@ -271,14 +294,21 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
           guarded={terminalGuarded}
           onClick={toggleTerminal}
         />
+        <div aria-hidden="true" className="mx-1 h-4 w-px bg-border" />
         <button
           type="button"
-          onClick={handleCloseProject}
-          className="ml-auto flex items-center gap-1.5 rounded-md border border-destructive/40 px-2 py-1 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40"
+          onClick={closeProjectDisabled ? undefined : handleCloseProject}
+          className={cn(
+            "flex items-center gap-1.5 rounded-md border border-destructive/40 px-2 py-1 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40",
+            closeProjectDisabled &&
+              "cursor-not-allowed border-border text-muted-foreground opacity-50 hover:bg-transparent hover:text-muted-foreground",
+          )}
           aria-label={closeProjectLabel}
           title={closeProjectLabel}
+          aria-disabled={closeProjectDisabled ? "true" : undefined}
+          tabIndex={closeProjectDisabled ? -1 : undefined}
         >
-          <X size={14} weight="bold" />
+          <X size={14} weight="bold" aria-hidden="true" />
           <span className="hidden sm:inline">Close Project</span>
         </button>
       </div>

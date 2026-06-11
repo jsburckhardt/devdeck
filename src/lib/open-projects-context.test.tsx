@@ -63,6 +63,10 @@ function TestConsumer({
   );
 }
 
+type ProjectCloseRequestResult = ReturnType<
+  ReturnType<typeof useOpenProjects>["requestProjectClose"]
+>;
+
 describe("closeNavigationTarget", () => {
   const projects = [{ slug: "alpha" }, { slug: "beta" }, { slug: "gamma" }];
 
@@ -271,6 +275,174 @@ describe("OpenProjectsProvider", () => {
     expect(screen.getByTestId("count").textContent).toBe("0");
     expect(JSON.parse(localStorage.getItem("devdeck-open-projects")!)).toEqual([]);
     expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("82-R1: requestProjectClose normalizes slugs, closes once, and returns active navigation", async () => {
+    let ctx: ReturnType<typeof useOpenProjects>;
+    render(
+      <OpenProjectsProvider>
+        <TestConsumer
+          onContext={(c) => {
+            ctx = c;
+          }}
+        />
+      </OpenProjectsProvider>,
+    );
+
+    await act(async () => {
+      ctx!.openProject(projA);
+      ctx!.openProject(projB);
+    });
+
+    let firstResult: ProjectCloseRequestResult | undefined;
+    let secondResult: ProjectCloseRequestResult | undefined;
+    await act(async () => {
+      firstResult = ctx!.requestProjectClose(" proj-a ", " proj-a ");
+      secondResult = ctx!.requestProjectClose("proj-a", "proj-a");
+    });
+
+    expect(firstResult!).toEqual({ accepted: true, target: "/project/proj-b" });
+    expect(secondResult!).toEqual({ accepted: false, target: null, reason: "pending" });
+    expect(screen.getByTestId("count").textContent).toBe("1");
+    expect(screen.queryByTestId("project-proj-a")).not.toBeInTheDocument();
+    expect(screen.getByTestId("project-proj-b")).toBeInTheDocument();
+  });
+
+  it("82-R2: requestProjectClose rejects empty normalized slugs", async () => {
+    let ctx: ReturnType<typeof useOpenProjects>;
+    render(
+      <OpenProjectsProvider>
+        <TestConsumer
+          onContext={(c) => {
+            ctx = c;
+          }}
+        />
+      </OpenProjectsProvider>,
+    );
+
+    await act(async () => {
+      ctx!.openProject(projA);
+    });
+
+    let result: ProjectCloseRequestResult | undefined;
+    await act(async () => {
+      result = ctx!.requestProjectClose("   ", "   ");
+    });
+
+    expect(result!).toEqual({ accepted: false, target: null, reason: "invalid-slug" });
+    expect(screen.getByTestId("count").textContent).toBe("1");
+    expect(screen.getByTestId("project-proj-a")).toBeInTheDocument();
+  });
+
+  it("82-R3: requestProjectClose closes inactive projects without navigation", async () => {
+    let ctx: ReturnType<typeof useOpenProjects>;
+    render(
+      <OpenProjectsProvider>
+        <TestConsumer
+          onContext={(c) => {
+            ctx = c;
+          }}
+        />
+      </OpenProjectsProvider>,
+    );
+
+    await act(async () => {
+      ctx!.openProject(projA);
+      ctx!.openProject(projB);
+    });
+
+    let result: ProjectCloseRequestResult | undefined;
+    await act(async () => {
+      result = ctx!.requestProjectClose("proj-a", "proj-b");
+    });
+
+    expect(result!).toEqual({ accepted: true, target: null });
+    expect(screen.queryByTestId("project-proj-a")).not.toBeInTheDocument();
+    expect(screen.getByTestId("project-proj-b")).toBeInTheDocument();
+  });
+
+  it("82-R4: requestProjectClose falls back home for a stale active slug", async () => {
+    let ctx: ReturnType<typeof useOpenProjects>;
+    render(
+      <OpenProjectsProvider>
+        <TestConsumer
+          onContext={(c) => {
+            ctx = c;
+          }}
+        />
+      </OpenProjectsProvider>,
+    );
+
+    await act(async () => {
+      ctx!.openProject(projA);
+    });
+
+    let result: ProjectCloseRequestResult | undefined;
+    await act(async () => {
+      result = ctx!.requestProjectClose("stale-project", "stale-project");
+    });
+
+    expect(result!).toEqual({ accepted: true, target: "/" });
+    expect(screen.getByTestId("count").textContent).toBe("1");
+    expect(screen.getByTestId("project-proj-a")).toBeInTheDocument();
+  });
+
+  it("82-R5: clearProjectCloseRequest allows retry after a navigation failure", async () => {
+    let ctx: ReturnType<typeof useOpenProjects>;
+    render(
+      <OpenProjectsProvider>
+        <TestConsumer
+          onContext={(c) => {
+            ctx = c;
+          }}
+        />
+      </OpenProjectsProvider>,
+    );
+
+    await act(async () => {
+      ctx!.openProject(projA);
+      ctx!.openProject(projB);
+    });
+
+    let firstResult: ProjectCloseRequestResult | undefined;
+    let pendingResult: ProjectCloseRequestResult | undefined;
+    let retryResult: ProjectCloseRequestResult | undefined;
+    await act(async () => {
+      firstResult = ctx!.requestProjectClose("proj-a", "proj-a");
+      pendingResult = ctx!.requestProjectClose("proj-a", "proj-a");
+      ctx!.clearProjectCloseRequest(" proj-a ");
+      retryResult = ctx!.requestProjectClose("proj-a", "proj-a");
+    });
+
+    expect(firstResult!).toEqual({ accepted: true, target: "/project/proj-b" });
+    expect(pendingResult!).toEqual({ accepted: false, target: null, reason: "pending" });
+    expect(retryResult!).toEqual({ accepted: true, target: "/project/proj-b" });
+  });
+
+  it("82-R6: requestProjectClose clears workspace cache and Copilot status", async () => {
+    let ctx: ReturnType<typeof useOpenProjects>;
+    render(
+      <OpenProjectsProvider>
+        <TestConsumer
+          onContext={(c) => {
+            ctx = c;
+          }}
+        />
+      </OpenProjectsProvider>,
+    );
+
+    await act(async () => {
+      ctx!.openProject(projA);
+      ctx!.saveWorkspaceState("proj-a", sampleState);
+      ctx!.updateCopilotStatus("proj-a", "running");
+    });
+
+    await act(async () => {
+      ctx!.requestProjectClose("proj-a", "proj-a");
+    });
+
+    expect(ctx!.restoreWorkspaceState("proj-a")).toBeUndefined();
+    expect(ctx!.getCopilotStatus("proj-a")).toBe("idle");
   });
 });
 
