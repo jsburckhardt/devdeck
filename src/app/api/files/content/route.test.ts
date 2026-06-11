@@ -156,6 +156,43 @@ describe("GET /api/files/content", () => {
     });
   });
 
+  it("reads viewable image symlinks from the resolved target path when inside root", async () => {
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+    mockFs.lstat.mockResolvedValue(stat("symlink", bytes.length) as never);
+    mockFs.realpath
+      .mockResolvedValueOnce("/workspaces/test-project" as never)
+      .mockResolvedValueOnce("/workspaces/test-project/assets/real.png" as never);
+    mockFs.stat.mockResolvedValue(stat("file", bytes.length, 4000) as never);
+    mockFs.readFile.mockResolvedValue(bytes as never);
+
+    const res = await GET(makeGetRequest({ slug: "test", path: "assets/link.png" }));
+
+    expect(res.status).toBe(200);
+    expect(mockFs.readFile).toHaveBeenCalledWith("/workspaces/test-project/assets/real.png");
+    await expect(res.json()).resolves.toMatchObject({
+      content: `data:image/png;base64,${bytes.toString("base64")}`,
+      language: "image",
+      path: "assets/link.png",
+      name: "link.png",
+    });
+  });
+
+  it("rejects viewable image symlinks that resolve outside the root", async () => {
+    mockFs.lstat.mockResolvedValue(stat("symlink") as never);
+    mockFs.realpath
+      .mockResolvedValueOnce("/workspaces/test-project" as never)
+      .mockResolvedValueOnce("/outside/secret.png" as never);
+
+    const res = await GET(makeGetRequest({ slug: "test", path: "assets/link.png" }));
+
+    expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toMatchObject({
+      code: "INVALID_PATH",
+      kind: "symlink",
+    });
+    expect(mockFs.readFile).not.toHaveBeenCalled();
+  });
+
   it("returns structured worktree errors for GET", async () => {
     const invalid = await GET(makeGetRequest({ slug: "test", path: "a.ts", worktree: "../bad" }));
     expect(invalid.status).toBe(400);

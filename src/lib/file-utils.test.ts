@@ -11,8 +11,17 @@ const viewableImageFilenames = [
   "logo.svg",
 ];
 
+const caseVariantImageFilenames = ["IMAGE.PNG", "Photo.JpG", "LOGO.SVG"];
+
 describe("file-utils image helpers", () => {
-  it.each(viewableImageFilenames)("identifies %s as a viewable image", (filename) => {
+  it.each([...viewableImageFilenames, ...caseVariantImageFilenames])(
+    "identifies %s as a viewable image",
+    (filename) => {
+      expect(isViewableImage(filename)).toBe(true);
+    },
+  );
+
+  it.each(caseVariantImageFilenames)("matches %s case-insensitively", (filename) => {
     expect(isViewableImage(filename)).toBe(true);
   });
 
@@ -23,18 +32,24 @@ describe("file-utils image helpers", () => {
     },
   );
 
-  it.each(viewableImageFilenames)("keeps %s classified as binary", (filename) => {
-    expect(isBinaryFile(filename)).toBe(true);
-  });
+  it.each([...viewableImageFilenames, ...caseVariantImageFilenames])(
+    "keeps %s classified as binary",
+    (filename) => {
+      expect(isBinaryFile(filename)).toBe(true);
+    },
+  );
 
   it.each([
     ["image.png", "image/png"],
+    ["IMAGE.PNG", "image/png"],
     ["photo.jpg", "image/jpeg"],
+    ["Photo.JpG", "image/jpeg"],
     ["photo.jpeg", "image/jpeg"],
     ["anim.gif", "image/gif"],
     ["icon.webp", "image/webp"],
     ["favicon.ico", "image/x-icon"],
     ["logo.svg", "image/svg+xml"],
+    ["LOGO.SVG", "image/svg+xml"],
     ["unknown.bmp", "application/octet-stream"],
   ])("maps %s to %s", (filename, mimeType) => {
     expect(getImageMimeType(filename)).toBe(mimeType);
