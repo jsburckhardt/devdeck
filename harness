@@ -143,7 +143,7 @@ cmd_orient() {
   if $JSON_MODE; then
     local surfaces
     surfaces=$(cat <<'ORIENT_JSON'
-{"verb":"orient","verdict":"pass","command":null,"steps":[],"evidence":null,"message":"Detected project surfaces for DevDeck","timestamp":"__TS__","surfaces":{"package_json":{"detected":true,"scripts":["dev","build","analyze","start","terminal","dev:all","lint","format","format:check","test","test:watch","test:coverage"]},"justfile":{"detected":true,"recipes":["dev","dev-next","dev-terminal","build","start","test","test-watch","test-coverage","lint","format","format-check","check","install","clean","reinstall","info"]},"verification_yml":{"detected":true,"steps":["lint","format_check","build","test","smoke"]},"devcontainer":{"detected":true},"ci_workflows":{"detected":true,"files":["ci.yml"]}}}
+{"verb":"orient","verdict":"pass","command":null,"steps":[],"evidence":null,"message":"Detected project surfaces for DevDeck","timestamp":"__TS__","surfaces":{"package_json":{"detected":true,"scripts":["dev","build","analyze","start","terminal","dev:all","lint","format","format:check","test","test:watch","test:coverage"]},"justfile":{"detected":true,"recipes":["dev","dev-next","dev-terminal","build","start","test","test-watch","test-coverage","lint","format","format-check","check","install","clean","reinstall","info"]},"harness_contract":{"detected":true,"verify_steps":["lint","format_check","build","test","smoke"]},"devcontainer":{"detected":true},"ci_workflows":{"detected":true,"files":["ci.yml"]}}}
 ORIENT_JSON
 )
     local ts
@@ -162,7 +162,7 @@ ORIENT_JSON
   echo "├─────────────────────────────────────────────────────────────┤"
   echo "│ package.json          │ $(_green "detected") │ 12 scripts                    │"
   echo "│ justfile              │ $(_green "detected") │ 16 recipes                    │"
-  echo "│ verification.yml      │ $(_green "detected") │ 5 steps                       │"
+  echo "│ harness contract      │ $(_green "detected") │ 5 verify steps                │"
   echo "│ devcontainer.json     │ $(_green "detected") │ node, just, tmux, gh          │"
   echo "│ CI workflows          │ $(_green "detected") │ ci.yml                        │"
   echo "└─────────────────────────────────────────────────────────────┘"

@@ -76,7 +76,7 @@ verbs:
     command: null
     description: Run lint → format:check → build → test → smoke and write evidence
     json: true
-    source: .github/soft-factory/verification.yml
+    source: .harness/contract.yml
     steps:
       - name: lint
         command: "npm run lint"
@@ -161,9 +161,9 @@ detection:
           info,
         ]
 
-    - file: .github/soft-factory/verification.yml
+    - file: .harness/contract.yml
       detected: true
-      steps: [lint, format_check, build, test, smoke]
+      verify_steps: [lint, format_check, build, test, smoke]
 
     - file: .devcontainer/devcontainer.json
       detected: true

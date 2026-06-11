@@ -3,11 +3,10 @@ CONTRIBUTING.md                                             — Human contributi
 LLM.txt                                                     — This file; repo map for AI agents
 README.md                                                   — Project overview
 harness                                                     — Engineering harness CLI (preferred operating surface for humans and agents)
-.harness/contract.yml                                       — Machine-readable harness command contract
+.harness/contract.yml                                       — Machine-readable harness command and verification contract
 .harness/README.md                                          — Harness usage documentation
 .harness/friction.jsonl                                     — Inference friction log (JSONL)
 .harness/evidence/                                          — Verification evidence directory (gitignored)
-.github/copilot-instructions.md                             — Agent instructions requiring ./harness usage
 justfile                                                    — Development task runner (just)
 vitest.config.ts                                            — Vitest test configuration
 package.json                                                — Node.js dependencies and scripts
@@ -27,8 +26,7 @@ eslint.config.mjs                                           — ESLint configura
 .github/agents/implementer.agent.md                   — Implementer agent (code, tests, verification)
 .github/agents/planner.agent.md                       — Planner agent (ADRs, core-components, action plans, task breakdown, test plans)
 .github/agents/research.agent.md                      — Research agent (exploration, scope classification)
-.github/workflows/ci.yml                              — GitHub Actions CI workflow (lint, format, build, test on PRs)
-.github/soft-factory/verification.yml                 — Verification commands for CI/verifier
+.github/workflows/ci.yml                              — GitHub Actions CI workflow (`./harness verify` on PRs)
 docs/README.md                                              — Application documentation index
 project/README.md                                             — Project documentation index
 project/architecture/README.md                                 — Architecture documentation index
