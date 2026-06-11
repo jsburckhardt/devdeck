@@ -145,13 +145,13 @@ describe("TerminalPanel", () => {
     expect(mockUpdateCopilotStatus).not.toHaveBeenCalled();
   });
 
-  it("T17b: forces idle status when terminal is disconnected", () => {
+  it("T17b: does not overwrite cached Copilot status when terminal is disconnected", () => {
     mockUseTerminal.mockReturnValue(
       defaultMockReturn({ copilotStatus: "running", isConnected: false, status: "failed" }),
     );
     render(<TerminalPanel slug="test-project" />);
 
-    expect(mockUpdateCopilotStatus).toHaveBeenCalledWith("test-project", "idle");
+    expect(mockUpdateCopilotStatus).not.toHaveBeenCalled();
   });
 
   it("Issue #67: terminal container is unpadded and bounded", () => {

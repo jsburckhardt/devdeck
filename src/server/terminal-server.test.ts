@@ -158,6 +158,26 @@ function waitForClose(client: WebSocket): Promise<{ code: number; reason: string
   });
 }
 
+function waitForJsonMessage<T extends Record<string, unknown>>(
+  client: WebSocket,
+  predicate: (message: T) => boolean,
+): Promise<T> {
+  return new Promise((resolve) => {
+    const onMessage = (data: Buffer) => {
+      try {
+        const parsed = JSON.parse(data.toString()) as T;
+        if (predicate(parsed)) {
+          client.off("message", onMessage);
+          resolve(parsed);
+        }
+      } catch {
+        // binary PTY output is ignored by JSON-message tests
+      }
+    };
+    client.on("message", onMessage);
+  });
+}
+
 // --- Tests ---
 describe("terminal-server", () => {
   let handle: TerminalServerHandle | null = null;
@@ -327,6 +347,47 @@ describe("terminal-server", () => {
     await tick(100);
 
     expect(fakePty.kill).toHaveBeenCalledTimes(1);
+  });
+
+  it("T7b: broadcasts and caches per-project Copilot status for other browser clients", async () => {
+    const srv = await createServer();
+    handle = srv.handle;
+
+    const firstClient = await connectClientWithSlug(srv.port, "demo");
+    clients.push(firstClient);
+    await tick();
+
+    const secondClient = await connectClientWithSlug(srv.port, "demo");
+    clients.push(secondClient);
+    await tick();
+
+    const firstStatus = waitForJsonMessage<{ type?: string; copilotState?: string }>(
+      firstClient,
+      (message) => message.type === "status" && message.copilotState === "running",
+    );
+    const secondStatus = waitForJsonMessage<{ type?: string; copilotState?: string }>(
+      secondClient,
+      (message) => message.type === "status" && message.copilotState === "running",
+    );
+
+    fakePty._emitData("⠋ Thinking...");
+
+    expect(await firstStatus).toMatchObject({ type: "status", copilotState: "running" });
+    expect(await secondStatus).toMatchObject({ type: "status", copilotState: "running" });
+
+    const laterClient = new WebSocket(`ws://127.0.0.1:${srv.port}?slug=demo`);
+    clients.push(laterClient);
+    const cachedStatusPromise = waitForJsonMessage<{ type?: string; copilotState?: string }>(
+      laterClient,
+      (message) => message.type === "status" && message.copilotState === "running",
+    );
+    await new Promise<void>((resolve, reject) => {
+      laterClient.on("open", () => resolve());
+      laterClient.on("error", reject);
+    });
+    const cachedStatus = await cachedStatusPromise;
+
+    expect(cachedStatus).toMatchObject({ type: "status", copilotState: "running" });
   });
 
   it("T8: PTY spawn failure sends structured error", async () => {

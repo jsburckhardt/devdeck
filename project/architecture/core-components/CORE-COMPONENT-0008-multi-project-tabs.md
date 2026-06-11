@@ -2,7 +2,7 @@
 
 ## Status
 
-Adopted (updated) - 2026-06-09
+Adopted (updated) - 2026-06-11
 
 ## Purpose
 
@@ -124,7 +124,8 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - The active Copilot bot badge MUST expose `sr-only` text with `role="status"` describing `"Copilot CLI running"` or `"Copilot CLI waiting for input"` and MUST NOT rely on color alone
 - The running Copilot bot badge MUST use `animate-pulse`; the waiting Copilot bot badge MUST use an amber ring and MUST NOT pulse
 - The status indicator MUST be hidden when status is `"idle"` or unrecognized by rendering the existing first-letter badge with no Copilot `role="status"` element
-- The status indicator MUST be hidden when the terminal WebSocket is not connected (status is only meaningful with a live connection)
+- The status indicator MUST NOT be cleared merely because one browser terminal WebSocket disconnects; it remains driven by the latest server status frame and is hidden only after an explicit `"idle"` status, an unrecognized status, or project closure
+- `TerminalPanel` MUST update `OpenProjectsContext` Copilot status only while its terminal WebSocket is connected so a failed or disconnected browser session does not overwrite a valid active project badge with `"idle"`
 - Sidebar Copilot bot badges MUST remain visible on project badges in expanded and collapsed modes
 - `WorktreeTree` MUST be rendered in `ProjectSidebar` for the active project, always mounted per Decision #84, hidden via CSS when the worktree list is empty or when the sidebar is collapsed, and MUST NOT render inside `ExplorerContent`
 - Worktree data MUST be fetched via `GET /api/worktrees?slug=<slug>` returning `Worktree[]`; an empty array MUST be returned (not a server error) when `.trees/` is absent or git is unavailable

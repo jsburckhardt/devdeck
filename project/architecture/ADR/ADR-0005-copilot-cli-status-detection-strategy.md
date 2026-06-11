@@ -39,7 +39,7 @@ The existing JSON text frame protocol (which already supports `"setup"` and `"er
 { type: "status", copilotState: "idle" | "running" | "waiting" }
 ```
 
-The server emits this frame whenever `detectCopilotState()` returns a non-null value that differs from the current state. The `useTerminal` hook handles this frame in its `onmessage` dispatch and exposes `copilotStatus: CopilotCliState` on its return type.
+The server emits this frame whenever `detectCopilotState()` returns a non-null value that differs from the current state. The server also caches the last known state per project slug, broadcasts detected changes to same-project WebSocket clients, and replays the cached state to newly connected same-project clients. The `useTerminal` hook handles this frame in its `onmessage` dispatch and exposes `copilotStatus: CopilotCliState` on its return type.
 
 ### Status Model
 
@@ -51,7 +51,7 @@ export type CopilotCliState = "idle" | "running" | "waiting";
 - `"running"` — Copilot CLI actively processing/streaming output
 - `"waiting"` — Copilot CLI waiting for user input
 
-Initial state is `"idle"` until a detection event fires.
+Initial state is `"idle"` until a detection event fires or a same-project cached state is replayed by the server.
 
 ## Alternatives
 
@@ -74,7 +74,7 @@ Initial state is `"idle"` until a detection event fires.
 - Pattern matching is fragile to Copilot CLI version changes (output format is not a public API)
 - ANSI escape sequences must be stripped before matching, adding processing to every `onData` call
 - False positives possible if user runs scripts that emit similar patterns
-- Per-connection state (current `copilotState`, idle timer) adds memory overhead per PTY session
+- Per-connection state (current `copilotState`, idle timer) and the per-project status cache add small memory overhead
 
 ### Neutral
 - The idle timeout value (30s) may need tuning based on real-world usage

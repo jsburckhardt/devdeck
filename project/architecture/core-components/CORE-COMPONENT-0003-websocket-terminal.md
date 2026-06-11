@@ -2,7 +2,7 @@
 
 ## Status
 
-Adopted (updated)
+Adopted (updated) - 2026-06-11
 
 ## Purpose
 
@@ -50,8 +50,10 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - The server MAY send `{ type: "status", copilotState: CopilotCliState }` JSON text frames to communicate Copilot CLI state changes detected via PTY output pattern matching (see ADR-0005)
 - A pure function `detectCopilotState(strippedOutput: string): CopilotCliState | null` MUST be implemented in `terminal-server.mts` to detect Copilot CLI state from PTY output
 - `detectCopilotState()` MUST strip ANSI escape sequences from PTY output before pattern matching
-- The server MUST only emit a `"status"` frame when the detected state differs from the current per-connection `copilotState`
-- The server MUST maintain a per-connection idle timeout (default 30 seconds) that reverts `copilotState` to `"idle"` when no Copilot CLI output pattern is matched within the timeout window
+- The server MUST maintain a per-project Copilot CLI status cache keyed by project slug so newly connected browser clients can receive the current known `"running"` or `"waiting"` state without waiting for fresh PTY output
+- The server MUST broadcast detected Copilot CLI status changes to every connected WebSocket client for the same project slug
+- The server MUST only emit a `"status"` frame when the detected state differs from the current per-connection `copilotState` or cached per-project state
+- The server MUST maintain a per-connection idle timeout (default 30 seconds) that reverts `copilotState` and the per-project status cache to `"idle"` when no Copilot CLI output pattern is matched within the timeout window
 - The server MUST reset the idle timer on every `onData` call that matches a Copilot CLI pattern
 - The `useTerminal` hook MUST handle `"status"` messages in its `onmessage` dispatch and expose `copilotStatus: CopilotCliState` on its return type
 - The `useTerminal` hook MUST reset `copilotStatus` to `"idle"` at the start of each `connect()` attempt
@@ -66,7 +68,7 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - **Frontend hook:** `useTerminal(options?: { slug?, worktree?, wsUrl?, theme? })` — manages xterm.js instance, WebSocket connection, token injection, addon lifecycle, and exposes `containerRef`, `terminalMode`, `isFallback`, `sendInput(data)`, and `focusTerminal()` state/actions; when `worktree` is provided, the WebSocket URL includes it as a query parameter
 - **Message format:** Raw binary data (ArrayBuffer) for terminal I/O; JSON for control messages (resize, ping)
 - **Setup message (server → client):** `{ type: "setup", mode: "tmux" | "shell", fallback?: true, reason?: string }` — sent as a JSON text frame immediately after PTY spawn and on any session mode transition (e.g., tmux fallback to shell)
-- **Status message (server → client):** `{ type: "status", copilotState: "idle" | "running" | "waiting" }` — sent as a JSON text frame whenever the server detects a Copilot CLI state change via PTY output pattern matching
+- **Status message (server → client):** `{ type: "status", copilotState: "idle" | "running" | "waiting" }` — sent as a JSON text frame whenever the server detects a Copilot CLI state change via PTY output pattern matching, broadcasts that change to same-project clients, or replays cached same-project state to a newly connected client
 - **CopilotCliState type:** `"idle" | "running" | "waiting"` — inlined in `terminal-server.mts` (no `@/` imports) and exported from `src/lib/types.ts` for client-side use
 - **Frontend hook (extended):** `useTerminal(options?)` additionally returns `copilotStatus: CopilotCliState` (`"idle"` by default, updated on `"status"` frames)
 - **Helper input actions:** `sendInput(data: string): boolean` returns `true` only after sending encoded bytes to the active open WebSocket; `focusTerminal(): boolean` returns `true` only after focusing the active xterm instance

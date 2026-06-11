@@ -136,5 +136,28 @@ Complete implementation and component test updates.
 2. If the harness is degraded or unavailable, record friction with `./harness friction add` and run the equivalent project commands from `.harness/contract.yml`.
 
 ### Expected Result
+
 - `./harness verify` returns a passing verdict.
 - Lint, format check, build, full Vitest suite, and smoke checks pass.
+
+## Test 78-T08: Active Copilot status survives another browser connection
+
+- **Type:** Unit / Server + Component
+- **Task:** Task 78-1, Task 78-2
+- **Priority:** High
+
+### Setup
+
+Connect multiple terminal WebSocket clients for the same project slug, then emit active Copilot PTY output from one server-side terminal stream.
+
+### Steps
+
+1. Confirm the server broadcasts the active `"running"` status frame to already-connected same-project clients.
+2. Connect another same-project client after the active status was detected.
+3. Render `TerminalPanel` with a disconnected terminal hook state.
+
+### Expected Result
+
+- Existing same-project browser clients receive the active status frame.
+- Newly connected same-project browser clients receive the cached active status frame without waiting for fresh PTY output.
+- A disconnected browser terminal does not overwrite the sidebar's cached active project badge with `"idle"`.

@@ -91,3 +91,18 @@
 - Harness evidence: `.harness/evidence/verify-20260609T080510Z-38880.json`.
 - Recorded harness friction for the targeted Vitest run because the harness `test` verb does not accept file arguments.
 - No Copilot detection, protocol, context storage, or architecture documentation changes were made in this follow-up.
+
+## Follow-up: Multi-client active status replay
+
+- **Status:** Complete
+- **Files Changed:** `src/server/terminal-server.mts`, `src/server/terminal-server.test.ts`, `src/components/terminal-panel.tsx`, `src/components/terminal-panel.test.tsx`, `project/architecture/ADR/ADR-0005-copilot-cli-status-detection-strategy.md`, `project/architecture/core-components/CORE-COMPONENT-0003-websocket-terminal.md`, `project/architecture/core-components/CORE-COMPONENT-0008-multi-project-tabs.md`, `project/architecture/ADR/DECISION-LOG.md`, `project/issues/78/plan/03-test-plan.md`
+
+### Changes Summary
+- Added a per-project Copilot status cache on the terminal WebSocket server so newly connected same-project browser clients receive the last known active status immediately.
+- Broadcast detected Copilot status changes to all connected same-project terminal clients.
+- Stopped `TerminalPanel` from forcing a project status back to `"idle"` solely because one browser terminal disconnects.
+
+### Test Results
+- `npm run test -- src/server/terminal-server.test.ts src/components/terminal-panel.test.tsx` — PASS
+- `./harness verify --json` — PASS (lint, format_check, build, test, smoke)
+- Harness evidence: `.harness/evidence/verify-20260611T081541Z-23087.json`
