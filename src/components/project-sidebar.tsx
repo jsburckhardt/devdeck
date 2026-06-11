@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { House, Robot, SidebarSimple, X } from "@phosphor-icons/react";
+import { House, SidebarSimple, X } from "@phosphor-icons/react";
 import { WorktreeTree } from "@/components/worktree-tree";
 import { closeNavigationTarget, projectRoute, useOpenProjects } from "@/lib/open-projects-context";
 import type { CopilotCliState } from "@/lib/types";
@@ -17,6 +17,29 @@ function isActiveCopilotStatus(status: CopilotCliState): status is ActiveCopilot
 
 function copilotStatusLabel(status: ActiveCopilotCliState) {
   return status === "running" ? "Copilot CLI running" : "Copilot CLI waiting for input";
+}
+
+function CopilotBotIcon() {
+  return (
+    <svg
+      data-testid="copilot-bot-icon"
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path d="M7.5 6.5 6.5 3.5" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M16.5 6.5 17.5 3.5" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M3.5 11.5h3v5h-3a1.5 1.5 0 0 1-1.5-1.5v-2A1.5 1.5 0 0 1 3.5 11.5Z" fill="#60a5fa" />
+      <path d="M17.5 11.5h3A1.5 1.5 0 0 1 22 13v2a1.5 1.5 0 0 1-1.5 1.5h-3v-5Z" fill="#60a5fa" />
+      <rect x="5" y="6" width="14" height="15" rx="3.5" fill="#d8b4fe" />
+      <rect x="6.5" y="9" width="11" height="7.5" rx="2" fill="#1e3a8a" />
+      <circle cx="9.5" cy="12.75" r="1.15" fill="#67e8f9" />
+      <circle cx="14.5" cy="12.75" r="1.15" fill="#67e8f9" />
+      <path d="M10 18h4" stroke="#7c3aed" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
 }
 
 function readPersistedCollapsedState(): boolean {
@@ -130,16 +153,16 @@ export function ProjectSidebar() {
                   <span
                     data-testid={`project-badge-${project.slug}`}
                     title={project.name}
-                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-[10px] font-bold text-white ${languageColor(project.language)} ${
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded ${
                       hasActiveCopilotStatus
                         ? copilotStatus === "running"
-                          ? "animate-pulse"
-                          : "ring-2 ring-[oklch(0.75_0.18_55)]"
-                        : ""
+                          ? "animate-pulse bg-transparent"
+                          : "bg-transparent ring-2 ring-[oklch(0.75_0.18_55)]"
+                        : `text-[10px] font-bold text-white ${languageColor(project.language)}`
                     }`}
                   >
                     {hasActiveCopilotStatus ? (
-                      <Robot size={16} weight="bold" aria-hidden="true" />
+                      <CopilotBotIcon />
                     ) : (
                       project.name.charAt(0).toUpperCase()
                     )}

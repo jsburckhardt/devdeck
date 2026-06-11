@@ -119,7 +119,7 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 86 | Add `worktree=<relative-path>` as an optional WebSocket query parameter on `/api/terminal`; server resolves it relative to the project root server-side | CORE-COMPONENT-0003 | 2026-05-23 |
 | 87 | Require `extractWorktree()` to reject paths containing `..` segments or resolving outside the project root; fall back to project root shell on rejection | CORE-COMPONENT-0003 | 2026-05-23 |
 | 88 | Require sidebar width of ~176 px with project names displayed as visible truncated text labels alongside the language-color badge | CORE-COMPONENT-0007 | 2026-05-23 |
-| 89 | Supersede Decision #47: sidebar tabs show language-color badge (initial letter, or active Copilot robot replacement) plus full project name text label, not initial letter only | CORE-COMPONENT-0007 | 2026-05-23 |
+| 89 | Supersede Decision #47: sidebar tabs show a project badge (language-color initial, or active Copilot-style bot replacement) plus full project name text label, not initial letter only | CORE-COMPONENT-0007 | 2026-05-23 |
 | 90 | Expose `activeWorktree: string \| null` and `setActiveWorktree` on WorkspaceContext for worktree terminal scoping | CORE-COMPONENT-0008 | 2026-05-23 |
 | 91 | Expose `worktreesSectionCollapsed: boolean` and `toggleWorktreesSection()` on WorkspaceContext | CORE-COMPONENT-0008 | 2026-05-23 |
 | 92 | Include `activeWorktree` and `worktreesSectionCollapsed` in `PerProjectWorkspaceState` for per-project cache persistence | CORE-COMPONENT-0008 | 2026-05-23 |
@@ -188,7 +188,7 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 155 | Route helper input through authenticated binary WebSocket frames | CORE-COMPONENT-0003 | 2026-06-06 |
 | 156 | Require helper input to no-op when no active WebSocket is open | CORE-COMPONENT-0003 | 2026-06-06 |
 | 157 | Expose `useTerminal.focusTerminal()` for terminal-helper focus restoration | CORE-COMPONENT-0003 | 2026-06-06 |
-| 158 | Preserve h-6 w-6 language-color project badges for active Copilot robots | CORE-COMPONENT-0007 | 2026-06-09 |
-| 159 | Replace project badge initials with Robot icons for running or waiting Copilot | CORE-COMPONENT-0008 | 2026-06-09 |
-| 160 | Suppress overlay Copilot dots when active robot badges render | CORE-COMPONENT-0008 | 2026-06-09 |
-| 161 | Expose active Copilot robot state with sr-only role=status text | CORE-COMPONENT-0008 | 2026-06-09 |
+| 158 | Preserve h-6 w-6 project badge sizing for active Copilot-style bot icons | CORE-COMPONENT-0007 | 2026-06-09 |
+| 159 | Replace project badge initials with Copilot-style bot icons for running or waiting Copilot | CORE-COMPONENT-0008 | 2026-06-09 |
+| 160 | Suppress overlay Copilot dots when active Copilot bot badges render | CORE-COMPONENT-0008 | 2026-06-09 |
+| 161 | Expose active Copilot bot state with sr-only role=status text | CORE-COMPONENT-0008 | 2026-06-09 |

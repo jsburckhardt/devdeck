@@ -1,4 +1,4 @@
-## Task 78-1: Implement conditional robot badge rendering
+## Task 78-1: Implement conditional Copilot bot badge rendering
 
 - **Status:** Complete
 - **Files Changed:** `src/components/project-sidebar.tsx`
@@ -6,9 +6,9 @@
 - **Tests Failed:** 0
 
 ### Changes Summary
-- Imported Phosphor `Robot` and render it only for active Copilot states: `"running"` and `"waiting"`.
+- Replaced the generic Phosphor `Robot` with a custom, more visible Copilot-style bot head icon for active Copilot states: `"running"` and `"waiting"`.
 - Kept idle and unrecognized statuses on the uppercase first-letter badge with no Copilot `role="status"` element.
-- Preserved the existing `h-6 w-6` language-color badge wrapper, project tab `aria-label`, `aria-current`, and `title={project.name}` behavior.
+- Preserved the existing `h-6 w-6` badge wrapper, project tab `aria-label`, `aria-current`, and `title={project.name}` behavior; active bot badges use the icon's own colors for visibility.
 - Removed the legacy overlay dot path by replacing it with an `sr-only` `role="status"` label for active states.
 - Applied `animate-pulse` for running and `ring-2 ring-[oklch(0.75_0.18_55)]` without pulse for waiting.
 
@@ -28,7 +28,7 @@
 
 ### Changes Summary
 - Added coverage for issue tests 78-T01 through 78-T06.
-- Asserted running robot replacement, waiting amber ring/no pulse, idle and unknown fallback, `sr-only` status text, collapsed visibility, no legacy status title/dot, native titles, and independent project statuses.
+- Asserted running Copilot-style bot replacement, waiting amber ring/no pulse, idle and unknown fallback, `sr-only` status text, collapsed visibility, no legacy status title/dot, native titles, and independent project statuses.
 
 ### Test Results
 - `npm run test -- src/components/project-sidebar.test.tsx` — PASS (36 tests)
@@ -68,9 +68,20 @@
 - **Tests Failed:** 0
 
 ### Changes Summary
-- Added `title={project.name}` to the visible project badge wrapper (`data-testid=project-badge-${project.slug}`) so both idle letter badges and active Robot badges expose the project name on native hover.
+- Added `title={project.name}` to the visible project badge wrapper (`data-testid=project-badge-${project.slug}`) so both idle letter badges and active Copilot bot badges expose the project name on native hover.
 - Preserved the existing project tab `title={project.name}` and the `sr-only role="status"` Copilot status label/title (`Copilot CLI running` / `Copilot CLI waiting for input`).
-- Expanded active Robot badge tests to assert the badge wrapper title for running, waiting, collapsed, and multi-project active states.
+- Expanded active Copilot bot badge tests to assert the badge wrapper title for running, waiting, collapsed, and multi-project active states.
+
+## Follow-up: Copilot-style bot head icon
+
+- **Status:** Complete
+- **Files Changed:** `src/components/project-sidebar.tsx`, `src/components/project-sidebar.test.tsx`, `project/architecture/core-components/CORE-COMPONENT-0007-shell-layout.md`, `project/architecture/core-components/CORE-COMPONENT-0008-multi-project-tabs.md`, `project/architecture/ADR/DECISION-LOG.md`
+
+### Changes Summary
+- Replaced the generic Phosphor `Robot` active badge with a custom Copilot-style bot head SVG so the active state is more recognizable and visible.
+- Active bot badges keep the `h-6 w-6` badge footprint but use the bot icon's own colors instead of the project language-color fill.
+- Kept `animate-pulse` for running, the amber ring for waiting, and the `sr-only role="status"` accessible labels.
+- Updated architecture docs and decision-log wording from generic Robot icons to Copilot-style bot badges.
 
 ### Test Results
 - `npm run test -- src/components/project-sidebar.test.tsx` — PASS (36 tests)

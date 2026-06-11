@@ -70,8 +70,8 @@ function getProjectBadge(slug: string) {
   return screen.getByTestId(`project-badge-${slug}`);
 }
 
-function expectRobotIcon(badge: HTMLElement) {
-  expect(badge.querySelector("svg")).not.toBeNull();
+function expectCopilotBotIcon(badge: HTMLElement) {
+  expect(badge.querySelector('[data-testid="copilot-bot-icon"]')).not.toBeNull();
 }
 
 let mockOpenProjects: Project[] = defaultOpenProjects;
@@ -517,12 +517,12 @@ describe("ProjectSidebar", () => {
     render(<ProjectSidebar />);
 
     expect(screen.getByRole("status", { name: /running/i })).toHaveClass("sr-only");
-    expectRobotIcon(getProjectBadge("proj-b"));
+    expectCopilotBotIcon(getProjectBadge("proj-b"));
 
     await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
 
     expect(screen.getByRole("status", { name: /running/i })).toBeInTheDocument();
-    expectRobotIcon(getProjectBadge("proj-b"));
+    expectCopilotBotIcon(getProjectBadge("proj-b"));
   });
 
   it("TP8: collapsed controls retain native titles and active aria-current", async () => {
@@ -574,8 +574,8 @@ describe("ProjectSidebar", () => {
     });
   });
 
-  describe("Copilot CLI robot badges", () => {
-    it("78-T01: renders an active running robot badge", () => {
+  describe("Copilot CLI bot badges", () => {
+    it("78-T01: renders an active running Copilot-style bot badge", () => {
       mockGetCopilotStatus = vi.fn((slug: string) =>
         slug === "proj-a" ? ("running" as const) : ("idle" as const),
       );
@@ -596,13 +596,13 @@ describe("ProjectSidebar", () => {
       expect(badge).toHaveAttribute("title", "Alpha");
       expect(badge.className).toContain("h-6");
       expect(badge.className).toContain("w-6");
-      expect(badge.className).toContain("bg-blue-500");
+      expect(badge.className).toContain("bg-transparent");
       expect(badge.className).toContain("animate-pulse");
-      expectRobotIcon(badge);
+      expectCopilotBotIcon(badge);
       expect(badge).not.toHaveTextContent("A");
     });
 
-    it("78-T02: renders an amber non-pulsing waiting robot badge", () => {
+    it("78-T02: renders an amber non-pulsing waiting Copilot-style bot badge", () => {
       mockGetCopilotStatus = vi.fn((slug: string) =>
         slug === "proj-b" ? ("waiting" as const) : ("idle" as const),
       );
@@ -622,11 +622,11 @@ describe("ProjectSidebar", () => {
       expect(badge).toHaveAttribute("title", "Beta");
       expect(badge.className).toContain("h-6");
       expect(badge.className).toContain("w-6");
-      expect(badge.className).toContain("bg-green-500");
+      expect(badge.className).toContain("bg-transparent");
       expect(badge.className).toContain("ring-2");
       expect(badge.className).toContain("ring-[oklch(0.75_0.18_55)]");
       expect(badge.className).not.toContain("animate-pulse");
-      expectRobotIcon(badge);
+      expectCopilotBotIcon(badge);
       expect(badge).not.toHaveTextContent("B");
     });
 
@@ -681,7 +681,7 @@ describe("ProjectSidebar", () => {
       expect(labels).toContain("Copilot CLI waiting for input");
     });
 
-    it("78-T05: keeps active robot badges visible in collapsed mode", async () => {
+    it("78-T05: keeps active Copilot-style bot badges visible in collapsed mode", async () => {
       const user = userEvent.setup();
       mockGetCopilotStatus = vi.fn((slug: string) =>
         slug === "proj-b" ? ("running" as const) : ("idle" as const),
@@ -694,7 +694,7 @@ describe("ProjectSidebar", () => {
       expect(screen.getByRole("status", { name: /running/i })).toBeInTheDocument();
       const badge = getProjectBadge("proj-b");
       expect(badge).toHaveAttribute("title", "Beta");
-      expectRobotIcon(badge);
+      expectCopilotBotIcon(badge);
       expect(badge.className).toContain("animate-pulse");
       expect(screen.queryByText("Beta")).not.toBeInTheDocument();
 
@@ -715,12 +715,12 @@ describe("ProjectSidebar", () => {
 
       const alphaBadge = getProjectBadge("proj-a");
       expect(alphaBadge).toHaveAttribute("title", "Alpha");
-      expectRobotIcon(alphaBadge);
+      expectCopilotBotIcon(alphaBadge);
       expect(alphaBadge.className).toContain("animate-pulse");
 
       const betaBadge = getProjectBadge("proj-b");
       expect(betaBadge).toHaveAttribute("title", "Beta");
-      expectRobotIcon(betaBadge);
+      expectCopilotBotIcon(betaBadge);
       expect(betaBadge.className).toContain("ring-[oklch(0.75_0.18_55)]");
       expect(betaBadge.className).not.toContain("animate-pulse");
 

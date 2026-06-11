@@ -1,6 +1,6 @@
-# Test Plan: Issue #78 — Active Copilot Robot Badge in Sidebar
+# Test Plan: Issue #78 — Active Copilot Bot Badge in Sidebar
 
-## Test 78-T01: Running Copilot renders an active robot badge
+## Test 78-T01: Running Copilot renders an active Copilot bot badge
 
 - **Type:** Unit / Component
 - **Task:** Task 78-1, Task 78-2
@@ -16,12 +16,12 @@ Mock `getCopilotStatus("proj-a")` to return `"running"` and render `ProjectSideb
 
 ### Expected Result
 - The Alpha tab keeps `aria-label="Open project Alpha"` and `title="Alpha"`.
-- The first-letter `A` is replaced by a robot badge for the active state.
+- The first-letter `A` is replaced by a Copilot-style bot badge for the active state.
 - The badge wrapper still includes `h-6`, `w-6`, and the TypeScript language color class.
 - The active badge/status includes `animate-pulse`.
-- No legacy overlay dot is rendered alongside the robot badge.
+- No legacy overlay dot is rendered alongside the bot badge.
 
-## Test 78-T02: Waiting Copilot renders an amber non-pulsing robot badge
+## Test 78-T02: Waiting Copilot renders an amber non-pulsing Copilot bot badge
 
 - **Type:** Unit / Component
 - **Task:** Task 78-1, Task 78-2
@@ -36,7 +36,7 @@ Mock `getCopilotStatus("proj-b")` to return `"waiting"` and render `ProjectSideb
 3. Inspect the active badge classes.
 
 ### Expected Result
-- The Beta badge shows the robot replacement instead of the `B` initial.
+- The Beta badge shows the Copilot bot replacement instead of the `B` initial.
 - The status text announces `Copilot CLI waiting for input`.
 - The active badge has an amber ring style.
 - The active badge does not include `animate-pulse`.
@@ -82,7 +82,7 @@ Mock one project as `"running"` and another as `"waiting"`; render `ProjectSideb
 - Active Copilot states are announced by `sr-only role="status"` text.
 - Running and waiting status labels are distinct and do not rely on color alone.
 
-## Test 78-T05: Collapsed sidebar keeps active robot badge visible
+## Test 78-T05: Collapsed sidebar keeps active Copilot bot badge visible
 
 - **Type:** Unit / Component
 - **Task:** Task 78-1, Task 78-2
@@ -98,7 +98,7 @@ Mock the active project status as `"running"` and render `ProjectSidebar`.
 
 ### Expected Result
 - The sidebar switches to `w-12`.
-- The active robot badge/status remains present in collapsed mode.
+- The active Copilot bot badge/status remains present in collapsed mode.
 - Project-name text labels are hidden, but project tab `title` attributes remain.
 - Existing collapsed close-button and worktree CSS-hide behavior is unaffected.
 
@@ -118,8 +118,8 @@ Mock `proj-a` as `"running"`, `proj-b` as `"waiting"`, and `proj-c` as `"idle"`;
 
 ### Expected Result
 - Exactly two active Copilot status elements are rendered.
-- Alpha has a running robot badge.
-- Beta has a waiting robot badge.
+- Alpha has a running Copilot bot badge.
+- Beta has a waiting Copilot bot badge.
 - Charlie keeps the `C` first-letter badge and has no Copilot status element.
 
 ## Test 78-T07: Full repository verification passes

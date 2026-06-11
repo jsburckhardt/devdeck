@@ -10,8 +10,8 @@
 
 - **scope_type:** `issue`
 - **Rationale:** This is a targeted UI change in `src/components/project-sidebar.tsx`.
-  It reuses the existing `CopilotCliState` pipeline and existing Phosphor icon
-  dependency. It does not introduce new data flow, persistence, or detection behavior.
+  It reuses the existing `CopilotCliState` pipeline and does not introduce new data
+  flow, persistence, or detection behavior.
 - **ADR required:** No
 - **Core-component update required:** Yes — update existing sidebar/Copilot indicator
   rules in CORE-COMPONENT-0007 and CORE-COMPONENT-0008, plus DECISION-LOG entries.
@@ -33,11 +33,9 @@ Relevant source:
 
 When `copilotStatus` is `"running"` or `"waiting"`:
 
-- Replace the first-letter badge contents with a `Robot` icon from
-  `@phosphor-icons/react`
-- Keep the badge dimensions (`h-6 w-6`) and `languageColor(project.language)`
-  background unchanged
-- Suppress the small overlay dot so the robot badge is the Copilot activity indicator
+- Replace the first-letter badge contents with a visible Copilot-style bot head icon
+- Keep the badge dimensions (`h-6 w-6`) unchanged
+- Suppress the small overlay dot so the bot badge is the Copilot activity indicator
 - Preserve hover project-name discovery using the native `title={project.name}` tooltip
 - Preserve accessible status semantics with an `sr-only role="status"` element for active
   states
@@ -51,11 +49,11 @@ When `copilotStatus` is `"idle"` or unrecognized:
 - **ADR-0005** already defines the Copilot status detection strategy and state model.
   No detection or server protocol changes are required.
 - **CORE-COMPONENT-0007** currently requires expanded and collapsed sidebar tabs to show
-  the language-color badge; it should be amended to allow the active Copilot robot icon
-  replacement inside the same badge.
+  the project badge; it should be amended to allow the active Copilot bot icon
+  replacement inside the same badge footprint.
 - **CORE-COMPONENT-0008** currently defines the sidebar Copilot status indicator as an
   adjacent/overlay indicator; it should be amended so the status indicator may be the
-  robot badge replacement.
+  Copilot bot badge replacement.
 - **Decision #53** requires native `title` attributes for sidebar tooltips and prohibits
   adding tooltip dependencies.
 - **Decisions #102, #103, and #132** remain relevant: the Copilot status indicator is
@@ -66,11 +64,11 @@ When `copilotStatus` is `"idle"` or unrecognized:
 
 | File | Required work |
 |------|---------------|
-| `src/components/project-sidebar.tsx` | Add `Robot` import; render robot badge for non-idle Copilot state; keep letter badge for idle/fallback; remove or stop rendering overlay dot for robot states; add `sr-only role="status"` for active states. |
-| `src/components/project-sidebar.test.tsx` | Update Copilot indicator tests to assert robot badge behavior, active status semantics, idle fallback, collapsed visibility, tooltip/title, and independent per-project statuses. |
+| `src/components/project-sidebar.tsx` | Render a Copilot-style bot badge for non-idle Copilot state; keep letter badge for idle/fallback; remove or stop rendering overlay dot for bot states; add `sr-only role="status"` for active states. |
+| `src/components/project-sidebar.test.tsx` | Update Copilot indicator tests to assert bot badge behavior, active status semantics, idle fallback, collapsed visibility, tooltip/title, and independent per-project statuses. |
 | `project/architecture/core-components/CORE-COMPONENT-0007-shell-layout.md` | Amend sidebar badge rules for conditional robot replacement. |
-| `project/architecture/core-components/CORE-COMPONENT-0008-multi-project-tabs.md` | Amend Copilot sidebar indicator rules for robot badge replacement. |
-| `project/architecture/ADR/DECISION-LOG.md` | Add decisions for conditional robot badge replacement and accessible status semantics. |
+| `project/architecture/core-components/CORE-COMPONENT-0008-multi-project-tabs.md` | Amend Copilot sidebar indicator rules for Copilot bot badge replacement. |
+| `project/architecture/ADR/DECISION-LOG.md` | Add decisions for conditional Copilot bot badge replacement and accessible status semantics. |
 
 ## Constraints
 
@@ -83,12 +81,12 @@ When `copilotStatus` is `"idle"` or unrecognized:
 
 ## Testing Focus
 
-- Robot badge appears for `"running"` and `"waiting"`.
+- Copilot bot badge appears for `"running"` and `"waiting"`.
 - Letter badge appears for `"idle"` and unknown status fallback.
 - Running badge has `animate-pulse`.
 - Waiting badge has the configured amber ring and no pulse.
 - Project name hover tooltip remains available.
-- Overlay `CopilotStatusIndicator` dot is not rendered alongside the robot badge.
+- Overlay `CopilotStatusIndicator` dot is not rendered alongside the bot badge.
 - `sr-only role="status"` announces active Copilot state.
 - Multiple project statuses render independently.
-- Collapsed sidebar still shows the robot badge.
+- Collapsed sidebar still shows the bot badge.

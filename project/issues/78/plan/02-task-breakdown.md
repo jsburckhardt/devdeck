@@ -1,6 +1,6 @@
-# Task Breakdown: Issue #78 — Active Copilot Robot Badge in Sidebar
+# Task Breakdown: Issue #78 — Active Copilot Bot Badge in Sidebar
 
-## Task 78-1: Implement conditional robot badge rendering
+## Task 78-1: Implement conditional Copilot bot badge rendering
 
 - **Status:** Pending
 - **Complexity:** Medium
@@ -9,21 +9,21 @@
 - **Related Core-Components:** CORE-COMPONENT-0007, CORE-COMPONENT-0008
 
 ### Description
-Update `src/components/project-sidebar.tsx` so active Copilot CLI states replace the project initial inside the existing badge with a Phosphor `Robot` icon. Preserve the existing badge wrapper dimensions, `languageColor(project.language)` background, project tab accessible name, active tab semantics, and native project-name `title`. Treat only `"running"` and `"waiting"` as active; render the first-letter badge for `"idle"` and any unrecognized status value.
+Update `src/components/project-sidebar.tsx` so active Copilot CLI states replace the project initial inside the existing badge with a visible Copilot-style bot head icon. Preserve the existing badge wrapper dimensions, project tab accessible name, active tab semantics, and native project-name `title`. Treat only `"running"` and `"waiting"` as active; render the first-letter language-color badge for `"idle"` and any unrecognized status value.
 
 ### Acceptance Criteria
-- `Robot` is imported from `@phosphor-icons/react`; no new package or tooltip dependency is added.
-- `"running"` and `"waiting"` Copilot states render a robot icon inside the same `h-6 w-6` language-color badge wrapper.
+- No new package or tooltip dependency is added.
+- `"running"` and `"waiting"` Copilot states render a Copilot-style bot icon inside the same `h-6 w-6` badge footprint.
 - `"idle"` and unrecognized Copilot statuses render the existing uppercase first-letter badge and no Copilot status element.
-- The overlay/dot `CopilotStatusIndicator` is removed or not rendered when the robot badge is shown.
-- `"running"` robot badge includes `animate-pulse`.
-- `"waiting"` robot badge uses an amber ring style and does not include `animate-pulse`.
+- The overlay/dot `CopilotStatusIndicator` is removed or not rendered when the bot badge is shown.
+- `"running"` bot badge includes `animate-pulse`.
+- `"waiting"` bot badge uses an amber ring style and does not include `animate-pulse`.
 - Active robot states expose `sr-only` text with `role="status"` using the labels `Copilot CLI running` and `Copilot CLI waiting for input`.
 - Project tabs retain `aria-label="Open project ${project.name}"`, `aria-current` for the active project, and `title={project.name}` for native hover discovery.
 - No Copilot detection pipeline, WebSocket protocol, `CopilotCliState` type, or context storage behavior is changed.
 
 ### Test Coverage
-- Add or update `src/components/project-sidebar.test.tsx` coverage proving active robot replacement, idle/unknown fallback, status text, styling differences, no overlay dot, and preserved tab attributes.
+- Add or update `src/components/project-sidebar.test.tsx` coverage proving active Copilot bot replacement, idle/unknown fallback, status text, styling differences, no overlay dot, and preserved tab attributes.
 - Existing navigation, close-button, collapse, title, and worktree-selector tests must continue to pass.
 
 ## Task 78-2: Expand ProjectSidebar tests for sidebar modes and independent statuses
@@ -35,17 +35,17 @@ Update `src/components/project-sidebar.tsx` so active Copilot CLI states replace
 - **Related Core-Components:** CORE-COMPONENT-0006, CORE-COMPONENT-0007, CORE-COMPONENT-0008
 
 ### Description
-Update the React Testing Library tests around Copilot sidebar status indicators so they verify the new robot badge contract instead of the legacy overlay dot. Include active, idle, unknown, expanded, collapsed, and multi-project cases.
+Update the React Testing Library tests around Copilot sidebar status indicators so they verify the new Copilot bot badge contract instead of the legacy overlay dot. Include active, idle, unknown, expanded, collapsed, and multi-project cases.
 
 ### Acceptance Criteria
-- Tests assert `"running"` renders an accessible active robot badge with `animate-pulse`.
-- Tests assert `"waiting"` renders an accessible active robot badge with an amber ring and no pulse.
+- Tests assert `"running"` renders an accessible active Copilot bot badge with `animate-pulse`.
+- Tests assert `"waiting"` renders an accessible active Copilot bot badge with an amber ring and no pulse.
 - Tests assert idle projects render initials and no Copilot `role="status"` element.
 - Tests assert an unknown status value falls back to the initial badge and no Copilot `role="status"` element.
 - Tests assert native `title` attributes remain on project tabs and no tooltip dependency is introduced.
-- Tests assert collapsed sidebar mode still shows active robot badges.
+- Tests assert collapsed sidebar mode still shows active Copilot bot badges.
 - Tests assert different projects can independently render running, waiting, and idle badge states.
-- Tests assert the legacy overlay dot is absent when the active robot badge is rendered.
+- Tests assert the legacy overlay dot is absent when the active bot badge is rendered.
 
 ### Test Coverage
 - `npm run test -- src/components/project-sidebar.test.tsx` or the closest harness-supported targeted test command should pass during implementation.
