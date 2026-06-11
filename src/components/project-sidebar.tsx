@@ -9,6 +9,38 @@ import type { CopilotCliState } from "@/lib/types";
 import { languageColor } from "@/lib/utils";
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "devdeck-sidebar-collapsed";
+type ActiveCopilotCliState = Extract<CopilotCliState, "running" | "waiting">;
+
+function isActiveCopilotStatus(status: CopilotCliState): status is ActiveCopilotCliState {
+  return status === "running" || status === "waiting";
+}
+
+function copilotStatusLabel(status: ActiveCopilotCliState) {
+  return status === "running" ? "Copilot CLI running" : "Copilot CLI waiting for input";
+}
+
+function CopilotBotIcon() {
+  return (
+    <svg
+      data-testid="copilot-bot-icon"
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path d="M7.5 6.5 6.5 3.5" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M16.5 6.5 17.5 3.5" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M3.5 11.5h3v5h-3a1.5 1.5 0 0 1-1.5-1.5v-2A1.5 1.5 0 0 1 3.5 11.5Z" fill="#60a5fa" />
+      <path d="M17.5 11.5h3A1.5 1.5 0 0 1 22 13v2a1.5 1.5 0 0 1-1.5 1.5h-3v-5Z" fill="#60a5fa" />
+      <rect x="5" y="6" width="14" height="15" rx="3.5" fill="#d8b4fe" />
+      <rect x="6.5" y="9" width="11" height="7.5" rx="2" fill="#1e3a8a" />
+      <circle cx="9.5" cy="12.75" r="1.15" fill="#67e8f9" />
+      <circle cx="14.5" cy="12.75" r="1.15" fill="#67e8f9" />
+      <path d="M10 18h4" stroke="#7c3aed" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 function readPersistedCollapsedState(): boolean {
   if (typeof window === "undefined") {
@@ -97,6 +129,11 @@ export function ProjectSidebar() {
         {openProjects.map((project) => {
           const isActive = activeSlug === project.slug;
           const copilotStatus: CopilotCliState = getCopilotStatus(project.slug);
+          const hasActiveCopilotStatus = isActiveCopilotStatus(copilotStatus);
+          const activeCopilotLabel = hasActiveCopilotStatus
+            ? copilotStatusLabel(copilotStatus)
+            : undefined;
+
           return (
             <div key={project.slug} className="group relative mx-2 min-w-0">
               <button
@@ -114,11 +151,32 @@ export function ProjectSidebar() {
               >
                 <span className="relative">
                   <span
-                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-[10px] font-bold text-white ${languageColor(project.language)}`}
+                    data-testid={`project-badge-${project.slug}`}
+                    title={project.name}
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded ${
+                      hasActiveCopilotStatus
+                        ? copilotStatus === "running"
+                          ? "animate-pulse bg-transparent"
+                          : "bg-transparent ring-2 ring-[oklch(0.75_0.18_55)]"
+                        : `text-[10px] font-bold text-white ${languageColor(project.language)}`
+                    }`}
                   >
-                    {project.name.charAt(0).toUpperCase()}
+                    {hasActiveCopilotStatus ? (
+                      <CopilotBotIcon />
+                    ) : (
+                      project.name.charAt(0).toUpperCase()
+                    )}
                   </span>
-                  {copilotStatus !== "idle" && <CopilotStatusIndicator status={copilotStatus} />}
+                  {activeCopilotLabel && (
+                    <span
+                      className="sr-only"
+                      role="status"
+                      aria-label={activeCopilotLabel}
+                      title={activeCopilotLabel}
+                    >
+                      {activeCopilotLabel}
+                    </span>
+                  )}
                 </span>
                 {!isCollapsed && <span className="truncate text-sm">{project.name}</span>}
               </button>
@@ -171,21 +229,5 @@ export function ProjectSidebar() {
         </button>
       </div>
     </nav>
-  );
-}
-
-function CopilotStatusIndicator({ status }: { status: CopilotCliState }) {
-  const label = status === "running" ? "Copilot CLI running" : "Copilot CLI waiting for input";
-  return (
-    <span
-      className={`absolute -top-0.5 -right-0.5 block h-1.5 w-1.5 rounded-full ${
-        status === "running"
-          ? "animate-pulse bg-[oklch(0.72_0.19_142)]"
-          : "bg-[oklch(0.75_0.18_55)]"
-      }`}
-      aria-label={label}
-      title={label}
-      role="status"
-    />
   );
 }

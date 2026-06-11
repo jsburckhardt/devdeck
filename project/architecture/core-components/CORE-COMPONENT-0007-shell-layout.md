@@ -2,7 +2,7 @@
 
 ## Status
 
-Adopted (updated) - 2026-05-30
+Adopted (updated) - 2026-06-09
 
 ## Purpose
 
@@ -44,8 +44,12 @@ Define the top-level IDE shell structure that all DevDeck pages share. The shell
 - Sidebar collapse MUST NOT be stored in per-project workspace state
 - The sidebar collapse toggle MUST use `SidebarSimple` with `aria-label`, `aria-expanded`, and native `title` attributes
 - A sidebar collapse keyboard shortcut MUST NOT be implemented in v1
-- Each expanded sidebar tab MUST display the project's language-color badge and the project name as a visible truncated text label
-- Each collapsed sidebar tab MUST display the project's language-color badge while hiding project-name text
+- Each expanded sidebar tab MUST display the project badge and the project name as a visible truncated text label
+- Each collapsed sidebar tab MUST display the project badge while hiding project-name text
+- The project badge MUST keep `h-6 w-6`, `shrink-0`, and rounded styling in both sidebar modes
+- The project badge MUST show the first project-name letter when Copilot status is `"idle"` or not recognized as active
+- The project badge MUST use the `languageColor(project.language)` background only for the idle first-letter badge
+- The project badge MUST replace the first-letter content with a visible Copilot-style bot head icon when Copilot status is `"running"` or `"waiting"`
 - The sidebar MUST NOT participate in the `react-resizable-panels` layout — it is a static-width element
 
 ### Interfaces
@@ -124,6 +128,7 @@ export default function Home() {
 - [x] Test coverage requirements: Shell layout smoke test must pass
 - [x] Test coverage requirements: Layout tests must assert Explorer mounted-collapse behavior, toggle order, pairwise separators, last-panel guard, and `PanelToggle` accessibility
 - [ ] Automated checks: ProjectSidebar tests must assert expanded `w-44`, collapsed `w-12`, persisted collapse state, and accessible toggle attributes
+- [ ] Automated checks: ProjectSidebar tests must assert active Copilot bot badges preserve `h-6 w-6` sizing and visibility in expanded and collapsed modes
 
 ## Related ADRs
 

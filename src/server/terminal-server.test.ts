@@ -158,6 +158,26 @@ function waitForClose(client: WebSocket): Promise<{ code: number; reason: string
   });
 }
 
+function waitForJsonMessage<T extends Record<string, unknown>>(
+  client: WebSocket,
+  predicate: (message: T) => boolean,
+): Promise<T> {
+  return new Promise((resolve) => {
+    const onMessage = (data: Buffer) => {
+      try {
+        const parsed = JSON.parse(data.toString()) as T;
+        if (predicate(parsed)) {
+          client.off("message", onMessage);
+          resolve(parsed);
+        }
+      } catch {
+        // binary PTY output is ignored by JSON-message tests
+      }
+    };
+    client.on("message", onMessage);
+  });
+}
+
 // --- Tests ---
 describe("terminal-server", () => {
   let handle: TerminalServerHandle | null = null;
@@ -327,6 +347,47 @@ describe("terminal-server", () => {
     await tick(100);
 
     expect(fakePty.kill).toHaveBeenCalledTimes(1);
+  });
+
+  it("T7b: broadcasts and caches per-project Copilot status for other browser clients", async () => {
+    const srv = await createServer();
+    handle = srv.handle;
+
+    const firstClient = await connectClientWithSlug(srv.port, "demo");
+    clients.push(firstClient);
+    await tick();
+
+    const secondClient = await connectClientWithSlug(srv.port, "demo");
+    clients.push(secondClient);
+    await tick();
+
+    const firstStatus = waitForJsonMessage<{ type?: string; copilotState?: string }>(
+      firstClient,
+      (message) => message.type === "status" && message.copilotState === "running",
+    );
+    const secondStatus = waitForJsonMessage<{ type?: string; copilotState?: string }>(
+      secondClient,
+      (message) => message.type === "status" && message.copilotState === "running",
+    );
+
+    fakePty._emitData("⠋ Thinking...");
+
+    expect(await firstStatus).toMatchObject({ type: "status", copilotState: "running" });
+    expect(await secondStatus).toMatchObject({ type: "status", copilotState: "running" });
+
+    const laterClient = new WebSocket(`ws://127.0.0.1:${srv.port}?slug=demo`);
+    clients.push(laterClient);
+    const cachedStatusPromise = waitForJsonMessage<{ type?: string; copilotState?: string }>(
+      laterClient,
+      (message) => message.type === "status" && message.copilotState === "running",
+    );
+    await new Promise<void>((resolve, reject) => {
+      laterClient.on("open", () => resolve());
+      laterClient.on("error", reject);
+    });
+    const cachedStatus = await cachedStatusPromise;
+
+    expect(cachedStatus).toMatchObject({ type: "status", copilotState: "running" });
   });
 
   it("T8: PTY spawn failure sends structured error", async () => {
@@ -1134,12 +1195,39 @@ describe("detectCopilotState", () => {
     }
   });
 
+  it("T1-3b: returns 'running' for bare braille spinners and unknown spinner text", () => {
+    expect(detectCopilotState("⠋")).toBe("running");
+    expect(detectCopilotState("⠙ Compiling context")).toBe("running");
+  });
+
+  it("T1-4: returns 'running' for non-braille activity spinner characters", () => {
+    for (const ch of "⣾⣽⣻⢿⡿⣟⣯⣷◐◓◑◒✦✧◆◇●⊙") {
+      expect(detectCopilotState(`${ch} Working...`)).toBe("running");
+    }
+  });
+
+  it("T1-5: returns 'running' for Copilot CLI status-line activity text", () => {
+    expect(detectCopilotState("⊙ Working esc cancel")).toBe("running");
+  });
+
+  it("T1-6: returns null for generic transcript activity text", () => {
+    expect(detectCopilotState("Running command ./harness verify")).toBeNull();
+    expect(detectCopilotState("Copilot agent is executing tools")).toBeNull();
+  });
+
   it("T2-1: returns 'waiting' for '> ' prompt at end", () => {
     expect(detectCopilotState("some text\n> ")).toBe("waiting");
   });
 
   it("T2-2: returns 'waiting' for '? ' prompt", () => {
     expect(detectCopilotState("? Do you want to continue? ")).toBe("waiting");
+  });
+
+  it("T2-3: returns 'waiting' for textual input request prompts", () => {
+    expect(detectCopilotState("Waiting for input")).toBe("waiting");
+    expect(detectCopilotState("Waiting for feedback")).toBe("waiting");
+    expect(detectCopilotState("Requires confirmation")).toBe("waiting");
+    expect(detectCopilotState("Press Enter to continue")).toBe("waiting");
   });
 
   it("T3-1: returns 'idle' for shell prompt with $", () => {

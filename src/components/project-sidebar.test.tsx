@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ProjectSidebar } from "./project-sidebar";
-import type { Project } from "@/lib/types";
+import type { CopilotCliState, Project } from "@/lib/types";
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "devdeck-sidebar-collapsed";
 
@@ -64,6 +64,14 @@ function createManyOpenProjects(count: number): Project[] {
       source: "auto",
     };
   });
+}
+
+function getProjectBadge(slug: string) {
+  return screen.getByTestId(`project-badge-${slug}`);
+}
+
+function expectCopilotBotIcon(badge: HTMLElement) {
+  expect(badge.querySelector('[data-testid="copilot-bot-icon"]')).not.toBeNull();
 }
 
 let mockOpenProjects: Project[] = defaultOpenProjects;
@@ -508,11 +516,13 @@ describe("ProjectSidebar", () => {
     );
     render(<ProjectSidebar />);
 
-    expect(screen.getByRole("status", { name: /running/i })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: /running/i })).toHaveClass("sr-only");
+    expectCopilotBotIcon(getProjectBadge("proj-b"));
 
     await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
 
     expect(screen.getByRole("status", { name: /running/i })).toBeInTheDocument();
+    expectCopilotBotIcon(getProjectBadge("proj-b"));
   });
 
   it("TP8: collapsed controls retain native titles and active aria-current", async () => {
@@ -533,8 +543,7 @@ describe("ProjectSidebar", () => {
     expect(tabs[0]).toHaveAttribute("title", "Alpha");
     expect(tabs[1]).toHaveAttribute("title", "Beta");
     expect(tabs[1]).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("status", { name: /waiting/i })).toHaveAttribute(
-      "title",
+    expect(screen.getByRole("status", { name: /waiting/i })).toHaveTextContent(
       "Copilot CLI waiting for input",
     );
     expect(screen.getByRole("button", { name: "Expand sidebar" })).toHaveAttribute(
@@ -565,42 +574,86 @@ describe("ProjectSidebar", () => {
     });
   });
 
-  describe("Copilot CLI status indicators", () => {
-    it("T13: renders status indicator with animate-pulse for 'running' project", () => {
+  describe("Copilot CLI bot badges", () => {
+    it("78-T01: renders an active running Copilot-style bot badge", () => {
       mockGetCopilotStatus = vi.fn((slug: string) =>
         slug === "proj-a" ? ("running" as const) : ("idle" as const),
       );
       render(<ProjectSidebar />);
 
-      const indicator = screen.getByRole("status", { name: /running/i });
-      expect(indicator).toBeInTheDocument();
-      expect(indicator).toHaveAttribute("aria-label", "Copilot CLI running");
-      expect(indicator).toHaveAttribute("title", "Copilot CLI running");
-      expect(indicator.className).toContain("animate-pulse");
+      const alphaTab = screen.getByRole("button", { name: "Open project Alpha" });
+      expect(alphaTab).toHaveAttribute("aria-label", "Open project Alpha");
+      expect(alphaTab).toHaveAttribute("title", "Alpha");
+
+      const status = screen.getByRole("status", { name: /running/i });
+      expect(status).toHaveClass("sr-only");
+      expect(status).toHaveAttribute("aria-label", "Copilot CLI running");
+      expect(status).toHaveAttribute("title", "Copilot CLI running");
+      expect(status).toHaveTextContent("Copilot CLI running");
+      expect(status.className).not.toContain("h-1.5");
+
+      const badge = getProjectBadge("proj-a");
+      expect(badge).toHaveAttribute("title", "Alpha");
+      expect(badge.className).toContain("h-6");
+      expect(badge.className).toContain("w-6");
+      expect(badge.className).toContain("bg-transparent");
+      expect(badge.className).toContain("animate-pulse");
+      expectCopilotBotIcon(badge);
+      expect(badge).not.toHaveTextContent("A");
     });
 
-    it("T14: renders status indicator without animate-pulse for 'waiting' project", () => {
+    it("78-T02: renders an amber non-pulsing waiting Copilot-style bot badge", () => {
       mockGetCopilotStatus = vi.fn((slug: string) =>
         slug === "proj-b" ? ("waiting" as const) : ("idle" as const),
       );
       render(<ProjectSidebar />);
 
-      const indicator = screen.getByRole("status", { name: /waiting/i });
-      expect(indicator).toBeInTheDocument();
-      expect(indicator).toHaveAttribute("aria-label", "Copilot CLI waiting for input");
-      expect(indicator).toHaveAttribute("title", "Copilot CLI waiting for input");
-      expect(indicator.className).not.toContain("animate-pulse");
+      const betaTab = screen.getByRole("button", { name: "Open project Beta" });
+      expect(betaTab).toHaveAttribute("title", "Beta");
+
+      const status = screen.getByRole("status", { name: /waiting/i });
+      expect(status).toHaveClass("sr-only");
+      expect(status).toHaveAttribute("aria-label", "Copilot CLI waiting for input");
+      expect(status).toHaveAttribute("title", "Copilot CLI waiting for input");
+      expect(status).toHaveTextContent("Copilot CLI waiting for input");
+      expect(status.className).not.toContain("h-1.5");
+
+      const badge = getProjectBadge("proj-b");
+      expect(badge).toHaveAttribute("title", "Beta");
+      expect(badge.className).toContain("h-6");
+      expect(badge.className).toContain("w-6");
+      expect(badge.className).toContain("bg-transparent");
+      expect(badge.className).toContain("ring-2");
+      expect(badge.className).toContain("ring-[oklch(0.75_0.18_55)]");
+      expect(badge.className).not.toContain("animate-pulse");
+      expectCopilotBotIcon(badge);
+      expect(badge).not.toHaveTextContent("B");
     });
 
-    it("T15: hides status indicator for 'idle' projects", () => {
+    it("78-T03: falls back to letter badges for idle and unknown statuses", () => {
       mockGetCopilotStatus = vi.fn(() => "idle" as const);
+      const { unmount } = render(<ProjectSidebar />);
+
+      expect(getProjectBadge("proj-a")).toHaveTextContent("A");
+      expect(getProjectBadge("proj-b")).toHaveTextContent("B");
+      expect(getProjectBadge("proj-c")).toHaveTextContent("C");
+      expect(screen.queryAllByRole("status", { name: /Copilot/i })).toHaveLength(0);
+      expect(screen.queryByTitle(/Copilot CLI/)).not.toBeInTheDocument();
+
+      unmount();
+
+      mockGetCopilotStatus = vi.fn((slug: string) =>
+        slug === "proj-a" ? ("thinking" as CopilotCliState) : ("idle" as const),
+      );
       render(<ProjectSidebar />);
 
-      const indicators = screen.queryAllByRole("status", { name: /Copilot/i });
-      expect(indicators).toHaveLength(0);
+      expect(getProjectBadge("proj-a")).toHaveTextContent("A");
+      expect(getProjectBadge("proj-a").querySelector("svg")).toBeNull();
+      expect(screen.queryAllByRole("status", { name: /Copilot/i })).toHaveLength(0);
+      expect(screen.queryByTitle(/Copilot CLI/)).not.toBeInTheDocument();
     });
 
-    it("T18: status indicators have both aria-label and title that differentiate states", () => {
+    it("78-T04: preserves project tab accessibility while exposing active status text", () => {
       mockGetCopilotStatus = vi.fn((slug: string) => {
         if (slug === "proj-a") return "running" as const;
         if (slug === "proj-b") return "waiting" as const;
@@ -608,17 +661,72 @@ describe("ProjectSidebar", () => {
       });
       render(<ProjectSidebar />);
 
-      const indicators = screen.getAllByRole("status", { name: /Copilot/i });
-      expect(indicators).toHaveLength(2);
+      const alphaTab = screen.getByRole("button", { name: "Open project Alpha" });
+      const betaTab = screen.getByRole("button", { name: "Open project Beta" });
+      const charlieTab = screen.getByRole("button", { name: "Open project Charlie" });
+      expect(alphaTab).toHaveAttribute("aria-label", "Open project Alpha");
+      expect(betaTab).toHaveAttribute("aria-label", "Open project Beta");
+      expect(charlieTab).toHaveAttribute("aria-label", "Open project Charlie");
+      expect(betaTab).toHaveAttribute("aria-current", "page");
 
-      indicators.forEach((indicator) => {
-        expect(indicator).toHaveAttribute("aria-label");
-        expect(indicator).toHaveAttribute("title");
+      const statuses = screen.getAllByRole("status", { name: /Copilot/i });
+      expect(statuses).toHaveLength(2);
+      statuses.forEach((status) => {
+        expect(status).toHaveClass("sr-only");
+        expect(status).toHaveAttribute("aria-label");
       });
 
-      const labels = indicators.map((i) => i.getAttribute("aria-label"));
+      const labels = statuses.map((status) => status.getAttribute("aria-label"));
       expect(labels).toContain("Copilot CLI running");
       expect(labels).toContain("Copilot CLI waiting for input");
+    });
+
+    it("78-T05: keeps active Copilot-style bot badges visible in collapsed mode", async () => {
+      const user = userEvent.setup();
+      mockGetCopilotStatus = vi.fn((slug: string) =>
+        slug === "proj-b" ? ("running" as const) : ("idle" as const),
+      );
+      render(<ProjectSidebar />);
+
+      await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+
+      expect(screen.getByRole("navigation", { name: "Open projects" }).className).toContain("w-12");
+      expect(screen.getByRole("status", { name: /running/i })).toBeInTheDocument();
+      const badge = getProjectBadge("proj-b");
+      expect(badge).toHaveAttribute("title", "Beta");
+      expectCopilotBotIcon(badge);
+      expect(badge.className).toContain("animate-pulse");
+      expect(screen.queryByText("Beta")).not.toBeInTheDocument();
+
+      const betaTab = screen.getByRole("button", { name: "Open project Beta" });
+      expect(betaTab).toHaveAttribute("title", "Beta");
+      expect(betaTab).toHaveAttribute("aria-current", "page");
+    });
+
+    it("78-T06: renders independent Copilot badge states per project", () => {
+      mockGetCopilotStatus = vi.fn((slug: string) => {
+        if (slug === "proj-a") return "running" as const;
+        if (slug === "proj-b") return "waiting" as const;
+        return "idle" as const;
+      });
+      render(<ProjectSidebar />);
+
+      expect(screen.getAllByRole("status", { name: /Copilot/i })).toHaveLength(2);
+
+      const alphaBadge = getProjectBadge("proj-a");
+      expect(alphaBadge).toHaveAttribute("title", "Alpha");
+      expectCopilotBotIcon(alphaBadge);
+      expect(alphaBadge.className).toContain("animate-pulse");
+
+      const betaBadge = getProjectBadge("proj-b");
+      expect(betaBadge).toHaveAttribute("title", "Beta");
+      expectCopilotBotIcon(betaBadge);
+      expect(betaBadge.className).toContain("ring-[oklch(0.75_0.18_55)]");
+      expect(betaBadge.className).not.toContain("animate-pulse");
+
+      const charlieBadge = getProjectBadge("proj-c");
+      expect(charlieBadge).toHaveTextContent("C");
+      expect(charlieBadge.querySelector("svg")).toBeNull();
     });
   });
 });

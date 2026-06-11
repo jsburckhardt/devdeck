@@ -20,16 +20,75 @@ export function stripAnsi(text: string): string {
   return text.replace(ANSI_RE, "");
 }
 
-const BRAILLE_SPINNERS = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/;
-const WAITING_PROMPT = /(?:^|\n)(?:\? |.*> $|.*\[y\/N\])/m;
+const STATUS_GLYPHS = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⣾⣽⣻⢿⡿⣟⣯⣷◐◓◑◒✦✧◆◇●⊙";
+const BRAILLE_SPINNER = /(?:^|\n)\s*[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏](?:\s|$)/m;
+const RUNNING_STATUS_LINE = new RegExp(
+  `(?:^|\\n)\\s*[${STATUS_GLYPHS}]\\s*(?:Thinking|Working|Processing|Generating|Analyzing|Planning|Implementing|Verifying)(?:\\.\\.\\.|…|\\s+esc\\s+cancel)?\\s*$`,
+  "im",
+);
+const WAITING_PROMPT =
+  /(?:^|\n)(?:\? |.*> $|.*\[y\/N\]|\s*(?:Waiting for (?:input|feedback)|Requires confirmation|Press Enter to continue)(?:\s+esc\s+cancel)?\s*$)/im;
 const SHELL_PROMPT = /(?:\$|%|#|❯)\s*$/m;
 
 export function detectCopilotState(strippedOutput: string): CopilotCliState | null {
   if (!strippedOutput) return null;
-  if (BRAILLE_SPINNERS.test(strippedOutput)) return "running";
+  if (BRAILLE_SPINNER.test(strippedOutput) || RUNNING_STATUS_LINE.test(strippedOutput)) {
+    return "running";
+  }
   if (WAITING_PROMPT.test(strippedOutput)) return "waiting";
   if (SHELL_PROMPT.test(strippedOutput)) return "idle";
   return null;
+}
+
+type CopilotStatusByProject = Map<string, CopilotCliState>;
+type CopilotStatusSubscribers = Map<string, Set<WebSocket>>;
+
+function copilotStatusKey(slug: string | null): string | null {
+  return slug && slug.trim() !== "" ? slug : null;
+}
+
+function sendCopilotStatus(ws: WebSocket, state: CopilotCliState): void {
+  if (ws.readyState !== WebSocket.OPEN) return;
+  try {
+    ws.send(JSON.stringify({ type: "status", copilotState: state }));
+  } catch {
+    // send failed
+  }
+}
+
+function addCopilotStatusSubscriber(
+  subscribers: CopilotStatusSubscribers,
+  key: string | null,
+  ws: WebSocket,
+): void {
+  if (!key) return;
+  const projectSubscribers = subscribers.get(key) ?? new Set<WebSocket>();
+  projectSubscribers.add(ws);
+  subscribers.set(key, projectSubscribers);
+}
+
+function removeCopilotStatusSubscriber(
+  subscribers: CopilotStatusSubscribers,
+  key: string | null,
+  ws: WebSocket,
+): void {
+  if (!key) return;
+  const projectSubscribers = subscribers.get(key);
+  if (!projectSubscribers) return;
+  projectSubscribers.delete(ws);
+  if (projectSubscribers.size === 0) {
+    subscribers.delete(key);
+  }
+}
+
+function broadcastCopilotStatus(
+  subscribers: CopilotStatusSubscribers,
+  key: string,
+  state: CopilotCliState,
+): void {
+  for (const subscriber of subscribers.get(key) ?? []) {
+    sendCopilotStatus(subscriber, state);
+  }
 }
 
 const LOGIN_SHELL_SUPPORTED = new Set(["bash", "zsh", "fish", "sh"]);
@@ -290,6 +349,8 @@ async function handleConnection(
   shellArgs: string[],
   env: Record<string, string>,
   activePtys: Set<IPty>,
+  copilotStatusByProject: CopilotStatusByProject,
+  copilotStatusSubscribers: CopilotStatusSubscribers,
   urlDimensions?: { cols: number; rows: number },
 ): Promise<void> {
   console.log("Client connected");
@@ -301,8 +362,13 @@ async function handleConnection(
   let wsHandlersRegistered = false;
   let initialCols = urlDimensions?.cols ?? 80;
   let initialRows = urlDimensions?.rows ?? 24;
-  let copilotState: CopilotCliState = "idle";
+  const statusKey = copilotStatusKey(slug);
+  let copilotState: CopilotCliState = statusKey
+    ? (copilotStatusByProject.get(statusKey) ?? "idle")
+    : "idle";
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  addCopilotStatusSubscriber(copilotStatusSubscribers, statusKey, ws);
 
   // Register message handler immediately to capture early resize/input
   ws.on("message", (data: Buffer, isBinary: boolean) => {
@@ -341,7 +407,10 @@ async function handleConnection(
   const setup = await resolveTerminalSetup(slug, defaultCwd, shell, shellArgs, worktree);
 
   // Client may have disconnected during async setup
-  if (ws.readyState !== WebSocket.OPEN) return;
+  if (ws.readyState !== WebSocket.OPEN) {
+    cleanupPty("setup-disconnected");
+    return;
+  }
 
   // Remove TMUX env var when attaching to tmux to avoid nested session issues
   const ptyEnv = setup.mode === "tmux" ? { ...env, TMUX: undefined } : env;
@@ -352,6 +421,7 @@ async function handleConnection(
   function cleanupPty(reason: string) {
     if (cleaned) return;
     cleaned = true;
+    removeCopilotStatusSubscriber(copilotStatusSubscribers, statusKey, ws);
     if (idleTimer) {
       clearTimeout(idleTimer);
       idleTimer = null;
@@ -366,6 +436,23 @@ async function handleConnection(
       }
       pty = null;
     }
+  }
+
+  function updateCopilotState(nextState: CopilotCliState) {
+    const cachedState = statusKey
+      ? (copilotStatusByProject.get(statusKey) ?? "idle")
+      : copilotState;
+    const stateChanged = nextState !== copilotState || nextState !== cachedState;
+    copilotState = nextState;
+    if (!stateChanged) return;
+
+    if (statusKey) {
+      copilotStatusByProject.set(statusKey, nextState);
+      broadcastCopilotStatus(copilotStatusSubscribers, statusKey, nextState);
+      return;
+    }
+
+    sendCopilotStatus(ws, nextState);
   }
 
   function registerWebSocketHandlers() {
@@ -405,23 +492,11 @@ async function handleConnection(
           if (idleTimer) clearTimeout(idleTimer);
           idleTimer = setTimeout(() => {
             if (copilotState !== "idle" && ws.readyState === WebSocket.OPEN) {
-              copilotState = "idle";
-              try {
-                ws.send(JSON.stringify({ type: "status", copilotState: "idle" }));
-              } catch {
-                // send failed
-              }
+              updateCopilotState("idle");
             }
           }, COPILOT_IDLE_TIMEOUT_MS);
 
-          if (detected !== copilotState) {
-            copilotState = detected;
-            try {
-              ws.send(JSON.stringify({ type: "status", copilotState }));
-            } catch {
-              // send failed
-            }
-          }
+          updateCopilotState(detected);
         }
       }
     });
@@ -506,10 +581,15 @@ async function handleConnection(
     } catch {
       /* send failed */
     }
+
+    if (statusKey) {
+      sendCopilotStatus(ws, copilotStatusByProject.get(statusKey) ?? "idle");
+    }
   }
 
   function sendSpawnError(err: unknown) {
     console.error("Failed to spawn shell:", err);
+    cleanupPty("spawn-error");
     if (ws.readyState === WebSocket.OPEN) {
       try {
         ws.send(JSON.stringify({ type: "error", message: String(err) }));
@@ -553,6 +633,8 @@ export function createTerminalServer(options?: TerminalServerOptions): TerminalS
   const shellArgs = getShellArgs(shell);
   const wss = new WebSocketServer({ port, host });
   const activePtys = new Set<IPty>();
+  const copilotStatusByProject: CopilotStatusByProject = new Map();
+  const copilotStatusSubscribers: CopilotStatusSubscribers = new Map();
 
   wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
     // Validate token BEFORE spawning PTY
@@ -576,6 +658,8 @@ export function createTerminalServer(options?: TerminalServerOptions): TerminalS
       shellArgs,
       sanitizedEnv,
       activePtys,
+      copilotStatusByProject,
+      copilotStatusSubscribers,
       dimensions,
     ).catch((err) => {
       console.error("Terminal connection setup failed:", err);

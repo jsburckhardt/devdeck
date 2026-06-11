@@ -53,9 +53,8 @@ export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
   const { updateCopilotStatus } = useOpenProjects();
 
   useEffect(() => {
-    if (slug) {
-      // Only propagate copilotStatus when terminal is connected; force "idle" otherwise
-      updateCopilotStatus(slug, isConnected ? copilotStatus : "idle");
+    if (slug && isConnected) {
+      updateCopilotStatus(slug, copilotStatus);
     }
   }, [slug, copilotStatus, isConnected, updateCopilotStatus]);
 

@@ -9,7 +9,7 @@ This file is the single registry of all architectural decisions and core-compone
 | ADR-0002 | Next.js + xterm.js + node-pty Tech Stack | Accepted | 2026-05-06 |
 | ADR-0003 | Project Registry & Persistence Strategy | Accepted | 2025-07-15 |
 | ADR-0004 | Token-Based Authentication | Accepted (amended) | 2026-05-24 |
-| ADR-0005 | Copilot CLI Status Detection Strategy | Accepted | 2025-07-28 |
+| ADR-0005 | Copilot CLI Status Detection Strategy | Accepted (amended) | 2026-06-11 |
 | ADR-0006 | Config File-Driven Configuration System | Accepted | 2026-05-24 |
 
 ## Core-Components
@@ -17,12 +17,12 @@ This file is the single registry of all architectural decisions and core-compone
 | ID | Title | Status | Date |
 |----|-------|--------|------|
 | CORE-COMPONENT-0002 | Commit Standards | Adopted | 2026-05-05 |
-| CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2026-06-06 |
+| CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2026-06-11 |
 | CORE-COMPONENT-0004 | Theming | Adopted (updated) | 2026-05-21 |
 | CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2025-07-16 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
-| CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-05-30 |
-| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-05-30 |
+| CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-06-09 |
+| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-06-11 |
 | CORE-COMPONENT-0009 | Engineering Harness | Adopted | 2026-06-07 |
 
 ## Decisions
@@ -119,7 +119,7 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 86 | Add `worktree=<relative-path>` as an optional WebSocket query parameter on `/api/terminal`; server resolves it relative to the project root server-side | CORE-COMPONENT-0003 | 2026-05-23 |
 | 87 | Require `extractWorktree()` to reject paths containing `..` segments or resolving outside the project root; fall back to project root shell on rejection | CORE-COMPONENT-0003 | 2026-05-23 |
 | 88 | Require sidebar width of ~176 px with project names displayed as visible truncated text labels alongside the language-color badge | CORE-COMPONENT-0007 | 2026-05-23 |
-| 89 | Supersede Decision #47: sidebar tabs show language-color badge (initial letter) plus full project name text label, not initial letter only | CORE-COMPONENT-0007 | 2026-05-23 |
+| 89 | Supersede Decision #47: sidebar tabs show a project badge (language-color initial, or active Copilot-style bot replacement) plus full project name text label, not initial letter only | CORE-COMPONENT-0007 | 2026-05-23 |
 | 90 | Expose `activeWorktree: string \| null` and `setActiveWorktree` on WorkspaceContext for worktree terminal scoping | CORE-COMPONENT-0008 | 2026-05-23 |
 | 91 | Expose `worktreesSectionCollapsed: boolean` and `toggleWorktreesSection()` on WorkspaceContext | CORE-COMPONENT-0008 | 2026-05-23 |
 | 92 | Include `activeWorktree` and `worktreesSectionCollapsed` in `PerProjectWorkspaceState` for per-project cache persistence | CORE-COMPONENT-0008 | 2026-05-23 |
@@ -132,7 +132,7 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 99 | Require `detectCopilotState()` to strip ANSI codes before pattern matching in terminal-server.mts | CORE-COMPONENT-0003 | 2025-07-28 |
 | 100 | Require `useTerminal` hook to expose `copilotStatus: CopilotCliState` and reset to `"idle"` on connect | CORE-COMPONENT-0003 | 2025-07-28 |
 | 101 | Expose `updateCopilotStatus()` and `getCopilotStatus()` on OpenProjectsContextValue | CORE-COMPONENT-0008 | 2025-07-28 |
-| 102 | Render sidebar Copilot status indicator only when status is not `"idle"` and terminal is connected | CORE-COMPONENT-0008 | 2025-07-28 |
+| 102 | Render sidebar Copilot status indicator only when status is not `"idle"` and terminal is connected (Superseded by #164) | CORE-COMPONENT-0008 | 2025-07-28 |
 | 103 | Require sidebar status indicator to use aria-label and title for non-color semantics | CORE-COMPONENT-0008 | 2025-07-28 |
 | 104 | Require file-tree requests to key by slug, activeWorktree, and path | CORE-COMPONENT-0008 | 2026-05-24 |
 | 105 | Preserve root and worktree file-tree state separately within each project | CORE-COMPONENT-0008 | 2026-05-24 |
@@ -188,3 +188,10 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 155 | Route helper input through authenticated binary WebSocket frames | CORE-COMPONENT-0003 | 2026-06-06 |
 | 156 | Require helper input to no-op when no active WebSocket is open | CORE-COMPONENT-0003 | 2026-06-06 |
 | 157 | Expose `useTerminal.focusTerminal()` for terminal-helper focus restoration | CORE-COMPONENT-0003 | 2026-06-06 |
+| 158 | Preserve h-6 w-6 project badge sizing for active Copilot-style bot icons | CORE-COMPONENT-0007 | 2026-06-09 |
+| 159 | Replace project badge initials with Copilot-style bot icons for running or waiting Copilot | CORE-COMPONENT-0008 | 2026-06-09 |
+| 160 | Suppress overlay Copilot dots when active Copilot bot badges render | CORE-COMPONENT-0008 | 2026-06-09 |
+| 161 | Expose active Copilot bot state with sr-only role=status text | CORE-COMPONENT-0008 | 2026-06-09 |
+| 162 | Cache last-known Copilot CLI state per project and replay it to newly connected same-project terminal clients | ADR-0005 | 2026-06-11 |
+| 163 | Broadcast Copilot CLI status changes to every connected terminal WebSocket client for the same project slug | CORE-COMPONENT-0003 | 2026-06-11 |
+| 164 | Preserve sidebar active Copilot badges across browser terminal disconnects; clear them only on explicit idle, unrecognized status, or project closure | CORE-COMPONENT-0008 | 2026-06-11 |
