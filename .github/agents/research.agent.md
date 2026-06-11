@@ -2,16 +2,15 @@
 name: research
 description: "Fetch a GitHub issue, explore the problem space, classify scope, and produce a research brief that hands off cleanly to the Plan stage."
 tools:
-  - grep
+  - rg
   - glob
   - view
   - bash
   - read_bash
   - web_fetch
-  - github-mcp-server/search_code
-  - github-mcp-server/get_file_contents
-  - create
-  - edit
+  - github-mcp-server-search_code
+  - github-mcp-server-get_file_contents
+  - apply_patch
   - sql
 user-invocable: true
 disable-model-invocation: false
@@ -148,7 +147,7 @@ SET SCOPE_CLASSIFICATION := <SCOPE> (from "Agent Inference" using ISSUE_TITLE, I
 <process id="produce-brief" name="Produce the research brief document">
 SET BRIEF_CONTENT := <CONTENT> (from "Agent Inference" using CURRENT_ISSUE_NUMBER, ISSUE_TITLE, ISSUE_BODY, SCOPE_CLASSIFICATION, EXISTING_ADRS, EXISTING_CORE_COMPONENTS)
 USE `bash` where: command="mkdir -p project/issues/<ISSUE_NUMBER>/research"
-USE `create` where: content=BRIEF_CONTENT, filePath="project/issues/<ISSUE_NUMBER>/research/00-research.md"
+USE `apply_patch` where: content=BRIEF_CONTENT, filePath="project/issues/<ISSUE_NUMBER>/research/00-research.md"
 SET RESEARCH_COMPLETE := true (from "Agent Inference")
 </process>
 </processes>

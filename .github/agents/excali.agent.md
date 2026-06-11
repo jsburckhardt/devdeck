@@ -2,11 +2,11 @@
 name: excali
 description: "Generate Excalidraw diagrams from text descriptions, wireframes, or specifications"
 tools:
-  - grep
+  - rg
   - glob
   - view
   - bash
-  - create
+  - apply_patch
 user-invocable: true
 disable-model-invocation: false
 target: vscode
@@ -301,7 +301,7 @@ SET COLOR_CODING := <COLORS> (from "Agent Inference" using DIAGRAM_DESCRIPTION, 
 SET POSITIONS := <POS> (from "Agent Inference" using REQUIRED_ELEMENTS, RELATIONSHIPS)
 SET ELEMENTS := <BUILT> (from "Agent Inference" using POSITIONS, RECTANGLE_TEMPLATE, TEXT_TEMPLATE, ARROW_TEMPLATE, NEXT_SEED, NEXT_INDEX)
 IF OUTPUT_PATH is not empty:
-  USE `create` where: content=ELEMENTS, filePath=OUTPUT_PATH
+  USE `apply_patch` where: content=ELEMENTS, filePath=OUTPUT_PATH
 RETURN: format="EXCALIDRAW_FILE"
 </process>
 </processes>

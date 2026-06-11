@@ -84,9 +84,9 @@ describe('ThemeToggle', () => {
 
 ## Integration Guidelines
 
-- Run `just check` before pushing to ensure all standards are met
-- The justfile provides all common development commands
-- CI will run the same verification commands defined in `.github/soft-factory/verification.yml`
+- Run `./harness verify` before pushing to ensure all standards are met
+- The harness is the preferred command surface; the justfile provides lower-level development commands
+- CI runs `./harness verify`, with step definitions documented in `.harness/contract.yml`
 
 ## Exceptions
 

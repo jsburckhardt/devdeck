@@ -2,7 +2,7 @@
 name: justdoit
 description: "Receive a GitHub issue and autonomously execute the full RPIV pipeline — Research, Plan, Implement, Verify — to deliver a complete feature end-to-end."
 tools:
-  - grep
+  - rg
   - glob
   - view
   - bash

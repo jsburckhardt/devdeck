@@ -2,12 +2,11 @@
 name: planner
 description: "Own the Plan stage of the RPIV pipeline — read the research brief, commit architectural decisions via ADRs and core-components, then produce the action plan, task breakdown, and test plan."
 tools:
-  - grep
+  - rg
   - glob
   - view
   - bash
-  - create
-  - edit
+  - apply_patch
   - sql
 user-invocable: true
 disable-model-invocation: false
@@ -257,13 +256,13 @@ SET ADR_CONTENT := <CONTENT> (from "Agent Inference" using RESEARCH_BRIEF, ADR_T
 IF ADR_CONTENT is not empty:
   SET ADR_FILE_PATH := <PATH> (from "Agent Inference" using ADR_DIR, NEXT_ADR_NUMBER, ADR_PATTERN)
   USE `bash` where: command="mkdir -p project/architecture/ADR"
-  USE `create` where: content=ADR_CONTENT, filePath=ADR_FILE_PATH
+  USE `apply_patch` where: content=ADR_CONTENT, filePath=ADR_FILE_PATH
   SET CREATED_ADRS := CREATED_ADRS + [ADR_FILE_PATH] (from "Agent Inference")
 SET CORE_COMPONENT_CONTENT := <CONTENT> (from "Agent Inference" using RESEARCH_BRIEF, CORE_COMPONENT_TEMPLATE, NEXT_CORE_COMPONENT_NUMBER)
 IF CORE_COMPONENT_CONTENT is not empty:
   SET CORE_COMPONENT_FILE_PATH := <PATH> (from "Agent Inference" using CORE_COMPONENT_DIR, NEXT_CORE_COMPONENT_NUMBER, CORE_COMPONENT_PATTERN)
   USE `bash` where: command="mkdir -p project/architecture/core-components"
-  USE `create` where: content=CORE_COMPONENT_CONTENT, filePath=CORE_COMPONENT_FILE_PATH
+  USE `apply_patch` where: content=CORE_COMPONENT_CONTENT, filePath=CORE_COMPONENT_FILE_PATH
   SET CREATED_CORE_COMPONENTS := CREATED_CORE_COMPONENTS + [CORE_COMPONENT_FILE_PATH] (from "Agent Inference")
 SET CREATED_DECISIONS := <DECISIONS> (from "Agent Inference" using CREATED_ADRS, CREATED_CORE_COMPONENTS, DECISION_GUIDANCE)
 SET ARCHITECTURE_COMPLETE := true (from "Agent Inference")
@@ -273,13 +272,13 @@ SET ARCHITECTURE_COMPLETE := true (from "Agent Inference")
 USE `view` where: path=DECISION_LOG_PATH
 CAPTURE CURRENT_LOG from `view`
 SET UPDATED_LOG := <LOG> (from "Agent Inference" using CURRENT_LOG, CREATED_ADRS, CREATED_CORE_COMPONENTS, CREATED_DECISIONS)
-USE `edit` where: filePath=DECISION_LOG_PATH
+USE `apply_patch` where: content=UPDATED_LOG, filePath=DECISION_LOG_PATH
 </process>
 
 <process id="create-action-plan" name="Create the action plan for the issue">
 SET PLAN_CONTENT := <CONTENT> (from "Agent Inference" using RESEARCH_BRIEF, CREATED_ADRS, CREATED_CORE_COMPONENTS)
 USE `bash` where: command="mkdir -p project/issues/<ISSUE_NUMBER>/plan"
-USE `create` where: content=PLAN_CONTENT, filePath="project/issues/<ISSUE_NUMBER>/plan/01-action-plan.md"
+USE `apply_patch` where: content=PLAN_CONTENT, filePath="project/issues/<ISSUE_NUMBER>/plan/01-action-plan.md"
 SET ACTION_PLAN := PLAN_CONTENT (from "Agent Inference")
 </process>
 
@@ -288,14 +287,14 @@ SET RELEVANT_ADRS := <ADRS> (from "Agent Inference" using ACTION_PLAN, CREATED_A
 SET RELEVANT_CORE_COMPONENTS := <COMPONENTS> (from "Agent Inference" using ACTION_PLAN, CREATED_CORE_COMPONENTS)
 SET TASKS := <TASK_LIST> (from "Agent Inference" using ACTION_PLAN, RELEVANT_ADRS, RELEVANT_CORE_COMPONENTS)
 SET BREAKDOWN_CONTENT := <CONTENT> (from "Agent Inference" using TASKS)
-USE `create` where: content=BREAKDOWN_CONTENT, filePath="project/issues/<ISSUE_NUMBER>/plan/02-task-breakdown.md"
+USE `apply_patch` where: content=BREAKDOWN_CONTENT, filePath="project/issues/<ISSUE_NUMBER>/plan/02-task-breakdown.md"
 SET BREAKDOWN_COMPLETE := true (from "Agent Inference")
 </process>
 
 <process id="create-test-plan" name="Create the test plan document">
 SET TESTS := <TEST_LIST> (from "Agent Inference" using TASKS, RELEVANT_ADRS, RELEVANT_CORE_COMPONENTS)
 SET TEST_PLAN_CONTENT := <CONTENT> (from "Agent Inference" using TESTS)
-USE `create` where: content=TEST_PLAN_CONTENT, filePath="project/issues/<ISSUE_NUMBER>/plan/03-test-plan.md"
+USE `apply_patch` where: content=TEST_PLAN_CONTENT, filePath="project/issues/<ISSUE_NUMBER>/plan/03-test-plan.md"
 SET TEST_PLAN_COMPLETE := true (from "Agent Inference")
 </process>
 </processes>

@@ -2,13 +2,12 @@
 name: bootstrap
 description: "Bootstrap a new project from the Soft Factory template by gathering project identity, tech stack, and cross-cutting concerns, then scaffolding the codebase and seeding architectural artifacts."
 tools:
-  - grep
+  - rg
   - glob
   - view
   - bash
   - read_bash
-  - create
-  - edit
+  - apply_patch
   - web_fetch
   - sql
 user-invocable: true
@@ -43,8 +42,8 @@ You MUST update LLM.txt with any new project-specific file references.
 You MUST tailor .devcontainer/devcontainer.json to the chosen tech stack by removing unnecessary features.
 You MUST assign sequential ADR numbers starting from ADR-0002 using the pattern ADR-####-slug.md.
 You MUST assign sequential core-component numbers starting from CORE-COMPONENT-0002 using the pattern CORE-COMPONENT-####-slug.md.
-You MUST configure project verification commands and write them to `.github/soft-factory/verification.yml`.
-You MUST ask the user to confirm or customize the proposed verification commands before writing the config.
+You MUST configure project verification commands in the harness contract.
+You MUST ask the user to confirm or customize the proposed verification commands before writing the harness contract.
 You MUST NOT set up CI/CD pipelines or infrastructure.
 You MUST NOT make feature-level decisions; only foundational project decisions.
 You MUST NOT skip any user confirmation before writing files.
@@ -67,7 +66,7 @@ APP_DOCS_PATH: "docs/README.md"
 LLM_TXT_PATH: "LLM.txt"
 DEVCONTAINER_PATH: ".devcontainer/devcontainer.json"
 BOOTSTRAP_MARKER: "ADR-0002"
-VERIFICATION_CONFIG_PATH: ".github/soft-factory/verification.yml"
+HARNESS_CONTRACT_PATH: ".harness/contract.yml"
 TECH_STACK_INIT: YAML<<
 - language: python
   commands:
@@ -384,7 +383,7 @@ USE `view` where: path=ADR_TEMPLATE_PATH
 CAPTURE ADR_TEMPLATE from `view`
 SET ADR_CONTENT := <CONTENT> (from "Agent Inference" using ADR_TEMPLATE, LANGUAGE, FRAMEWORK, PACKAGE_MANAGER, TEST_RUNNER, NEXT_ADR_NUMBER)
 SET ADR_FILE := <PATH> (from "Agent Inference" using ADR_DIR, NEXT_ADR_NUMBER)
-USE `create` where: content=ADR_CONTENT, filePath=ADR_FILE
+USE `apply_patch` where: content=ADR_CONTENT, filePath=ADR_FILE
 SET CREATED_ADRS := CREATED_ADRS + [ADR_FILE] (from "Agent Inference")
 SET NEXT_ADR_NUMBER := NEXT_ADR_NUMBER + 1 (from "Agent Inference")
 </process>
@@ -395,7 +394,7 @@ CAPTURE CC_TEMPLATE from `view`
 FOREACH concern IN CROSS_CUTTING_CONCERNS:
   SET CC_CONTENT := <CONTENT> (from "Agent Inference" using CC_TEMPLATE, concern, NEXT_CC_NUMBER, CREATED_ADRS)
   SET CC_FILE := <PATH> (from "Agent Inference" using CORE_COMPONENT_DIR, NEXT_CC_NUMBER, concern)
-  USE `create` where: content=CC_CONTENT, filePath=CC_FILE
+  USE `apply_patch` where: content=CC_CONTENT, filePath=CC_FILE
   SET CREATED_CORE_COMPONENTS := CREATED_CORE_COMPONENTS + [CC_FILE] (from "Agent Inference")
   SET NEXT_CC_NUMBER := NEXT_CC_NUMBER + 1 (from "Agent Inference")
 </process>
@@ -405,7 +404,7 @@ USE `view` where: path=CORE_COMPONENT_TEMPLATE_PATH
 CAPTURE CC_TEMPLATE from `view`
 SET DEV_STD_CONTENT := <CONTENT> (from "Agent Inference" using CC_TEMPLATE, DEVELOPMENT_STANDARDS, LANGUAGE, NEXT_CC_NUMBER, CREATED_ADRS)
 SET DEV_STD_FILE := <PATH> (from "Agent Inference" using CORE_COMPONENT_DIR, NEXT_CC_NUMBER, "development-standards")
-USE `create` where: content=DEV_STD_CONTENT, filePath=DEV_STD_FILE
+USE `apply_patch` where: content=DEV_STD_CONTENT, filePath=DEV_STD_FILE
 SET CREATED_CORE_COMPONENTS := CREATED_CORE_COMPONENTS + [DEV_STD_FILE] (from "Agent Inference")
 SET DEV_STD_DECISIONS := <DECISIONS> (from "Agent Inference" using DEVELOPMENT_STANDARDS, NEXT_CC_NUMBER)
 SET NEXT_CC_NUMBER := NEXT_CC_NUMBER + 1 (from "Agent Inference")
@@ -415,7 +414,7 @@ SET NEXT_CC_NUMBER := NEXT_CC_NUMBER + 1 (from "Agent Inference")
 USE `view` where: path=DECISION_LOG_PATH
 CAPTURE CURRENT_LOG from `view`
 SET UPDATED_LOG := <LOG> (from "Agent Inference" using CURRENT_LOG, CREATED_ADRS, CREATED_CORE_COMPONENTS, DEV_STD_DECISIONS)
-USE `edit` where: filePath=DECISION_LOG_PATH
+USE `apply_patch` where: content=UPDATED_LOG, filePath=DECISION_LOG_PATH
 SET UPDATED_FILES := UPDATED_FILES + [DECISION_LOG_PATH] (from "Agent Inference")
 </process>
 
@@ -423,22 +422,22 @@ SET UPDATED_FILES := UPDATED_FILES + [DECISION_LOG_PATH] (from "Agent Inference"
 USE `view` where: path=README_PATH
 CAPTURE CURRENT_README from `view`
 SET UPDATED_README := <CONTENT> (from "Agent Inference" using CURRENT_README, PROJECT_NAME, PROJECT_DESCRIPTION, PROJECT_GOAL)
-USE `edit` where: filePath=README_PATH
+USE `apply_patch` where: content=UPDATED_README, filePath=README_PATH
 SET UPDATED_FILES := UPDATED_FILES + [README_PATH] (from "Agent Inference")
 USE `view` where: path=APP_DOCS_PATH
 CAPTURE CURRENT_APP_DOCS from `view`
 SET UPDATED_APP_DOCS := <CONTENT> (from "Agent Inference" using CURRENT_APP_DOCS, PROJECT_NAME, PROJECT_DESCRIPTION, PROJECT_GOAL, LANGUAGE, FRAMEWORK)
-USE `edit` where: filePath=APP_DOCS_PATH
+USE `apply_patch` where: content=UPDATED_APP_DOCS, filePath=APP_DOCS_PATH
 SET UPDATED_FILES := UPDATED_FILES + [APP_DOCS_PATH] (from "Agent Inference")
 USE `view` where: path=AGENTS_MD_PATH
 CAPTURE CURRENT_AGENTS from `view`
 SET UPDATED_AGENTS := <CONTENT> (from "Agent Inference" using CURRENT_AGENTS, CREATED_ADRS, CREATED_CORE_COMPONENTS)
-USE `edit` where: filePath=AGENTS_MD_PATH
+USE `apply_patch` where: content=UPDATED_AGENTS, filePath=AGENTS_MD_PATH
 SET UPDATED_FILES := UPDATED_FILES + [AGENTS_MD_PATH] (from "Agent Inference")
 USE `view` where: path=LLM_TXT_PATH
 CAPTURE CURRENT_LLM_TXT from `view`
 SET UPDATED_LLM_TXT := <CONTENT> (from "Agent Inference" using CURRENT_LLM_TXT, CREATED_ADRS, CREATED_CORE_COMPONENTS, LANGUAGE)
-USE `edit` where: filePath=LLM_TXT_PATH
+USE `apply_patch` where: content=UPDATED_LLM_TXT, filePath=LLM_TXT_PATH
 SET UPDATED_FILES := UPDATED_FILES + [LLM_TXT_PATH] (from "Agent Inference")
 </process>
 
@@ -446,15 +445,14 @@ SET UPDATED_FILES := UPDATED_FILES + [LLM_TXT_PATH] (from "Agent Inference")
 USE `view` where: path=DEVCONTAINER_PATH
 CAPTURE CURRENT_DEVCONTAINER from `view`
 SET UPDATED_DEVCONTAINER := <CONTENT> (from "Agent Inference" using CURRENT_DEVCONTAINER, LANGUAGE, FRAMEWORK, PACKAGE_MANAGER)
-USE `edit` where: filePath=DEVCONTAINER_PATH
+USE `apply_patch` where: content=UPDATED_DEVCONTAINER, filePath=DEVCONTAINER_PATH
 SET UPDATED_FILES := UPDATED_FILES + [DEVCONTAINER_PATH] (from "Agent Inference")
 </process>
 
-<process id="configure-verification" name="Write project verification config file">
-USE `bash` where: command="mkdir -p .github/soft-factory"
-SET VERIFICATION_YAML := <CONTENT> (from "Agent Inference" using VERIFICATION_COMMANDS)
-USE `create` where: content=VERIFICATION_YAML, filePath=VERIFICATION_CONFIG_PATH
-SET UPDATED_FILES := UPDATED_FILES + [VERIFICATION_CONFIG_PATH] (from "Agent Inference")
+<process id="configure-verification" name="Write harness verification contract">
+SET HARNESS_CONTRACT := <CONTENT> (from "Agent Inference" using VERIFICATION_COMMANDS)
+USE `apply_patch` where: content=HARNESS_CONTRACT, filePath=HARNESS_CONTRACT_PATH
+SET UPDATED_FILES := UPDATED_FILES + [HARNESS_CONTRACT_PATH] (from "Agent Inference")
 </process>
 </processes>
 

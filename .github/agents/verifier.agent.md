@@ -2,13 +2,12 @@
 name: verifier
 description: "Own the Verify stage of the RPIV pipeline — run tests, validate implementation, create commits following Conventional Commits, push, and open a PR assigned to Copilot for review."
 tools:
-  - grep
+  - rg
   - glob
   - view
   - bash
   - read_bash
-  - create
-  - edit
+  - apply_patch
 user-invocable: true
 disable-model-invocation: false
 target: vscode
@@ -17,8 +16,7 @@ target: vscode
 <instructions>
 You MUST run all configured project verification steps and confirm all checks pass before proceeding with any git operations.
 You MUST use `./harness verify` as the primary verification mechanism when the harness is available.
-You MUST fall back to `.github/soft-factory/verification.yml` when the harness is not available.
-You MUST fall back to auto-detecting and running all applicable verification steps from project files when neither harness nor verification config is present.
+You MUST fall back to auto-detecting and running all applicable verification steps from project files when the harness is not available.
 You MUST NOT proceed if any configured or auto-detected verification step fails; stop immediately and report which step failed.
 You MUST run a smoke test after all other verification steps pass: start the application, confirm it becomes ready and responds to an HTTP request, then shut it down. If the smoke test fails, stop and report the error.
 You MUST check the current git branch before making changes.
@@ -52,7 +50,6 @@ ADR_DIR: "project/architecture/ADR"
 CORE_COMPONENT_DIR: "project/architecture/core-components"
 AGENTS_MD_PATH: "AGENTS.md"
 ISSUES_DIR: "project/issues"
-VERIFICATION_CONFIG_PATH: ".github/soft-factory/verification.yml"
 BRANCH_PATTERN: "<TYPE>/<ISSUE_NUMBER>-<SHORT_SLUG>"
 CO_AUTHOR_TRAILER: "Co-authored-by: github-copilot[bot] <175728472+github-copilot[bot]@users.noreply.github.com>"
 PROTECTED_BRANCHES: YAML<<
@@ -182,13 +179,11 @@ SET ISSUE_NUMBER := <ID> (from "Agent Inference" using USER_INPUT, ISSUES_DIR)
 SET SHORT_SLUG := <SLUG> (from "Agent Inference" using ISSUE_NUMBER, ISSUES_DIR)
 </process>
 
-<process id="load-verification-config" name="Load verification commands from config file or fall back to auto-detection">
-USE `glob` where: pattern=VERIFICATION_CONFIG_PATH
-CAPTURE CONFIG_EXISTS from `glob`
-IF CONFIG_EXISTS is not empty:
-  USE `view` where: path=VERIFICATION_CONFIG_PATH
-  CAPTURE CONFIG_CONTENT from `view`
-  SET VERIFICATION_COMMANDS := <STEP_LIST> (from "Agent Inference" using CONFIG_CONTENT; normalize to a list of {category, command} objects)
+<process id="load-verification-config" name="Load harness verification command or fall back to auto-detection">
+USE `glob` where: pattern="./harness"
+CAPTURE HARNESS_EXISTS from `glob`
+IF HARNESS_EXISTS is not empty:
+  SET VERIFICATION_COMMANDS := [{category: "verify", command: "./harness verify"}] (from "Agent Inference")
 ELSE:
   USE `glob` where: pattern="go.mod,package.json,pytest.ini,pyproject.toml,Makefile"
   CAPTURE PROJECT_FILES from `glob`
@@ -245,7 +240,7 @@ FOREACH group IN GROUPS:
 USE `view` where: path=DECISION_LOG_PATH
 CAPTURE CURRENT_LOG from `view`
 SET UPDATED_LOG := <LOG> (from "Agent Inference" using CURRENT_LOG, ADR_CHANGES, CC_CHANGES)
-USE `edit` where: filePath=DECISION_LOG_PATH
+USE `apply_patch` where: content=UPDATED_LOG, filePath=DECISION_LOG_PATH
 USE `bash` where: command="git add project/architecture/ADR/DECISION-LOG.md"
 USE `bash` where: command="git commit -m 'docs: update DECISION-LOG.md' -m '' -m 'CO_AUTHOR_TRAILER'"
 CAPTURE COMMIT_HASH from `bash`
@@ -256,7 +251,7 @@ SET COMMITS := COMMITS + [COMMIT_HASH] (from "Agent Inference")
 USE `view` where: path=AGENTS_MD_PATH
 CAPTURE CURRENT_AGENTS from `view`
 SET UPDATED_AGENTS := <AGENTS> (from "Agent Inference" using CURRENT_AGENTS, CHANGED_FILES)
-USE `edit` where: filePath=AGENTS_MD_PATH
+USE `apply_patch` where: content=UPDATED_AGENTS, filePath=AGENTS_MD_PATH
 USE `bash` where: command="git add AGENTS.md"
 USE `bash` where: command="git commit -m 'docs: update AGENTS.md' -m '' -m 'CO_AUTHOR_TRAILER'"
 CAPTURE COMMIT_HASH from `bash`
@@ -290,7 +285,11 @@ SET ACCEPTANCE_CRITERIA := CRITERIA_RESULTS (from "Agent Inference")
 </process>
 
 <process id="run-smoke-test" name="Start the application locally, confirm it is ready, then shut it down">
-USE `bash` where: command="<START_CMD> &" (from "Agent Inference" using VERIFICATION_COMMANDS; pick the dev/start command from verification config or infer from project files such as npm run dev, go run ., python -m app, etc.; run in background so the process does not block subsequent steps)
+IF VERIFICATION_COMMANDS contains command "./harness verify":
+  SET SMOKE_TEST_PASSED := true (from "Agent Inference")
+  SET SMOKE_TEST_OUTPUT := "Smoke test covered by ./harness verify" (from "Agent Inference")
+  RETURN
+USE `bash` where: command="<START_CMD> &" (from "Agent Inference" using VERIFICATION_COMMANDS; infer from project files such as npm run dev, go run ., python -m app, etc.; run in background so the process does not block subsequent steps)
 CAPTURE APP_PID from `bash`
 USE `bash` where: command="sleep 5 && curl -sf --retry 5 --retry-delay 2 --retry-all-errors --max-time 10 http://localhost:<PORT>"
 CAPTURE HEALTH_OUTPUT from `bash`
@@ -310,8 +309,7 @@ CAPTURE PUSH_OUTPUT from `bash`
 <process id="create-pr" name="Create a pull request using the GitHub CLI">
 SET PR_TITLE := <TITLE> (from "Agent Inference" using ISSUE_NUMBER, SHORT_SLUG)
 SET PR_BODY := <BODY> (from "Agent Inference" using ISSUE_NUMBER, COMMITS, ADR_CHANGES, CC_CHANGES)
-USE `create` where: content=PR_BODY, filePath="/tmp/pr-body.md"
-USE `bash` where: command="gh pr create --title '<PR_TITLE>' --body-file /tmp/pr-body.md"
+USE `bash` where: command="gh pr create --title '<PR_TITLE>' --body-file -", stdin=PR_BODY
 CAPTURE PR_OUTPUT from `bash`
 SET PR_URL := <URL> (from "Agent Inference" using PR_OUTPUT)
 SET PR_NUMBER := <NUMBER> (from "Agent Inference" using PR_URL)

@@ -2,13 +2,12 @@
 name: onboard-repo
 description: "Introduce the Soft Factory engineering flow into an existing repository by analysing its codebase, inferring architectural decisions already embedded in the code, scaffolding the documentation infrastructure, and creating the first GitHub issue and seeding it with a full repository-understanding brief."
 tools:
-  - grep
+  - rg
   - glob
   - view
   - bash
   - read_bash
-  - create
-  - edit
+  - apply_patch
   - web_fetch
   - sql
 user-invocable: true
@@ -276,11 +275,11 @@ SET PROJECT_DESCRIPTION := <DESC> (from "Agent Inference" using README_CONTENT, 
 USE `glob` where: pattern="go.mod,package.json,pyproject.toml,Cargo.toml,*.csproj,pom.xml,build.gradle"
 CAPTURE STACK_FILES from `glob`
 SET TECH_STACK := <STACK> (from "Agent Inference" using STACK_FILES, TECH_STACK_SIGNALS)
-USE `grep` where: query="architecture patterns framework routing middleware"
-CAPTURE ARCH_CONTEXT from `grep`
+USE `rg` where: query="architecture patterns framework routing middleware"
+CAPTURE ARCH_CONTEXT from `rg`
 SET DISCOVERED_ADRS := <ADR_LIST> (from "Agent Inference" using ARCH_CONTEXT, TECH_STACK, TECH_STACK_SIGNALS)
-USE `grep` where: query="logging error handling authentication configuration observability"
-CAPTURE CROSS_CUTTING_CONTEXT from `grep`
+USE `rg` where: query="logging error handling authentication configuration observability"
+CAPTURE CROSS_CUTTING_CONTEXT from `rg`
 SET DISCOVERED_CONCERNS := <CONCERNS> (from "Agent Inference" using CROSS_CUTTING_CONTEXT, CROSS_CUTTING_SIGNALS)
 SET RISKS := <RISKS_TEXT> (from "Agent Inference" using ARCH_CONTEXT, CROSS_CUTTING_CONTEXT, PROJECT_NAME)
 SET INFO_CONFIRMED := false (from "Agent Inference")
@@ -292,7 +291,7 @@ CAPTURE ADR_TEMPLATE from `view`
 FOREACH decision IN DISCOVERED_ADRS:
   SET ADR_CONTENT := <CONTENT> (from "Agent Inference" using ADR_TEMPLATE, decision, PROJECT_NAME, TECH_STACK, NEXT_ADR_NUMBER)
   SET ADR_FILE := <PATH> (from "Agent Inference" using ADR_DIR, NEXT_ADR_NUMBER, decision)
-  USE `create` where: content=ADR_CONTENT, filePath=ADR_FILE
+  USE `apply_patch` where: content=ADR_CONTENT, filePath=ADR_FILE
   SET CREATED_ADRS := CREATED_ADRS + [ADR_FILE] (from "Agent Inference")
   SET NEXT_ADR_NUMBER := NEXT_ADR_NUMBER + 1 (from "Agent Inference")
 </process>
@@ -303,7 +302,7 @@ CAPTURE CC_TEMPLATE from `view`
 FOREACH concern IN DISCOVERED_CONCERNS:
   SET CC_CONTENT := <CONTENT> (from "Agent Inference" using CC_TEMPLATE, concern, NEXT_CC_NUMBER, CREATED_ADRS)
   SET CC_FILE := <PATH> (from "Agent Inference" using CORE_COMPONENT_DIR, NEXT_CC_NUMBER, concern)
-  USE `create` where: content=CC_CONTENT, filePath=CC_FILE
+  USE `apply_patch` where: content=CC_CONTENT, filePath=CC_FILE
   SET CREATED_CORE_COMPONENTS := CREATED_CORE_COMPONENTS + [CC_FILE] (from "Agent Inference")
   SET NEXT_CC_NUMBER := NEXT_CC_NUMBER + 1 (from "Agent Inference")
 </process>
@@ -312,19 +311,18 @@ FOREACH concern IN DISCOVERED_CONCERNS:
 USE `view` where: path=DECISION_LOG_PATH
 CAPTURE CURRENT_LOG from `view`
 SET UPDATED_LOG := <LOG> (from "Agent Inference" using CURRENT_LOG, CREATED_ADRS, CREATED_CORE_COMPONENTS)
-USE `edit` where: filePath=DECISION_LOG_PATH
+USE `apply_patch` where: content=UPDATED_LOG, filePath=DECISION_LOG_PATH
 SET UPDATED_FILES := UPDATED_FILES + [DECISION_LOG_PATH] (from "Agent Inference")
 </process>
 
 <process id="create-first-issue" name="Create the first GitHub issue and its research brief">
 SET ISSUE_BODY := <BODY> (from "Agent Inference" using PROJECT_NAME, PROJECT_DESCRIPTION, TECH_STACK, DISCOVERED_ADRS, DISCOVERED_CONCERNS, RISKS)
-USE `create` where: content=ISSUE_BODY, filePath="/tmp/issue-body.md"
-USE `bash` where: command="gh issue create --title 'Repository Understanding' --body-file /tmp/issue-body.md"
+USE `bash` where: command="gh issue create --title 'Repository Understanding' --body-file -", stdin=ISSUE_BODY
 CAPTURE ISSUE_OUTPUT from `bash`
 SET FIRST_ISSUE_NUMBER := <NUMBER> (from "Agent Inference" using ISSUE_OUTPUT)
 SET BRIEF_CONTENT := <CONTENT> (from "Agent Inference" using FIRST_ISSUE_NUMBER, PROJECT_NAME, PROJECT_DESCRIPTION, TECH_STACK, DISCOVERED_ADRS, DISCOVERED_CONCERNS, CREATED_ADRS, CREATED_CORE_COMPONENTS, RISKS)
 USE `bash` where: command="mkdir -p project/issues/<FIRST_ISSUE_NUMBER>/research"
-USE `create` where: content=BRIEF_CONTENT, filePath="project/issues/<FIRST_ISSUE_NUMBER>/research/00-research.md"
+USE `apply_patch` where: content=BRIEF_CONTENT, filePath="project/issues/<FIRST_ISSUE_NUMBER>/research/00-research.md"
 SET UPDATED_FILES := UPDATED_FILES + ["project/issues/<FIRST_ISSUE_NUMBER>/research/00-research.md"] (from "Agent Inference")
 </process>
 
@@ -332,17 +330,17 @@ SET UPDATED_FILES := UPDATED_FILES + ["project/issues/<FIRST_ISSUE_NUMBER>/resea
 USE `view` where: path=README_PATH
 CAPTURE CURRENT_README from `view`
 SET UPDATED_README := <CONTENT> (from "Agent Inference" using CURRENT_README, PROJECT_NAME, PROJECT_DESCRIPTION)
-USE `edit` where: filePath=README_PATH
+USE `apply_patch` where: content=UPDATED_README, filePath=README_PATH
 SET UPDATED_FILES := UPDATED_FILES + [README_PATH] (from "Agent Inference")
 USE `view` where: path=AGENTS_MD_PATH
 CAPTURE CURRENT_AGENTS from `view`
 SET UPDATED_AGENTS := <CONTENT> (from "Agent Inference" using CURRENT_AGENTS, CREATED_ADRS, CREATED_CORE_COMPONENTS)
-USE `edit` where: filePath=AGENTS_MD_PATH
+USE `apply_patch` where: content=UPDATED_AGENTS, filePath=AGENTS_MD_PATH
 SET UPDATED_FILES := UPDATED_FILES + [AGENTS_MD_PATH] (from "Agent Inference")
 USE `view` where: path=LLM_TXT_PATH
 CAPTURE CURRENT_LLM_TXT from `view`
 SET UPDATED_LLM_TXT := <CONTENT> (from "Agent Inference" using CURRENT_LLM_TXT, CREATED_ADRS, CREATED_CORE_COMPONENTS, FIRST_ISSUE_NUMBER)
-USE `edit` where: filePath=LLM_TXT_PATH
+USE `apply_patch` where: content=UPDATED_LLM_TXT, filePath=LLM_TXT_PATH
 SET UPDATED_FILES := UPDATED_FILES + [LLM_TXT_PATH] (from "Agent Inference")
 </process>
 </processes>

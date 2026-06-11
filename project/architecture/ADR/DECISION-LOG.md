@@ -23,7 +23,7 @@ This file is the single registry of all architectural decisions and core-compone
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
 | CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-06-09 |
 | CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-06-11 |
-| CORE-COMPONENT-0009 | Engineering Harness | Adopted | 2026-06-07 |
+| CORE-COMPONENT-0009 | Engineering Harness | Adopted (updated) | 2026-06-11 |
 
 ## Decisions
 
@@ -195,3 +195,5 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 162 | Cache last-known Copilot CLI state per project and replay it to newly connected same-project terminal clients | ADR-0005 | 2026-06-11 |
 | 163 | Broadcast Copilot CLI status changes to every connected terminal WebSocket client for the same project slug | CORE-COMPONENT-0003 | 2026-06-11 |
 | 164 | Preserve sidebar active Copilot badges across browser terminal disconnects; clear them only on explicit idle, unrecognized status, or project closure | CORE-COMPONENT-0008 | 2026-06-11 |
+| 165 | Supersede Decision #153: use `./harness verify` and `.harness/contract.yml` as the verification source of truth; do not maintain `.github/soft-factory/verification.yml` | CORE-COMPONENT-0009 | 2026-06-11 |
+| 166 | Require CI to run `./harness verify` instead of mirroring a separate verification config | CORE-COMPONENT-0009 | 2026-06-11 |

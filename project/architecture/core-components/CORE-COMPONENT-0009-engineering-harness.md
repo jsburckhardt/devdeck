@@ -2,7 +2,7 @@
 
 ## Status
 
-Adopted
+Adopted (updated)
 
 ## Purpose
 
@@ -10,7 +10,7 @@ Provide a single, repo-local CLI (`./harness`) as the preferred operating surfac
 
 ## Scope
 
-Cross-cutting: affects all pipeline agents (Research, Plan, Implement, Verify), the justdoit orchestrator, CI workflows, and human developer workflows. The harness does not replace existing tools (npm scripts, justfile, verification.yml) — it wraps them.
+Cross-cutting: affects all pipeline agents (Research, Plan, Implement, Verify), the justdoit orchestrator, CI workflows, and human developer workflows. The harness is the repository verification source of truth and wraps existing project tools such as npm scripts and the justfile.
 
 ## Definition
 
@@ -42,7 +42,7 @@ Cross-cutting: affects all pipeline agents (Research, Plan, Implement, Verify), 
 
 ## Rationale
 
-DevDeck has multiple command surfaces (npm scripts, justfile, verification.yml) with no single source of truth. Git history shows 29+ fix commits from agents and reviewers inferring incorrect commands. The harness eliminates this friction by providing a documented, testable, machine-readable command contract.
+DevDeck previously had multiple command surfaces (npm scripts, justfile, and a separate verification.yml) with no single source of truth. Git history shows 29+ fix commits from agents and reviewers inferring incorrect commands. The harness eliminates this friction by providing a documented, testable, machine-readable command contract.
 
 ## Usage Examples
 
@@ -69,18 +69,18 @@ DevDeck has multiple command surfaces (npm scripts, justfile, verification.yml) 
 ## Integration Guidelines
 
 - **Implementer agent:** MUST run `./harness verify` after implementing each task. SHOULD use `./harness lint`, `./harness test`, `./harness build` over direct npm commands.
-- **Verifier agent:** MUST use `./harness verify` as the primary verification mechanism. Falls back to `verification.yml` only when the harness is absent.
+- **Verifier agent:** MUST use `./harness verify` as the primary verification mechanism. Falls back to auto-detection only when the harness is absent.
 - **Research agent:** SHOULD use `./harness orient` and `./harness doctor` to understand the project.
 - **Planner agent:** SHOULD reference `./harness` verbs in task acceptance criteria.
 - **JustDoIt orchestrator:** MUST instruct subagents to use `./harness` verbs.
 - **Human developers:** SHOULD use `./harness verify` before pushing.
-- **CI:** May continue using `verification.yml` directly; the harness is optimized for local development.
+- **CI:** SHOULD use `./harness verify` so pull-request checks exercise the same verification contract as local agents.
 
 ## Exceptions
 
-- Repos without a harness: agents fall back to `verification.yml` or auto-detection.
+- Repos without a harness: agents fall back to auto-detecting applicable verification commands from project files.
 - Debugging: direct commands are allowed when the harness abstracts away needed diagnostic detail; record as friction.
-- CI environments: CI pipelines may use `verification.yml` directly for reproducibility.
+- CI environments: CI pipelines should run `./harness verify`; direct commands require updating `.harness/contract.yml` to avoid drift.
 - Bootstrap: new projects may not have a harness until the harness-cli-it skill runs.
 
 ## Enforcement

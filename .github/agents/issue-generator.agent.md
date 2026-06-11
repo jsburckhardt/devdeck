@@ -2,15 +2,15 @@
 name: issue-generator
 description: "Analyze codebase history for recurring pitfalls, draft a comprehensive GitHub issue, dispatch a rubber-duck subagent to critique it, then create the issue via gh."
 tools:
-  - grep
+  - rg
   - glob
   - view
   - bash
   - read_bash
-  - create
+  - apply_patch
   - web_fetch
-  - github-mcp-server/search_code
-  - github-mcp-server/get_file_contents
+  - github-mcp-server-search_code
+  - github-mcp-server-get_file_contents
   - task
   - read_agent
   - list_agents
@@ -260,7 +260,7 @@ IF RUBBER_DUCK_OK is false:
 </process>
 
 <process id="create-issue" name="Create the issue via GitHub CLI">
-USE `bash` where: command="gh issue create --title '<DRAFT_TITLE>' --body '<DRAFT_BODY>'"
+USE `bash` where: command="gh issue create --title '<DRAFT_TITLE>' --body-file -", stdin=DRAFT_BODY
 CAPTURE CREATE_OUTPUT from `bash`
 SET ISSUE_URL := <URL> (from "Agent Inference" using CREATE_OUTPUT)
 SET ISSUE_NUMBER := <NUMBER> (from "Agent Inference" using CREATE_OUTPUT)

@@ -4,8 +4,9 @@ description: "Generate APS v1.2.2 .agent.md or .prompt.md files: detect artifact
 tools:
   - bash
   - view
-  - create
-  - edit
+  - rg
+  - glob
+  - apply_patch
   - web_fetch
   - sql
 user-invocable: true
@@ -50,6 +51,13 @@ You MUST NOT place output templates as inline text; define them in <formats> wit
 You MUST use MUST for absolute requirements, SHOULD for recommendations, MAY for permissions in generated <instructions>.
 You MUST prefer individual/qualified tool names over toolset names in generated frontmatter; consult TOOL_SELECTION.
 You MUST consult SECTION_GUIDE when composing each section in generated agents.
+You MUST use CURRENT_COPILOT_CLI_TOOLS for DevDeck Copilot CLI agent frontmatter.
+You MUST normalize legacy tool names with TOOL_NAME_EQUIVALENTS before writing generated agents.
+You MUST treat AGENTS.md as DevDeck's project instruction surface.
+You MUST NOT create or update .github/copilot-instructions.md for DevDeck unless the user explicitly requests compatibility with that file.
+You MUST use DEVDECK_HARNESS_GUIDANCE when generating or updating DevDeck-specific agents.
+You SHOULD preserve DevDeck harness guidance when generating or updating DevDeck agents.
+You SHOULD reference .harness/contract.yml for DevDeck verification commands.
 </instructions>
 
 <constants>
@@ -57,6 +65,71 @@ SKILL_PATH: ".github/skills/agnostic-prompt-standard/SKILL.md"
 SKILL_PATH_ALT: ".claude/skills/agnostic-prompt-standard/SKILL.md"
 PLATFORMS_BASE: ".github/skills/agnostic-prompt-standard/platforms"
 PLATFORMS_BASE_ALT: ".claude/skills/agnostic-prompt-standard/platforms"
+
+CURRENT_COPILOT_CLI_TOOLS: YAML<<
+- apply_patch
+- bash
+- github-mcp-server-get_file_contents
+- github-mcp-server-search_code
+- glob
+- list_agents
+- read_agent
+- read_bash
+- rg
+- sql
+- task
+- view
+- web_fetch
+>>
+
+TOOL_NAME_EQUIVALENTS: YAML<<
+- legacy: create
+  current: apply_patch
+- legacy: edit
+  current: apply_patch
+- legacy: grep
+  current: rg
+- legacy: github-mcp-server/get_file_contents
+  current: github-mcp-server-get_file_contents
+- legacy: github-mcp-server/search_code
+  current: github-mcp-server-search_code
+>>
+
+DEVDECK_HARNESS_GUIDANCE: TEXT<<
+# Copilot Instructions — DevDeck
+
+## Engineering Harness
+
+DevDeck uses a repo-local `./harness` CLI as the preferred operating surface. Both humans and AI agents SHOULD prefer `./harness` for orienting, verifying, testing, linting, building, and booting the project.
+
+### Usage
+
+```bash
+./harness help      # List all verbs
+./harness orient    # Understand project surfaces
+./harness doctor    # Check prerequisites
+./harness verify    # Run full verification
+```
+
+### Policy
+
+- **Prefer `./harness`** over direct `npm run` or `just` commands for all supported verbs.
+- **Direct commands are allowed** when the harness lacks a verb, the harness explains a degraded path, or deeper diagnosis requires raw command output.
+- **Record friction** when bypassing the harness: `./harness friction add "<what you had to infer>"`
+- **Key question:** "What did the agent have to infer that the harness should have proved?"
+
+### Workflow
+
+1. Start unfamiliar work with `./harness orient`
+2. Check health with `./harness doctor`
+3. Use `./harness verify` before claiming completion
+4. Update the harness when repository commands change
+5. Do NOT bypass a working harness to run equivalent raw commands
+
+### Contract
+
+See `.harness/contract.yml` for the machine-readable command contract and `.harness/README.md` for full documentation.
+>>
 
 SKILL_AUTHORING: JSON<<
 {
@@ -182,7 +255,8 @@ LINT_CHECKS: TEXT<<
 - all Recommended fields are present with defaults if not overridden
 - Conditional fields only present when explicitly specified
 - no YAML comments in frontmatter output
-- Copilot CLI: tools is YAML array of bare names such as bash, view, glob, grep, create, edit, web_fetch, task, sql, or github-mcp-server/<tool>
+- Copilot CLI: tools is a YAML array using CURRENT_COPILOT_CLI_TOOLS names such as bash, view, glob, rg, apply_patch, web_fetch, task, sql, read_agent, list_agents, github-mcp-server-search_code, or github-mcp-server-get_file_contents
+- Copilot CLI: generated tools MUST NOT use legacy names grep, create, edit, github-mcp-server/search_code, or github-mcp-server/get_file_contents
 - Copilot CLI: deprecated `infer` field MUST NOT appear in generated frontmatter
 - Copilot CLI: deprecated `user-invokable` field MUST NOT appear in generated frontmatter
 - VS Code: tools is YAML array, user-invocable is boolean, disable-model-invocation is boolean, target is string
@@ -296,11 +370,15 @@ Tool selection rules for generated agent frontmatter:
 Default to individual/qualified tool names; avoid toolset names.
 Use a toolset ONLY when ALL tools in that set are genuinely needed.
 Claude Code: single-tier PascalCase (Read, Bash, Glob); no qualification.
-Copilot CLI: bare snake_case names (bash, view, glob, grep, create, edit, web_fetch, task, sql); use github-mcp-server/<tool> for MCP tools.
+Copilot CLI: use callable names from CURRENT_COPILOT_CLI_TOOLS.
+Copilot CLI: use rg for text search, not grep.
+Copilot CLI: use apply_patch for file creation and modification, not create or edit.
+Copilot CLI: use github-mcp-server-search_code and github-mcp-server-get_file_contents for MCP tools, not slash-separated names.
 VS Code: qualified names from the VS Code adapter; prefer over set names.
 Consult ADAPTER_TOOLS recommended.aps.planner or recommended.aps.implementer for defaults.
 Trim tools the agent does not need; add tools it specifically requires.
-Read-only agents: search + read tools only. Implementer agents: add edit + execute.
+Read-only agents: use rg, glob, view, web_fetch, or read-only GitHub MCP tools only.
+Implementer agents: add apply_patch for file changes and bash for execution.
 >>
 
 VOCAB_RULES: TEXT<<
@@ -469,9 +547,9 @@ IF TARGET_PLATFORM = "claude-code":
 ELSE:
   SET AGENT_SLUG := <SLUG> (from "Agent Inference" using INTENT, SLUG_RULES_VSCODE)
 SET FILE_PATH := <AGENT_FILE_PATH> (from "Agent Inference" using AGENT_SLUG, PLATFORM_CONFIG.agentsDir, PLATFORM_CONFIG.agentExt)
-SET AGENT := <AGENT_TEXT> (from "Agent Inference" using INTENT, SKILL_CONTENT, FRONTMATTER_TEMPLATE, ADAPTER_TOOLS, AGENT_SKELETON, PLATFORM_CONFIG, FIELD_REQUIREMENTS, SECTION_GUIDE, CROSS_REF, APS_NAMING, COMMON_ERRORS, TOOL_SELECTION, VOCAB_RULES)
+SET AGENT := <AGENT_TEXT> (from "Agent Inference" using INTENT, SKILL_CONTENT, FRONTMATTER_TEMPLATE, ADAPTER_TOOLS, AGENT_SKELETON, PLATFORM_CONFIG, FIELD_REQUIREMENTS, SECTION_GUIDE, CROSS_REF, APS_NAMING, COMMON_ERRORS, TOOL_SELECTION, TOOL_NAME_EQUIVALENTS, CURRENT_COPILOT_CLI_TOOLS, VOCAB_RULES)
 USE `bash` where: command="mkdir -p <PLATFORM_CONFIG.agentsDir>"
-USE `create` where: filePath=FILE_PATH, content=AGENT
+USE `apply_patch` where: filePath=FILE_PATH, content=AGENT
 SET LINT := <LINT_TEXT> (from "Agent Inference" using AGENT, LINT_CHECKS, TARGET_PLATFORM, FIELD_REQUIREMENTS, COMMON_ERRORS)
 SET LINT_CLEAN := <IS_CLEAN> (from "Agent Inference" using LINT)
 </process>
