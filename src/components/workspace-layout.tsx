@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { Group, Panel, Separator, type PanelImperativeHandle } from "react-resizable-panels";
 import {
   Spinner,
@@ -9,10 +10,12 @@ import {
   FolderOpen,
   TerminalWindow,
   WarningCircle,
+  X,
 } from "@phosphor-icons/react";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { FileTree } from "@/components/file-tree";
 import { TerminalPanel } from "@/components/terminal-panel";
+import { closeNavigationTarget, useOpenProjects } from "@/lib/open-projects-context";
 
 const FileViewer = dynamic(() => import("@/components/file-viewer"), {
   ssr: false,
@@ -123,6 +126,8 @@ interface WorkspaceLayoutProps {
 }
 
 export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
+  const router = useRouter();
+  const { openProjects, closeProject } = useOpenProjects();
   const {
     setProject,
     fileTree,
@@ -232,6 +237,15 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     }
   }, [activeWorktree, project.slug, showExplorer, showFileViewer, showTerminal]);
 
+  const closeProjectLabel = `Close project ${project.name}`;
+  const handleCloseProject = useCallback(() => {
+    const navigationTarget = closeNavigationTarget(openProjects, project.slug, project.slug);
+    closeProject(project.slug);
+    if (navigationTarget) {
+      router.push(navigationTarget);
+    }
+  }, [closeProject, openProjects, project.slug, router]);
+
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
       {/* Panel toggle bar */}
@@ -257,6 +271,16 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
           guarded={terminalGuarded}
           onClick={toggleTerminal}
         />
+        <button
+          type="button"
+          onClick={handleCloseProject}
+          className="ml-auto flex items-center gap-1.5 rounded-md border border-destructive/40 px-2 py-1 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40"
+          aria-label={closeProjectLabel}
+          title={closeProjectLabel}
+        >
+          <X size={14} weight="bold" />
+          <span className="hidden sm:inline">Close Project</span>
+        </button>
       </div>
 
       <Group orientation="horizontal" className="min-h-0 min-w-0 flex-1 overflow-hidden">
