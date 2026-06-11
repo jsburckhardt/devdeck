@@ -2,15 +2,15 @@
 name: issue-generator
 description: "Analyze codebase history for recurring pitfalls, draft a comprehensive GitHub issue, dispatch a rubber-duck subagent to critique it, then create the issue via gh."
 tools:
-  - grep
+  - rg
   - glob
   - view
   - bash
   - read_bash
-  - create
+  - apply_patch
   - web_fetch
-  - github-mcp-server/search_code
-  - github-mcp-server/get_file_contents
+  - github-mcp-server-search_code
+  - github-mcp-server-get_file_contents
   - task
   - read_agent
   - list_agents

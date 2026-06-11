@@ -1,5 +1,3 @@
-# Agents — Soft Factory Pipeline Specification
-
 <instructions>
 Every piece of work MUST flow through exactly four stages in order: Research, Plan, Implement, Verify.
 You MUST classify scope_type as exactly one of: issue, architecture_decision, core_component.
@@ -13,10 +11,50 @@ You MUST return to the Plan stage if implementation diverges from an ADR or core
 You MUST inspect existing repo code and documentation before proposing new work.
 You MUST NOT skip any stage in the pipeline.
 You MUST update the APS version badge in README.md and the APS_BADGE constant when the APS skill is upgraded.
+You SHOULD prefer `./harness` over direct `npm run` or `just` commands for all supported verbs.
+You SHOULD start unfamiliar work with `./harness orient`.
+You SHOULD check health with `./harness doctor`.
+You MUST use `./harness verify` before claiming code-change completion when the harness is available.
+You MAY use direct commands when the harness lacks a verb, explains a degraded path, or raw diagnostic output is required.
+You SHOULD record inference friction with `./harness friction add` when bypassing the harness for a supported verb.
+You MUST update the harness when repository commands change.
 </instructions>
 
 <constants>
 APS_BADGE: "[![APS version](https://img.shields.io/badge/APS-v1.2.2-blue?logo=github)](https://github.com/chris-buckley/agnostic-prompt-standard/releases/tag/v1.2.2)"
+DEVDECK_HARNESS_GUIDANCE: TEXT<<
+## Engineering Harness
+
+DevDeck uses a repo-local `./harness` CLI as the preferred operating surface. Both humans and AI agents SHOULD prefer `./harness` for orienting, verifying, testing, linting, building, and booting the project.
+
+### Usage
+
+```bash
+./harness help      # List all verbs
+./harness orient    # Understand project surfaces
+./harness doctor    # Check prerequisites
+./harness verify    # Run full verification
+```
+
+### Policy
+
+- **Prefer `./harness`** over direct `npm run` or `just` commands for all supported verbs.
+- **Direct commands are allowed** when the harness lacks a verb, the harness explains a degraded path, or deeper diagnosis requires raw command output.
+- **Record friction** when bypassing the harness: `./harness friction add "<what you had to infer>"`
+- **Key question:** "What did the agent have to infer that the harness should have proved?"
+
+### Workflow
+
+1. Start unfamiliar work with `./harness orient`
+2. Check health with `./harness doctor`
+3. Use `./harness verify` before claiming completion
+4. Update the harness when repository commands change
+5. Do NOT bypass a working harness to run equivalent raw commands
+
+### Contract
+
+See `.harness/contract.yml` for the machine-readable command contract and `.harness/README.md` for full documentation.
+>>
 PIPELINE_STAGES: YAML<<
 - id: research
   name: Research
@@ -40,8 +78,8 @@ onboard-repo:
   file: .github/agents/onboard-repo.agent.md
   purpose: Introduce the Soft Factory engineering flow into an existing repository by analysing its codebase, inferring architectural decisions already embedded in the code, scaffolding the documentation infrastructure, and creating the first GitHub issue and seeding it with a full repository-understanding brief.
   tools:
-    - codebase exploration and reading
-    - file creation and editing
+    - codebase exploration with rg, glob, and view
+    - file creation and editing with apply_patch
     - web fetch
     - GitHub CLI (gh)
   read_paths:
@@ -81,8 +119,8 @@ bootstrap:
   file: .github/agents/bootstrap.agent.md
   purpose: Bootstrap a new project from the Soft Factory template by gathering project identity, tech stack, and cross-cutting concerns, then scaffolding the codebase and seeding architectural artifacts.
   tools:
-    - codebase exploration and editing
-    - file creation and editing
+    - codebase exploration with rg, glob, and view
+    - file creation and editing with apply_patch
     - terminal execution
     - GitHub CLI (gh)
   read_paths:
@@ -95,6 +133,8 @@ bootstrap:
     - README.md
     - AGENTS.md
     - LLM.txt
+    - .harness/contract.yml
+    - .harness/README.md
   write_paths:
     - project/architecture/ADR/ADR-####-slug.md
     - project/architecture/core-components/CORE-COMPONENT-####-slug.md
@@ -104,7 +144,7 @@ bootstrap:
     - AGENTS.md
     - LLM.txt
     - .devcontainer/devcontainer.json
-    - .github/soft-factory/verification.yml
+    - .harness/contract.yml
   templates:
     - project/architecture/ADR/ADR-0001-template.md
     - project/architecture/core-components/CORE-COMPONENT-0001-template.md
@@ -119,7 +159,7 @@ bootstrap:
     - must create a development standards core-component covering coding conventions, commit standards, and testing practices
     - must update DECISION-LOG.md with all new ADRs and core-components
     - must record decision records in the Decisions section of DECISION-LOG.md for every ADR and core-component created
-    - must configure project verification commands and write .github/soft-factory/verification.yml
+    - must configure project verification commands in the harness contract
     - must ask user to confirm or customize proposed verification commands
     - must not set up CI/CD pipelines or infrastructure
     - must not make feature-level decisions
@@ -128,7 +168,7 @@ research:
   purpose: Explore the problem space, classify scope, and produce a research brief that hands off cleanly to the Plan stage.
   tools:
     - web search and documentation lookup
-    - codebase exploration (grep, glob, file reading)
+    - codebase exploration (rg, glob, view)
     - external API/library research
     - GitHub CLI (gh) for fetching issue details
   read_paths:
@@ -152,8 +192,8 @@ planner:
   file: .github/agents/planner.agent.md
   purpose: Own the Plan stage — read the research brief, commit architectural decisions via ADRs and core-components, then produce the action plan, task breakdown, and test plan.
   tools:
-    - codebase exploration (grep, glob, file reading)
-    - file creation and editing
+    - codebase exploration (rg, glob, view)
+    - file creation and editing with apply_patch
   read_paths:
     - project/issues/<ISSUE_NUMBER>/research/00-research.md
     - project/architecture/ADR/ADR-0001-template.md
@@ -187,9 +227,9 @@ implementer:
   file: .github/agents/implementer.agent.md
   purpose: Execute tasks from the plan, produce code and tests, and verify implementation against the test plan.
   tools:
-    - code generation and editing
+    - code generation and editing with apply_patch
     - build and test execution
-    - file creation
+    - file creation with apply_patch
     - ./harness CLI
   read_paths:
     - project/issues/<ISSUE_NUMBER>/plan/
@@ -214,7 +254,7 @@ verifier:
   purpose: Verify completed work — run tests, create commits following Conventional Commits, push, and open a PR assigned to Copilot for review.
   tools:
     - terminal execution (git, gh, test runners)
-    - file reading and editing
+    - file reading with view and editing with apply_patch
     - codebase exploration
     - ./harness CLI
   read_paths:
@@ -223,7 +263,6 @@ verifier:
     - project/architecture/core-components/
     - AGENTS.md
     - project/issues/<ISSUE_NUMBER>/
-    - .github/soft-factory/verification.yml
     - .harness/contract.yml
     - application source code and test files
   write_paths:
@@ -235,8 +274,7 @@ verifier:
   templates: []
   guardrails:
     - must use ./harness verify as the primary verification mechanism when the harness is available
-    - must fall back to .github/soft-factory/verification.yml when the harness is not available
-    - must fall back to auto-detecting applicable verification steps when neither harness nor verification config is present
+    - must fall back to auto-detecting applicable verification steps when the harness is not available
     - must not proceed if any verification step fails
     - must not push directly to main or master
     - must create feature branches following pattern <type>/<ISSUE_NUMBER>-<short-slug>

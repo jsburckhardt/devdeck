@@ -2,13 +2,12 @@
 name: implementer
 description: "Execute tasks from the plan, produce code and tests, and verify implementation against the test plan."
 tools:
-  - grep
+  - rg
   - glob
   - view
   - bash
   - read_bash
-  - create
-  - edit
+  - apply_patch
   - sql
 user-invocable: true
 disable-model-invocation: false
@@ -140,9 +139,9 @@ TRY:
   USE `view` where: path="project/issues/<ISSUE_NUMBER>/implementation/README.md"
   CAPTURE EXISTING_NOTES from `view`
   SET UPDATED_NOTES := <NOTES> (from "Agent Inference" using EXISTING_NOTES, IMPL_ENTRY)
-  USE `edit` where: filePath="project/issues/<ISSUE_NUMBER>/implementation/README.md"
+  USE `apply_patch` where: filePath="project/issues/<ISSUE_NUMBER>/implementation/README.md"
 RECOVER (err):
-  USE `create` where: content=IMPL_ENTRY, filePath="project/issues/<ISSUE_NUMBER>/implementation/README.md"
+  USE `apply_patch` where: content=IMPL_ENTRY, filePath="project/issues/<ISSUE_NUMBER>/implementation/README.md"
 </process>
 </processes>
 
