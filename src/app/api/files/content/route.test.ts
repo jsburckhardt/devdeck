@@ -63,6 +63,57 @@ beforeEach(() => {
 });
 
 describe("GET /api/files/content", () => {
+  it.each([
+    ["image.png", Buffer.from([0x89, 0x50, 0x4e, 0x47]), "image/png"],
+    ["photo.jpg", Buffer.from([0xff, 0xd8, 0xff, 0xe0]), "image/jpeg"],
+    ["logo.svg", Buffer.from("<svg />"), "image/svg+xml"],
+  ])("returns a data URL for viewable image %s", async (filePath, bytes, mimeType) => {
+    mockFs.lstat.mockResolvedValue(stat("file", bytes.length, 2000) as never);
+    mockFs.readFile.mockResolvedValue(bytes as never);
+
+    const res = await GET(makeGetRequest({ slug: "test", path: filePath }));
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({
+      content: `data:${mimeType};base64,${bytes.toString("base64")}`,
+      language: "image",
+      size: bytes.length,
+      isBinary: true,
+      path: filePath,
+      name: filePath,
+      mtime: 2000,
+    });
+    expect(mockFs.readFile).toHaveBeenCalledWith(`/workspaces/test-project/${filePath}`);
+  });
+
+  it("returns FILE_TOO_LARGE for oversized PNG previews", async () => {
+    mockFs.lstat.mockResolvedValue(stat("file", 1024 * 1024 + 1) as never);
+
+    const res = await GET(makeGetRequest({ slug: "test", path: "image.png" }));
+
+    expect(res.status).toBe(413);
+    await expect(res.json()).resolves.toMatchObject({ code: "FILE_TOO_LARGE" });
+    expect(mockFs.readFile).not.toHaveBeenCalled();
+  });
+
+  it("returns opaque binary content for non-viewable binaries", async () => {
+    mockFs.lstat.mockResolvedValue(stat("file", 2048, 3000) as never);
+
+    const res = await GET(makeGetRequest({ slug: "test", path: "archive.zip" }));
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({
+      content: "",
+      language: "binary",
+      size: 2048,
+      isBinary: true,
+      path: "archive.zip",
+      name: "archive.zip",
+      mtime: 3000,
+    });
+    expect(mockFs.readFile).not.toHaveBeenCalled();
+  });
+
   it("reads from the worktree root when worktree is present", async () => {
     mockFs.realpath
       .mockResolvedValueOnce("/workspaces/test-project" as never)
@@ -77,6 +128,32 @@ describe("GET /api/files/content", () => {
     expect(res.status).toBe(200);
     expect(mockFs.lstat).toHaveBeenCalledWith("/workspaces/test-project/.trees/feat/src/index.ts");
     await expect(res.json()).resolves.toMatchObject({ content: "worktree content" });
+  });
+
+  it("reads viewable images from the worktree root when worktree is present", async () => {
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+    mockFs.realpath
+      .mockResolvedValueOnce("/workspaces/test-project" as never)
+      .mockResolvedValueOnce("/workspaces/test-project/.trees/feat" as never);
+    mockFs.lstat.mockResolvedValue(stat("file", bytes.length) as never);
+    mockFs.readFile.mockResolvedValue(bytes as never);
+
+    const res = await GET(
+      makeGetRequest({ slug: "test", path: "assets/image.png", worktree: ".trees/feat" }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockFs.lstat).toHaveBeenCalledWith(
+      "/workspaces/test-project/.trees/feat/assets/image.png",
+    );
+    expect(mockFs.readFile).toHaveBeenCalledWith(
+      "/workspaces/test-project/.trees/feat/assets/image.png",
+    );
+    await expect(res.json()).resolves.toMatchObject({
+      content: `data:image/png;base64,${bytes.toString("base64")}`,
+      language: "image",
+      isBinary: true,
+    });
   });
 
   it("returns structured worktree errors for GET", async () => {

@@ -6,7 +6,12 @@ import {
   WorktreeResolutionError,
   worktreeResolutionErrorResponse,
 } from "@/lib/worktree-utils";
-import { getLanguageFromFilename, isBinaryFile } from "@/lib/file-utils";
+import {
+  getImageMimeType,
+  getLanguageFromFilename,
+  isBinaryFile,
+  isViewableImage,
+} from "@/lib/file-utils";
 import type { FileContent, FileKind } from "@/lib/types";
 
 const MAX_FILE_SIZE = 1024 * 1024; // 1MB
@@ -151,6 +156,28 @@ export async function GET(request: NextRequest) {
   try {
     const stat = target.stat;
     const filename = path.basename(fullPath);
+
+    if (isViewableImage(filename)) {
+      if (stat.size > MAX_FILE_SIZE) {
+        return NextResponse.json(
+          { error: "File is too large to preview", code: "FILE_TOO_LARGE" },
+          { status: 413 },
+        );
+      }
+
+      const bytes = await fs.readFile(fullPath);
+      const base64Content = Buffer.from(bytes).toString("base64");
+      const result: FileContent = {
+        content: `data:${getImageMimeType(filename)};base64,${base64Content}`,
+        language: "image",
+        size: stat.size,
+        isBinary: true,
+        path: filePath,
+        name: filename,
+        mtime: stat.mtimeMs,
+      };
+      return NextResponse.json(result, { headers: CACHE_HEADERS });
+    }
 
     if (isBinaryFile(filename)) {
       const result: FileContent = {
