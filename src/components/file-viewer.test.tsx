@@ -234,6 +234,35 @@ describe("FileViewer", () => {
       );
     });
 
+    it("image content GET includes activeWorktree when set", async () => {
+      setupWorkspace({
+        selectedFile: "image.png",
+        activeWorktree: ".trees/feat",
+      });
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+      fetchSpy.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            content: "data:image/png;base64,abc123",
+            language: "image",
+            size: 6,
+            isBinary: true,
+            path: "image.png",
+            name: "image.png",
+            mtime: 1000,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+
+      render(<FileViewer />);
+
+      expect(await screen.findByRole("img", { name: /image\.png/i })).toBeInTheDocument();
+      expect(String(fetchSpy.mock.calls[0][0])).toBe(
+        "/api/files/content?slug=test-project&path=image.png&worktree=.trees%2Ffeat",
+      );
+    });
+
     it("save PUT body includes activeWorktree and refreshes current context", async () => {
       const refreshFileTree = vi.fn().mockResolvedValue(undefined);
       setupWorkspace({
@@ -315,6 +344,28 @@ describe("FileViewer", () => {
     setupWorkspace({ selectedFile: null });
     render(<FileViewer />);
     expect(screen.getByText("Select a file to view its contents")).toBeInTheDocument();
+  });
+
+  it("renders PNG image previews before the generic binary fallback", async () => {
+    setupWorkspace({ selectedFile: "image.png" });
+    mockFetchResponse({
+      content: "data:image/png;base64,abc123",
+      language: "image",
+      size: 6,
+      isBinary: true,
+      path: "image.png",
+      name: "image.png",
+      mtime: 1000,
+    });
+
+    render(<FileViewer />);
+
+    const image = await screen.findByRole("img", { name: /image\.png/i });
+    expect(image).toHaveAttribute("src", "data:image/png;base64,abc123");
+    expect(screen.queryByText("Binary files cannot be displayed")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Edit file")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Live Edit" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit in Preview" })).not.toBeInTheDocument();
   });
 
   describe("Issue #66 code gutter layout", () => {
@@ -616,15 +667,15 @@ describe("FileViewer", () => {
       });
     });
 
-    it("4.14 — edit button hidden for binary file", async () => {
-      setupWorkspace({ selectedFile: "image.png" });
+    it("4.14 — edit button hidden for generic binary file", async () => {
+      setupWorkspace({ selectedFile: "archive.zip" });
       mockFetchResponse({
         content: "",
         language: "binary",
         size: 1024,
         isBinary: true,
-        path: "image.png",
-        name: "image.png",
+        path: "archive.zip",
+        name: "archive.zip",
         mtime: 1000,
       });
 
