@@ -16,6 +16,7 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - Stale slug pruning on cold start
 - Save/restore lifecycle between `WorkspaceProvider` and `OpenProjectsProvider`
 - Sidebar rendering, interaction, and accessibility contracts
+- Current-project close action in the workspace panel control bar
 - File tree refresh contract exposed via `WorkspaceContext` for in-portal edits
 - Lazy file-tree loading contract for root and directory children
 - File-tree request deduplication and stale-response protection
@@ -50,6 +51,10 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - Each tab MUST have a close button to remove the project from the open list
 - Expanded sidebar close buttons MAY be visible on hover/focus
 - Collapsed sidebar close buttons MUST be always visible
+- `WorkspaceLayout` MUST expose a current-project Close Project action in the workspace panel control bar for active project routes
+- Workspace close actions MUST compute the next route with `closeNavigationTarget(openProjects, project.slug, project.slug)` before calling `closeProject(project.slug)`
+- Workspace close actions MUST call `router.push(navigationTarget)` when `closeNavigationTarget` returns a target, including `/` for the last open project
+- Workspace close actions MUST use `aria-label` and native `title` text that include the current project name
 - The sidebar MUST include a "Home" button at the top to navigate to the landing page
 - Clicking a sidebar tab MUST trigger client-side navigation via `router.push(`/project/${slug}`)` — no full page reload
 - Sidebar MUST use CSS custom properties from CORE-COMPONENT-0004 for structural colors (borders, backgrounds, text). Language color badges use Tailwind palette classes via the shared `languageColor()` utility for consistency with `ProjectCard`
@@ -166,6 +171,7 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - **useWorktrees(slug: string):** Hook exposing `{ worktrees: Worktree[], loading: boolean, error: string | null, refresh: () => void }`
 - **WorktreeTree:** Collapsible selector component rendered in the project sidebar; lists project root and worktrees as filesystem-style selector nodes without nested inline file trees
 - **ProjectSidebar:** Component rendering the collapsible vertical tab strip, conditional Copilot bot badge replacement, and the active project's CSS-hideable worktree selector; consumes `useOpenProjects()` and `usePathname()`
+- **WorkspaceLayout Close Project action:** Visible current-project control that consumes `useOpenProjects()`, `closeNavigationTarget()`, and `useRouter()` to mirror sidebar close navigation from wide workspace controls
 - **languageColor(language?: string): string** — Shared utility extracted to `src/lib/utils.ts`
 
 ### Expectations
@@ -265,6 +271,7 @@ async function handleDirectoryClick(node: FileNode) {
 - `WorkspaceProvider` in `src/lib/workspace-context.tsx` accepts an optional `slug` prop and calls `restoreWorkspaceState`/`saveWorkspaceState`
 - `PerProjectWorkspaceState` lives in `src/lib/types.ts`
 - `languageColor()` is shared from `src/lib/utils.ts` for use by both `ProjectCard` and `ProjectSidebar`
+- `WorkspaceLayout` treats its `project.slug` prop as the active slug when computing the current-project close navigation target
 - The file-tree API route must validate `path` with `path.resolve(root, requestedPath)` and `path.relative(root, fullPath)` before filesystem reads
 - File API routes must resolve the effective root with the shared HTTP worktree resolver before validating requested file or directory paths when `worktree` is present
 - File-tree route helpers should separate direct-child listing from classification so tests can prove root requests do not recurse into descendants
@@ -292,6 +299,7 @@ async function handleDirectoryClick(node: FileNode) {
 - [x] Automated checks: Context tests must assert root file-tree error state is set on failure, cleared on retry/success, and guarded against stale project responses
 - [x] Automated checks: Layout tests must assert ExplorerContent renders error+retry UI when root load fails and tree is empty
 - [x] Automated checks: Context tests must assert `showExplorer` defaults, restore behavior, toggle behavior, and save-on-unmount persistence
+- [ ] Automated checks: WorkspaceLayout tests must assert current-project close rendering and close navigation for multiple-open-project and single-open-project cases
 - [ ] Automated checks: API route tests must assert root requests return direct children only and path requests return direct children only
 - [ ] Automated checks: API route tests must assert path traversal and non-directory targets return structured errors
 - [ ] Automated checks: Context tests must assert root and same-directory request deduplication by `slug + path`

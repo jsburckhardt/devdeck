@@ -2,7 +2,7 @@
 
 ## Status
 
-Adopted (updated) - 2026-06-09
+Adopted (updated) - 2026-06-11
 
 ## Purpose
 
@@ -13,6 +13,7 @@ Define the top-level IDE shell structure that all DevDeck pages share. The shell
 - Root page layout structure (header + panel workspace)
 - Panel registration pattern using `react-resizable-panels`
 - Panel toggle bar behavior, accessibility, and visibility guards
+- Current-project workspace close affordance in the panel control bar
 - Pairwise separator visibility between expanded adjacent panels
 - Error boundary wrapping per panel
 - Mount animation conventions
@@ -35,6 +36,8 @@ Define the top-level IDE shell structure that all DevDeck pages share. The shell
 - The shell MUST prevent hiding the last visible workspace panel; the guarded toggle MUST use `aria-disabled="true"`, `tabIndex={-1}`, muted styling, and a suppressed click handler
 - When visibility, project, or active worktree changes leave exactly one workspace panel visible, the shell MUST resize that remaining panel to fill the workspace; multi-panel layouts MUST preserve user-resized proportions and MUST NOT be reset by single-panel normalization
 - `PanelToggle` controls MUST expose `aria-label` and `aria-pressed`
+- `WorkspaceLayout` MUST render an always-visible trailing Close Project action for the current project in the panel control bar
+- The WorkspaceLayout Close Project action MUST be visually distinct from `PanelToggle` controls and MUST NOT expose `aria-pressed`
 - Mount animations SHOULD use `framer-motion` with subtle fade/slide (duration ≤ 300ms)
 - On project pages, the sidebar MUST render as a fixed-width flex sibling to the left of the `Group`, outside the resizable panel tree (see CORE-COMPONENT-0008)
 - The expanded sidebar MUST use `w-44` (~176px) and display project-name labels
@@ -59,6 +62,7 @@ Define the top-level IDE shell structure that all DevDeck pages share. The shell
 - **Panel placeholders:** Each panel renders a centered icon + label when no real content is loaded
 - **Separator:** Visible drag handle between panels with hover/active states
 - **PanelToggle:** Toggle-bar button for workspace panels; exposes `aria-label`, `aria-pressed`, and guarded disabled semantics when hiding the last visible panel is prohibited
+- **WorkspaceLayout Close Project action:** Regular button trailing the panel toggles; stays visible, exposes no pressed state, and delegates close behavior to CORE-COMPONENT-0008
 
 ### Expectations
 - The shell MUST render without JavaScript errors when all panels contain only placeholder content
@@ -127,6 +131,7 @@ export default function Home() {
 - [x] Code review checklist: New panels must be wrapped in ErrorBoundary
 - [x] Test coverage requirements: Shell layout smoke test must pass
 - [x] Test coverage requirements: Layout tests must assert Explorer mounted-collapse behavior, toggle order, pairwise separators, last-panel guard, and `PanelToggle` accessibility
+- [ ] Test coverage requirements: WorkspaceLayout tests must assert the current-project close action is visible, trails panel toggles, and has no `aria-pressed`
 - [ ] Automated checks: ProjectSidebar tests must assert expanded `w-44`, collapsed `w-12`, persisted collapse state, and accessible toggle attributes
 - [ ] Automated checks: ProjectSidebar tests must assert active Copilot bot badges preserve `h-6 w-6` sizing and visibility in expanded and collapsed modes
 
