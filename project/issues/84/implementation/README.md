@@ -31,10 +31,16 @@ Implemented the issue #84 cleanup that aligns DevDeck's active agent instruction
 - Added `CURRENT_COPILOT_CLI_TOOLS` and `TOOL_NAME_EQUIVALENTS` to the APS generator agent.
 - Updated `AGENTS.md` tool descriptions to use `rg`, `glob`, `view`, and `apply_patch`.
 
+### Review feedback follow-up
+
+- Added missing `content=` arguments to `apply_patch` process calls that update computed `UPDATED_*` artifacts.
+- Replaced brittle multiline `gh --body` process examples with `--body-file -` plus stdin-bound body variables.
+
 ## Verification
 
 - Static validation confirmed `AGENTS.md` and `.github/agents/aps-v1.2.2.agent.md` have the expected APS section order.
 - Static validation confirmed all `.github/agents/*.agent.md` frontmatter tools are current callable names.
+- Static validation confirmed active `apply_patch` calls include content and that issue/PR body flows do not use `/tmp` or direct multiline `--body` strings.
 - `./harness orient --json` reports `surfaces.harness_contract.verify_steps` with `lint`, `format_check`, `build`, `test`, and `smoke`.
 - `./harness orient` reports the harness contract in the human-readable project surface map.
 - `./harness verify` completed with a PASS verdict across lint, format check, build, test, and smoke.

@@ -311,13 +311,13 @@ FOREACH concern IN DISCOVERED_CONCERNS:
 USE `view` where: path=DECISION_LOG_PATH
 CAPTURE CURRENT_LOG from `view`
 SET UPDATED_LOG := <LOG> (from "Agent Inference" using CURRENT_LOG, CREATED_ADRS, CREATED_CORE_COMPONENTS)
-USE `apply_patch` where: filePath=DECISION_LOG_PATH
+USE `apply_patch` where: content=UPDATED_LOG, filePath=DECISION_LOG_PATH
 SET UPDATED_FILES := UPDATED_FILES + [DECISION_LOG_PATH] (from "Agent Inference")
 </process>
 
 <process id="create-first-issue" name="Create the first GitHub issue and its research brief">
 SET ISSUE_BODY := <BODY> (from "Agent Inference" using PROJECT_NAME, PROJECT_DESCRIPTION, TECH_STACK, DISCOVERED_ADRS, DISCOVERED_CONCERNS, RISKS)
-USE `bash` where: command="gh issue create --title 'Repository Understanding' --body '<ISSUE_BODY>'"
+USE `bash` where: command="gh issue create --title 'Repository Understanding' --body-file -", stdin=ISSUE_BODY
 CAPTURE ISSUE_OUTPUT from `bash`
 SET FIRST_ISSUE_NUMBER := <NUMBER> (from "Agent Inference" using ISSUE_OUTPUT)
 SET BRIEF_CONTENT := <CONTENT> (from "Agent Inference" using FIRST_ISSUE_NUMBER, PROJECT_NAME, PROJECT_DESCRIPTION, TECH_STACK, DISCOVERED_ADRS, DISCOVERED_CONCERNS, CREATED_ADRS, CREATED_CORE_COMPONENTS, RISKS)
@@ -330,17 +330,17 @@ SET UPDATED_FILES := UPDATED_FILES + ["project/issues/<FIRST_ISSUE_NUMBER>/resea
 USE `view` where: path=README_PATH
 CAPTURE CURRENT_README from `view`
 SET UPDATED_README := <CONTENT> (from "Agent Inference" using CURRENT_README, PROJECT_NAME, PROJECT_DESCRIPTION)
-USE `apply_patch` where: filePath=README_PATH
+USE `apply_patch` where: content=UPDATED_README, filePath=README_PATH
 SET UPDATED_FILES := UPDATED_FILES + [README_PATH] (from "Agent Inference")
 USE `view` where: path=AGENTS_MD_PATH
 CAPTURE CURRENT_AGENTS from `view`
 SET UPDATED_AGENTS := <CONTENT> (from "Agent Inference" using CURRENT_AGENTS, CREATED_ADRS, CREATED_CORE_COMPONENTS)
-USE `apply_patch` where: filePath=AGENTS_MD_PATH
+USE `apply_patch` where: content=UPDATED_AGENTS, filePath=AGENTS_MD_PATH
 SET UPDATED_FILES := UPDATED_FILES + [AGENTS_MD_PATH] (from "Agent Inference")
 USE `view` where: path=LLM_TXT_PATH
 CAPTURE CURRENT_LLM_TXT from `view`
 SET UPDATED_LLM_TXT := <CONTENT> (from "Agent Inference" using CURRENT_LLM_TXT, CREATED_ADRS, CREATED_CORE_COMPONENTS, FIRST_ISSUE_NUMBER)
-USE `apply_patch` where: filePath=LLM_TXT_PATH
+USE `apply_patch` where: content=UPDATED_LLM_TXT, filePath=LLM_TXT_PATH
 SET UPDATED_FILES := UPDATED_FILES + [LLM_TXT_PATH] (from "Agent Inference")
 </process>
 </processes>

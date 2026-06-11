@@ -139,7 +139,7 @@ TRY:
   USE `view` where: path="project/issues/<ISSUE_NUMBER>/implementation/README.md"
   CAPTURE EXISTING_NOTES from `view`
   SET UPDATED_NOTES := <NOTES> (from "Agent Inference" using EXISTING_NOTES, IMPL_ENTRY)
-  USE `apply_patch` where: filePath="project/issues/<ISSUE_NUMBER>/implementation/README.md"
+  USE `apply_patch` where: content=UPDATED_NOTES, filePath="project/issues/<ISSUE_NUMBER>/implementation/README.md"
 RECOVER (err):
   USE `apply_patch` where: content=IMPL_ENTRY, filePath="project/issues/<ISSUE_NUMBER>/implementation/README.md"
 </process>

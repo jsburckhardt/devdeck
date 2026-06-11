@@ -260,7 +260,7 @@ IF RUBBER_DUCK_OK is false:
 </process>
 
 <process id="create-issue" name="Create the issue via GitHub CLI">
-USE `bash` where: command="gh issue create --title '<DRAFT_TITLE>' --body '<DRAFT_BODY>'"
+USE `bash` where: command="gh issue create --title '<DRAFT_TITLE>' --body-file -", stdin=DRAFT_BODY
 CAPTURE CREATE_OUTPUT from `bash`
 SET ISSUE_URL := <URL> (from "Agent Inference" using CREATE_OUTPUT)
 SET ISSUE_NUMBER := <NUMBER> (from "Agent Inference" using CREATE_OUTPUT)

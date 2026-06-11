@@ -414,7 +414,7 @@ SET NEXT_CC_NUMBER := NEXT_CC_NUMBER + 1 (from "Agent Inference")
 USE `view` where: path=DECISION_LOG_PATH
 CAPTURE CURRENT_LOG from `view`
 SET UPDATED_LOG := <LOG> (from "Agent Inference" using CURRENT_LOG, CREATED_ADRS, CREATED_CORE_COMPONENTS, DEV_STD_DECISIONS)
-USE `apply_patch` where: filePath=DECISION_LOG_PATH
+USE `apply_patch` where: content=UPDATED_LOG, filePath=DECISION_LOG_PATH
 SET UPDATED_FILES := UPDATED_FILES + [DECISION_LOG_PATH] (from "Agent Inference")
 </process>
 
@@ -422,22 +422,22 @@ SET UPDATED_FILES := UPDATED_FILES + [DECISION_LOG_PATH] (from "Agent Inference"
 USE `view` where: path=README_PATH
 CAPTURE CURRENT_README from `view`
 SET UPDATED_README := <CONTENT> (from "Agent Inference" using CURRENT_README, PROJECT_NAME, PROJECT_DESCRIPTION, PROJECT_GOAL)
-USE `apply_patch` where: filePath=README_PATH
+USE `apply_patch` where: content=UPDATED_README, filePath=README_PATH
 SET UPDATED_FILES := UPDATED_FILES + [README_PATH] (from "Agent Inference")
 USE `view` where: path=APP_DOCS_PATH
 CAPTURE CURRENT_APP_DOCS from `view`
 SET UPDATED_APP_DOCS := <CONTENT> (from "Agent Inference" using CURRENT_APP_DOCS, PROJECT_NAME, PROJECT_DESCRIPTION, PROJECT_GOAL, LANGUAGE, FRAMEWORK)
-USE `apply_patch` where: filePath=APP_DOCS_PATH
+USE `apply_patch` where: content=UPDATED_APP_DOCS, filePath=APP_DOCS_PATH
 SET UPDATED_FILES := UPDATED_FILES + [APP_DOCS_PATH] (from "Agent Inference")
 USE `view` where: path=AGENTS_MD_PATH
 CAPTURE CURRENT_AGENTS from `view`
 SET UPDATED_AGENTS := <CONTENT> (from "Agent Inference" using CURRENT_AGENTS, CREATED_ADRS, CREATED_CORE_COMPONENTS)
-USE `apply_patch` where: filePath=AGENTS_MD_PATH
+USE `apply_patch` where: content=UPDATED_AGENTS, filePath=AGENTS_MD_PATH
 SET UPDATED_FILES := UPDATED_FILES + [AGENTS_MD_PATH] (from "Agent Inference")
 USE `view` where: path=LLM_TXT_PATH
 CAPTURE CURRENT_LLM_TXT from `view`
 SET UPDATED_LLM_TXT := <CONTENT> (from "Agent Inference" using CURRENT_LLM_TXT, CREATED_ADRS, CREATED_CORE_COMPONENTS, LANGUAGE)
-USE `apply_patch` where: filePath=LLM_TXT_PATH
+USE `apply_patch` where: content=UPDATED_LLM_TXT, filePath=LLM_TXT_PATH
 SET UPDATED_FILES := UPDATED_FILES + [LLM_TXT_PATH] (from "Agent Inference")
 </process>
 
@@ -445,7 +445,7 @@ SET UPDATED_FILES := UPDATED_FILES + [LLM_TXT_PATH] (from "Agent Inference")
 USE `view` where: path=DEVCONTAINER_PATH
 CAPTURE CURRENT_DEVCONTAINER from `view`
 SET UPDATED_DEVCONTAINER := <CONTENT> (from "Agent Inference" using CURRENT_DEVCONTAINER, LANGUAGE, FRAMEWORK, PACKAGE_MANAGER)
-USE `apply_patch` where: filePath=DEVCONTAINER_PATH
+USE `apply_patch` where: content=UPDATED_DEVCONTAINER, filePath=DEVCONTAINER_PATH
 SET UPDATED_FILES := UPDATED_FILES + [DEVCONTAINER_PATH] (from "Agent Inference")
 </process>
 

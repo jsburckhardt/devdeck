@@ -240,7 +240,7 @@ FOREACH group IN GROUPS:
 USE `view` where: path=DECISION_LOG_PATH
 CAPTURE CURRENT_LOG from `view`
 SET UPDATED_LOG := <LOG> (from "Agent Inference" using CURRENT_LOG, ADR_CHANGES, CC_CHANGES)
-USE `apply_patch` where: filePath=DECISION_LOG_PATH
+USE `apply_patch` where: content=UPDATED_LOG, filePath=DECISION_LOG_PATH
 USE `bash` where: command="git add project/architecture/ADR/DECISION-LOG.md"
 USE `bash` where: command="git commit -m 'docs: update DECISION-LOG.md' -m '' -m 'CO_AUTHOR_TRAILER'"
 CAPTURE COMMIT_HASH from `bash`
@@ -251,7 +251,7 @@ SET COMMITS := COMMITS + [COMMIT_HASH] (from "Agent Inference")
 USE `view` where: path=AGENTS_MD_PATH
 CAPTURE CURRENT_AGENTS from `view`
 SET UPDATED_AGENTS := <AGENTS> (from "Agent Inference" using CURRENT_AGENTS, CHANGED_FILES)
-USE `apply_patch` where: filePath=AGENTS_MD_PATH
+USE `apply_patch` where: content=UPDATED_AGENTS, filePath=AGENTS_MD_PATH
 USE `bash` where: command="git add AGENTS.md"
 USE `bash` where: command="git commit -m 'docs: update AGENTS.md' -m '' -m 'CO_AUTHOR_TRAILER'"
 CAPTURE COMMIT_HASH from `bash`
@@ -309,7 +309,7 @@ CAPTURE PUSH_OUTPUT from `bash`
 <process id="create-pr" name="Create a pull request using the GitHub CLI">
 SET PR_TITLE := <TITLE> (from "Agent Inference" using ISSUE_NUMBER, SHORT_SLUG)
 SET PR_BODY := <BODY> (from "Agent Inference" using ISSUE_NUMBER, COMMITS, ADR_CHANGES, CC_CHANGES)
-USE `bash` where: command="gh pr create --title '<PR_TITLE>' --body '<PR_BODY>'"
+USE `bash` where: command="gh pr create --title '<PR_TITLE>' --body-file -", stdin=PR_BODY
 CAPTURE PR_OUTPUT from `bash`
 SET PR_URL := <URL> (from "Agent Inference" using PR_OUTPUT)
 SET PR_NUMBER := <NUMBER> (from "Agent Inference" using PR_URL)

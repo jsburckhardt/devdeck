@@ -272,7 +272,7 @@ SET ARCHITECTURE_COMPLETE := true (from "Agent Inference")
 USE `view` where: path=DECISION_LOG_PATH
 CAPTURE CURRENT_LOG from `view`
 SET UPDATED_LOG := <LOG> (from "Agent Inference" using CURRENT_LOG, CREATED_ADRS, CREATED_CORE_COMPONENTS, CREATED_DECISIONS)
-USE `apply_patch` where: filePath=DECISION_LOG_PATH
+USE `apply_patch` where: content=UPDATED_LOG, filePath=DECISION_LOG_PATH
 </process>
 
 <process id="create-action-plan" name="Create the action plan for the issue">
