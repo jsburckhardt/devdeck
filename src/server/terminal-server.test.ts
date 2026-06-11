@@ -1134,12 +1134,30 @@ describe("detectCopilotState", () => {
     }
   });
 
+  it("T1-4: returns 'running' for non-braille activity spinner characters", () => {
+    for (const ch of "⣾⣽⣻⢿⡿⣟⣯⣷◐◓◑◒✦✧◆◇●") {
+      expect(detectCopilotState(`${ch} Working...`)).toBe("running");
+    }
+  });
+
+  it("T1-5: returns 'running' for Copilot CLI textual activity lines", () => {
+    expect(detectCopilotState("Working on it...")).toBe("running");
+    expect(detectCopilotState("Running command ./harness verify")).toBe("running");
+    expect(detectCopilotState("Copilot agent is executing tools")).toBe("running");
+  });
+
   it("T2-1: returns 'waiting' for '> ' prompt at end", () => {
     expect(detectCopilotState("some text\n> ")).toBe("waiting");
   });
 
   it("T2-2: returns 'waiting' for '? ' prompt", () => {
     expect(detectCopilotState("? Do you want to continue? ")).toBe("waiting");
+  });
+
+  it("T2-3: returns 'waiting' for textual input request prompts", () => {
+    expect(detectCopilotState("Waiting for input")).toBe("waiting");
+    expect(detectCopilotState("This action requires confirmation")).toBe("waiting");
+    expect(detectCopilotState("Press Enter to continue")).toBe("waiting");
   });
 
   it("T3-1: returns 'idle' for shell prompt with $", () => {

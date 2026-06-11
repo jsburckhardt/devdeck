@@ -20,13 +20,18 @@ export function stripAnsi(text: string): string {
   return text.replace(ANSI_RE, "");
 }
 
-const BRAILLE_SPINNERS = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/;
-const WAITING_PROMPT = /(?:^|\n)(?:\? |.*> $|.*\[y\/N\])/m;
+const ACTIVITY_SPINNERS = /(?:^|\n)\s*[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⣾⣽⣻⢿⡿⣟⣯⣷◐◓◑◒✦✧◆◇●](?:\s|$)/m;
+const COPILOT_ACTIVITY_TEXT =
+  /(?:^|\n)\s*(?:(?:Copilot|assistant|agent).*(?:thinking|working|running|processing|executing|searching|reading|writing|analyzing|planning|implementing|verifying)|(?:Thinking|Working|Processing|Generating|Analyzing|Planning|Implementing|Verifying)(?:[ .…:]|$)|Running (?:command|task|tool)|Executing (?:command|tool)|Using (?:tool|bash|apply_patch|rg|view))/im;
+const WAITING_PROMPT =
+  /(?:^|\n)(?:\? |.*> $|.*\[y\/N\]|\s*(?:Waiting for input|.*requires confirmation|Press Enter to continue|.*continue\?|.*(?:approve|allow).*\?))/im;
 const SHELL_PROMPT = /(?:\$|%|#|❯)\s*$/m;
 
 export function detectCopilotState(strippedOutput: string): CopilotCliState | null {
   if (!strippedOutput) return null;
-  if (BRAILLE_SPINNERS.test(strippedOutput)) return "running";
+  if (ACTIVITY_SPINNERS.test(strippedOutput) || COPILOT_ACTIVITY_TEXT.test(strippedOutput)) {
+    return "running";
+  }
   if (WAITING_PROMPT.test(strippedOutput)) return "waiting";
   if (SHELL_PROMPT.test(strippedOutput)) return "idle";
   return null;
