@@ -1134,6 +1134,11 @@ describe("detectCopilotState", () => {
     }
   });
 
+  it("T1-3b: returns 'running' for bare braille spinners and unknown spinner text", () => {
+    expect(detectCopilotState("⠋")).toBe("running");
+    expect(detectCopilotState("⠙ Compiling context")).toBe("running");
+  });
+
   it("T1-4: returns 'running' for non-braille activity spinner characters", () => {
     for (const ch of "⣾⣽⣻⢿⡿⣟⣯⣷◐◓◑◒✦✧◆◇●⊙") {
       expect(detectCopilotState(`${ch} Working...`)).toBe("running");

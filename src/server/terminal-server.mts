@@ -21,6 +21,7 @@ export function stripAnsi(text: string): string {
 }
 
 const STATUS_GLYPHS = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⣾⣽⣻⢿⡿⣟⣯⣷◐◓◑◒✦✧◆◇●⊙";
+const BRAILLE_SPINNER = /(?:^|\n)\s*[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏](?:\s|$)/m;
 const RUNNING_STATUS_LINE = new RegExp(
   `(?:^|\\n)\\s*[${STATUS_GLYPHS}]\\s*(?:Thinking|Working|Processing|Generating|Analyzing|Planning|Implementing|Verifying)(?:\\.\\.\\.|…|\\s+esc\\s+cancel)?\\s*$`,
   "im",
@@ -31,7 +32,7 @@ const SHELL_PROMPT = /(?:\$|%|#|❯)\s*$/m;
 
 export function detectCopilotState(strippedOutput: string): CopilotCliState | null {
   if (!strippedOutput) return null;
-  if (RUNNING_STATUS_LINE.test(strippedOutput)) {
+  if (BRAILLE_SPINNER.test(strippedOutput) || RUNNING_STATUS_LINE.test(strippedOutput)) {
     return "running";
   }
   if (WAITING_PROMPT.test(strippedOutput)) return "waiting";
