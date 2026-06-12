@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const projectRoot = dirname(fileURLToPath(import.meta.url));
+const terminalPort = process.env.TERMINAL_PORT ?? "3100";
 
 const withBundleAnalyzer = bundleAnalyzer({
   enabled: process.env.ANALYZE === "true",
@@ -20,7 +21,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/api/terminal",
-        destination: "http://127.0.0.1:3100",
+        destination: `http://127.0.0.1:${terminalPort}`,
       },
     ];
   },
