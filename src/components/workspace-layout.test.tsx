@@ -1,6 +1,8 @@
 import type React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type { Project } from "@/lib/types";
 
 const panelMockState = vi.hoisted(() => ({
   panelHandles: [] as Array<{
@@ -14,9 +16,44 @@ const panelMockState = vi.hoisted(() => ({
   separatorIndex: 0,
 }));
 
+const routerMockState = vi.hoisted(() => ({
+  push: vi.fn(),
+}));
+
+const openProjectsMockState = vi.hoisted(() => ({
+  openProjects: [] as Project[],
+  closeProject: vi.fn(),
+  requestProjectClose: vi.fn(),
+  clearProjectCloseRequest: vi.fn(),
+}));
+
 vi.mock("@/lib/workspace-context", () => ({
   useWorkspace: vi.fn(),
 }));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: routerMockState.push,
+  }),
+}));
+
+vi.mock("@/lib/open-projects-context", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/open-projects-context")>();
+  return {
+    ...actual,
+    useOpenProjects: () => ({
+      openProjects: openProjectsMockState.openProjects,
+      closeProject: openProjectsMockState.closeProject,
+      requestProjectClose: openProjectsMockState.requestProjectClose,
+      clearProjectCloseRequest: openProjectsMockState.clearProjectCloseRequest,
+      openProject: vi.fn(),
+      saveWorkspaceState: vi.fn(),
+      restoreWorkspaceState: vi.fn(),
+      updateCopilotStatus: vi.fn(),
+      getCopilotStatus: vi.fn(() => "idle" as const),
+    }),
+  };
+});
 
 // Stub heavy children so we can isolate the explorer behavior.
 vi.mock("@/components/file-tree", () => ({
@@ -99,13 +136,20 @@ import { WorkspaceLayout } from "./workspace-layout";
 
 const mockUseWorkspace = vi.mocked(useWorkspace);
 
-const project = {
+const project: Project = {
   slug: "demo",
   name: "Demo",
   path: "/demo",
   description: "",
   source: "auto" as const,
 };
+
+function makeProject(overrides: Partial<Project>): Project {
+  return {
+    ...project,
+    ...overrides,
+  };
+}
 
 function makeContext(overrides: Record<string, unknown> = {}) {
   return {
@@ -144,6 +188,40 @@ beforeEach(() => {
   panelMockState.panelHandles = [];
   panelMockState.panelIndex = 0;
   panelMockState.separatorIndex = 0;
+  openProjectsMockState.openProjects = [project];
+  openProjectsMockState.requestProjectClose.mockImplementation(
+    (slug: string, activeSlug: string | null) => {
+      const normalizedSlug = slug.trim();
+      if (!normalizedSlug) {
+        return { accepted: false, target: null, reason: "invalid-slug" as const };
+      }
+
+      openProjectsMockState.closeProject(normalizedSlug);
+      if (activeSlug?.trim() !== normalizedSlug) {
+        return { accepted: true, target: null };
+      }
+
+      const closedIndex = openProjectsMockState.openProjects.findIndex(
+        (openProject) => openProject.slug.trim() === normalizedSlug,
+      );
+      if (closedIndex === -1) {
+        return { accepted: true, target: "/" };
+      }
+
+      const remainingProjects = openProjectsMockState.openProjects.filter(
+        (openProject) => openProject.slug.trim() !== normalizedSlug,
+      );
+      if (remainingProjects.length === 0) {
+        return { accepted: true, target: "/" };
+      }
+
+      const targetProject = remainingProjects[closedIndex] ?? remainingProjects[closedIndex - 1];
+      return {
+        accepted: true,
+        target: `/project/${encodeURIComponent(targetProject.slug.trim())}`,
+      };
+    },
+  );
 });
 
 describe("WorkspaceLayout", () => {
@@ -398,6 +476,148 @@ describe("WorkspaceLayout", () => {
       );
 
     expect(toggleNames).toEqual(["Hide Explorer", "Hide File Preview", "Hide Terminal"]);
+  });
+
+  it("82-T1: renders a visible close project action with accessible semantics", () => {
+    mockUseWorkspace.mockReturnValue(makeContext());
+
+    render(<WorkspaceLayout project={project} />);
+
+    const closeButton = screen.getByRole("button", { name: "Close project Demo" });
+    expect(closeButton).toBeInTheDocument();
+    expect(closeButton).toBeVisible();
+    expect(closeButton).toHaveAttribute("type", "button");
+    expect(closeButton).toHaveAttribute("title", "Close project Demo");
+    expect(closeButton).not.toHaveAttribute("aria-pressed");
+    expect(closeButton.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("82-T2: preserves panel toggle order and pressed semantics", () => {
+    mockUseWorkspace.mockReturnValue(makeContext());
+
+    const { container } = render(<WorkspaceLayout project={project} />);
+
+    const panelToggleLabels = screen
+      .getAllByRole("button")
+      .map((button) => button.getAttribute("aria-label"))
+      .filter(
+        (label) =>
+          label?.includes("Explorer") ||
+          label?.includes("File Preview") ||
+          label?.includes("Terminal"),
+      );
+
+    expect(panelToggleLabels).toEqual(["Hide Explorer", "Hide File Preview", "Hide Terminal"]);
+    expect(
+      screen.getAllByRole("button").map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["Hide Explorer", "Hide File Preview", "Hide Terminal", "Close project Demo"]);
+    expect(screen.getByRole("button", { name: "Hide Explorer" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Hide File Preview" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Hide Terminal" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Close project Demo" })).not.toHaveAttribute(
+      "aria-pressed",
+    );
+
+    const divider = container.querySelector('div[aria-hidden="true"].mx-1.h-4.w-px.bg-border');
+    expect(divider).toBeInTheDocument();
+  });
+
+  it("82-T2b: falls back to the normalized slug when the project name is blank", () => {
+    mockUseWorkspace.mockReturnValue(makeContext());
+
+    render(<WorkspaceLayout project={makeProject({ name: "  ", slug: "demo" })} />);
+
+    const closeButton = screen.getByRole("button", { name: "Close project demo" });
+    expect(closeButton).toHaveAttribute("title", "Close project demo");
+  });
+
+  it("82-T2c: disables the close action when the normalized slug is empty", async () => {
+    const user = userEvent.setup();
+    mockUseWorkspace.mockReturnValue(makeContext());
+
+    render(<WorkspaceLayout project={makeProject({ name: "Whitespace", slug: "   " })} />);
+
+    const closeButton = screen.getByRole("button", { name: "Close project Whitespace" });
+    expect(closeButton).toHaveAttribute("aria-disabled", "true");
+    expect(closeButton).toHaveAttribute("tabIndex", "-1");
+
+    await user.click(closeButton);
+
+    expect(openProjectsMockState.requestProjectClose).not.toHaveBeenCalled();
+    expect(openProjectsMockState.closeProject).not.toHaveBeenCalled();
+    expect(routerMockState.push).not.toHaveBeenCalled();
+  });
+
+  it("82-T3: close project action navigates to the adjacent open project", async () => {
+    const user = userEvent.setup();
+    openProjectsMockState.openProjects = [
+      makeProject({ slug: "alpha", name: "Alpha", path: "/alpha" }),
+      project,
+      makeProject({ slug: "beta", name: "Beta", path: "/beta" }),
+    ];
+    mockUseWorkspace.mockReturnValue(makeContext());
+
+    render(<WorkspaceLayout project={project} />);
+
+    await user.click(screen.getByRole("button", { name: "Close project Demo" }));
+
+    expect(openProjectsMockState.requestProjectClose).toHaveBeenCalledWith("demo", "demo");
+    expect(openProjectsMockState.closeProject).toHaveBeenCalledTimes(1);
+    expect(openProjectsMockState.closeProject).toHaveBeenCalledWith("demo");
+    expect(routerMockState.push).toHaveBeenCalledTimes(1);
+    expect(routerMockState.push).toHaveBeenCalledWith("/project/beta");
+  });
+
+  it("82-T4: close project action navigates home for the final open project", async () => {
+    const user = userEvent.setup();
+    openProjectsMockState.openProjects = [project];
+    mockUseWorkspace.mockReturnValue(makeContext());
+
+    render(<WorkspaceLayout project={project} />);
+
+    await user.click(screen.getByRole("button", { name: "Close project Demo" }));
+
+    expect(openProjectsMockState.requestProjectClose).toHaveBeenCalledWith("demo", "demo");
+    expect(openProjectsMockState.closeProject).toHaveBeenCalledTimes(1);
+    expect(openProjectsMockState.closeProject).toHaveBeenCalledWith("demo");
+    expect(routerMockState.push).toHaveBeenCalledTimes(1);
+    expect(routerMockState.push).toHaveBeenCalledWith("/");
+  });
+
+  it("82-T5: clears pending close state when navigation throws", async () => {
+    const user = userEvent.setup();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    openProjectsMockState.requestProjectClose.mockReturnValue({
+      accepted: true,
+      target: "/project/beta",
+    });
+    routerMockState.push.mockImplementationOnce(() => {
+      throw new Error("mock navigation failure");
+    });
+    mockUseWorkspace.mockReturnValue(makeContext());
+
+    try {
+      render(<WorkspaceLayout project={project} />);
+
+      await user.click(screen.getByRole("button", { name: "Close project Demo" }));
+
+      expect(openProjectsMockState.clearProjectCloseRequest).toHaveBeenCalledWith("demo");
+      expect(consoleError).toHaveBeenCalledWith("Failed to navigate after closing project", {
+        slug: "demo",
+        target: "/project/beta",
+      });
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it("Issue #59: Explorer remains mounted while hidden and uses collapsible zero-size panel behavior", () => {

@@ -21,7 +21,7 @@ This file is the single registry of all architectural decisions and core-compone
 | CORE-COMPONENT-0004 | Theming | Adopted (updated) | 2026-05-21 |
 | CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2025-07-16 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
-| CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-06-09 |
+| CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-06-11 |
 | CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-06-11 |
 | CORE-COMPONENT-0009 | Engineering Harness | Adopted (updated) | 2026-06-11 |
 
@@ -197,3 +197,11 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 164 | Preserve sidebar active Copilot badges across browser terminal disconnects; clear them only on explicit idle, unrecognized status, or project closure | CORE-COMPONENT-0008 | 2026-06-11 |
 | 165 | Supersede Decision #153: use `./harness verify` and `.harness/contract.yml` as the verification source of truth; do not maintain `.github/soft-factory/verification.yml` | CORE-COMPONENT-0009 | 2026-06-11 |
 | 166 | Require CI to run `./harness verify` instead of mirroring a separate verification config | CORE-COMPONENT-0009 | 2026-06-11 |
+| 167 | Expose an always-visible current-project close action in WorkspaceLayout controls | CORE-COMPONENT-0007 | 2026-06-11 |
+| 168 | Prohibit aria-pressed on WorkspaceLayout close actions | CORE-COMPONENT-0007 | 2026-06-11 |
+| 169 | Route sidebar and workspace close actions through OpenProjectsProvider requestProjectClose | CORE-COMPONENT-0008 | 2026-06-11 |
+| 170 | Require safe project-name aria-labels and titles on workspace close actions | CORE-COMPONENT-0008 | 2026-06-11 |
+| 171 | Require provider-owned pending guards for duplicate project close requests | CORE-COMPONENT-0008 | 2026-06-11 |
+| 172 | Require normalized slug handling and stale-active fallback navigation for project close requests | CORE-COMPONENT-0008 | 2026-06-11 |
+| 173 | Require a non-interactive divider before WorkspaceLayout Close Project controls | CORE-COMPONENT-0007 | 2026-06-11 |
+| 174 | Render WorkspaceLayout Close Project disabled, not hidden, when the normalized slug is empty | CORE-COMPONENT-0007 | 2026-06-11 |
