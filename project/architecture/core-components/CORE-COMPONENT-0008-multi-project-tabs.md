@@ -24,7 +24,7 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - Worktree-aware file-tree root switching, request scoping, and per-worktree state caching
 - Worktree-aware HTTP file APIs and FileViewer requests
 - Worktree selector visualization and `.trees/` directory icon behavior
-- Near-realtime client-side synchronization for active root file-tree and worktree list state
+- Near-realtime server-push synchronization for active file-tree state, with 5000 ms degraded polling fallback for file-tree and worktree list state
 
 ## Definition
 
@@ -144,16 +144,28 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - The project-root selector in `WorktreeTree` MUST clear `activeWorktree`; worktree selectors MUST set `activeWorktree` to the corresponding `.trees/<name>` relative path
 - If a restored or active worktree is no longer returned by `GET /api/worktrees`, `WorktreeTree` MUST reset `activeWorktree` to project root and show a non-fatal notice
 - `FileTree` directory nodes named `.trees` MUST render a `Tree` icon from `@phosphor-icons/react` in both expanded and collapsed states
-- Near-realtime file explorer synchronization MUST use client-side polling; server-side filesystem watchers, SSE, and new event-streaming infrastructure are out of scope for this contract
-- The active workspace root file tree MUST poll at a conservative default interval of 5000 ms while an active project is mounted
-- Poll ticks MUST call the existing `refreshFileTree(...)` path directly and MUST NOT call initial-load wrappers or mutate `fileTreeLoading`
-- Polling MUST reuse `refreshFileTree` no-store fetches, in-flight deduplication, root merge behavior, `fileTreeRefreshing`, stale slug/worktree guards, and silent refresh semantics
-- Polling MUST refresh only root file-tree state; loaded child directories remain lazy and MUST NOT be periodically polled
-- File-tree polling MUST pause while `document.visibilityState === "hidden"` and MUST perform an immediate catch-up refresh when the document becomes visible
-- Worktree list state MUST co-refresh on the same near-realtime interval and visibility lifecycle using no-store `GET /api/worktrees?slug=<slug>` requests for the active project
-- Worktree list poll ticks MUST avoid overlapping same-slug requests and MUST ignore or abort stale slug responses
-- Polling code MUST guard browser-only APIs with `typeof document !== "undefined"` and MUST clean up timers and visibility listeners on unmount, project changes, worktree changes, and slug changes
-- Polling failures MUST preserve existing visible file-tree/worktree state and follow non-disruptive refresh error behavior
+- Near-realtime file explorer synchronization MUST use `GET /api/files/events?slug=<slug>[&worktree=<relative-worktree>]` SSE server-push invalidation as the primary transport, per ADR-0007
+- File-tree SSE events MUST be treated as invalidation hints only; clients MUST refresh canonical state through existing `/api/files` root and directory responses
+- The file-tree sync stream MUST emit only the named events `file-tree:ready`, `file-tree:changed`, and `file-tree:degraded`
+- `file-tree:ready` MUST mark the scoped stream usable without mutating file-tree contents or clearing existing loaded-directory state
+- `file-tree:changed` MUST include a scoped invalidation payload with relative POSIX path hints, loaded-directory hints, git-status/root flags, truncation metadata, and no absolute paths
+- `file-tree:degraded` MUST include a retry/degraded reason and the 5000 ms fallback polling interval; recoverable degraded events MUST start fallback polling
+- `WorkspaceContext` MUST expose file-tree sync status, sync error text/code, and a manual retry action for Explorer UI
+- `WorkspaceContext` MUST expose a file-tree invalidation API that validates event scope before refreshing root and loaded-directory state
+- Changed events that affect root entries, git status, unknown scope, or truncated batches MUST call `refreshFileTree(...)` for the active project/worktree scope
+- Changed events that affect loaded directories MUST reload each affected loaded direct-child directory with `loadDirectoryChildren(...)` while preserving expanded-folder and selected-file state
+- Loaded-directory invalidation MUST support file create, delete, rename, and directory empty/non-empty transitions by updating `children`, `childrenLoaded`, and `hasChildren` from canonical `/api/files` responses
+- Collapsed directories MUST receive refreshed `hasChildren` metadata through their nearest refreshed parent/root listing without forcing expansion
+- If a canonical invalidation refresh proves the selected file no longer exists in the active scope, `selectedFile` MUST be cleared without crashing `FileViewer`
+- Sync invalidation MUST ignore stale project slug, stale worktree, stale generation, obsolete directory, and inactive worktree events before mutating visible state
+- The current 5000 ms root file-tree polling implementation MUST be retained only as degraded fallback, not primary synchronization
+- Fallback poll ticks MUST call the existing `refreshFileTree(...)` path directly and MUST NOT call initial-load wrappers or mutate `fileTreeLoading`
+- Fallback polling MUST reuse `refreshFileTree` no-store fetches, in-flight deduplication, root merge behavior, `fileTreeRefreshing`, stale slug/worktree guards, and silent refresh semantics
+- Fallback polling MUST pause while `document.visibilityState === "hidden"` and MUST perform one immediate catch-up refresh when the document becomes visible
+- Worktree list state MAY continue using the existing 5000 ms no-store polling lifecycle as degraded fallback until worktree-specific server-push invalidation is implemented
+- Worktree list fallback poll ticks MUST avoid overlapping same-slug requests and MUST ignore or abort stale slug responses
+- EventSource, fallback polling, and visibility code MUST guard browser-only APIs with `typeof document !== "undefined"` and MUST clean up streams, timers, and listeners on unmount, project changes, worktree changes, slug changes, and React Strict Mode remounts
+- File-tree sync failures MUST preserve existing visible file-tree/worktree state and follow non-disruptive refresh error behavior
 
 ### Interfaces
 
@@ -173,6 +185,10 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
   - `loadDirectoryChildren: (path: string, explicitSlug?: string) => Promise<void>` — lazy child-list request and merge for a readable directory, scoped to `activeWorktree` when set
   - `fileTreeRefreshing: boolean` — true while any root refresh is in flight
   - `fileTreeError: string | null` — set when a root refresh fails (non-OK or network error), cleared on new refresh start, success, or project switch; used by `ExplorerContent` to render error+retry UI when tree is empty
+  - `fileTreeSyncStatus: FileTreeSyncStatus` — exposes EventSource/degraded synchronization state for the active project/worktree scope
+  - `fileTreeSyncError: string | null` — exposes the latest sync connection/degraded error message or code for accessible Explorer status UI
+  - `retryFileTreeSync: () => void` — manually restarts a retryable file-tree sync stream and exits degraded fallback when the stream becomes ready
+  - `invalidateFileTreeScope: (event: FileTreeChangedEvent) => Promise<void>` — validates event scope, refreshes the canonical root when needed, and reloads affected loaded directories
   - `directoryLoading: ReadonlySet<string>` or equivalent serializable/context-safe representation — directory paths with in-flight child loads
   - `directoryErrors: ReadonlyMap<string, string>` or equivalent serializable/context-safe representation — directory paths with last child-load error messages
   - `retryDirectoryChildren: (path: string) => Promise<void>` MAY be exposed as an alias or implemented by clearing the path error and calling `loadDirectoryChildren(path)`
@@ -182,9 +198,16 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
   - `toggleWorktreesSection: () => void` — toggle worktrees section collapsed state
 - **Worktree:** `{ name: string; branch: string }`
 - **Worktree endpoint:** `GET /api/worktrees?slug=<slug>` → `Worktree[]` — parses `git worktree list --porcelain`, filters to `.trees/`-relative entries; returns `[]` on any error
-- **Near-realtime workspace sync interval:** `5000` ms default for active root file-tree and worktree list polling; configurability is deferred until a future config-system amendment
-- **Near-realtime file-tree polling lifecycle:** Client-only workspace lifecycle that calls `refreshFileTree(project.slug)` on interval ticks and visibility catch-up without touching `fileTreeLoading`
-- **useWorktrees(slug: string | undefined):** Hook exposing `{ worktrees: Worktree[], loading: boolean, error: string | null, refresh: () => void }`; it also owns no-store active-project worktree list co-refresh with the near-realtime interval, visibility pause/resume, stale-response guards, and cleanup
+- **File-tree sync endpoint:** `GET /api/files/events?slug=<slug>[&worktree=<relative-worktree>]` opens a same-origin authenticated SSE stream that emits scoped file-tree invalidation events and never emits absolute filesystem paths
+- **FileTreeSyncScope:** `{ slug: string; worktree: string | null }` where `worktree: null` represents the project root and non-null values use the same relative worktree parameter accepted by `/api/files`
+- **File-tree sync ready event:** SSE event name `file-tree:ready`; data `{ type: "file-tree:ready"; scope: FileTreeSyncScope; pollIntervalMs: 5000 }`
+- **File-tree sync changed event:** SSE event name `file-tree:changed`; data `{ type: "file-tree:changed"; scope: FileTreeSyncScope; paths: string[]; directories: string[]; rootChanged: boolean; gitStatusChanged: boolean; truncated: boolean; version: number }`
+- **File-tree sync degraded event:** SSE event name `file-tree:degraded`; data `{ type: "file-tree:degraded"; scope: FileTreeSyncScope; code: string; message: string; retryAfterMs?: number; pollIntervalMs: 5000; fatal?: boolean }`
+- **FileTreeSyncStatus:** `"connecting" | "ready" | "syncing" | "degraded" | "error" | "unauthorized"`; `unauthorized` and fatal invalid-parameter states are non-retryable without a context/auth change
+- **useFileTreeSync(slug, worktree):** Client-only hook that owns EventSource lifecycle, scoped event parsing, retry/backoff, degraded fallback polling handoff, heartbeat timeout detection, stale-scope cleanup, and manual retry
+- **Near-realtime degraded sync interval:** `5000` ms default for fallback active root file-tree and active project worktree list polling; configurability is deferred until a future config-system amendment
+- **Near-realtime fallback polling lifecycle:** Client-only workspace lifecycle that calls `refreshFileTree(project.slug)` on degraded interval ticks and visibility catch-up without touching `fileTreeLoading`
+- **useWorktrees(slug: string | undefined):** Hook exposing `{ worktrees: Worktree[], loading: boolean, error: string | null, refresh: () => void }`; it retains no-store active-project worktree list refresh, degraded fallback polling, visibility pause/resume, stale-response guards, and cleanup
 - **WorktreeTree:** Collapsible selector component rendered in the project sidebar; lists project root and worktrees as filesystem-style selector nodes without nested inline file trees
 - **ProjectSidebar:** Component rendering the collapsible vertical tab strip, conditional Copilot bot badge replacement, and the active project's CSS-hideable worktree selector; consumes `useOpenProjects()` and `usePathname()`
 - **WorkspaceLayout Close Project action:** Visible current-project control that consumes `useOpenProjects().requestProjectClose()`, `clearProjectCloseRequest()`, and `useRouter()` to mirror sidebar close navigation from wide workspace controls
@@ -202,9 +225,10 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - Duplicate root or same-directory requests MUST not create duplicate network calls while one equivalent request is already in flight
 - Switching projects while file-tree requests are in flight MUST NOT allow stale responses to overwrite the active project's tree
 - After every successful in-portal save, the file explorer's visible git-status badges (`M`, `A`, `D`, `??`) MUST refresh without a manual reload, page refresh, or tab switch
-- External filesystem changes made by terminals, editors, or background processes SHOULD appear in the active root file tree within one polling interval while the document is visible
-- Worktree additions and removals SHOULD appear in the active project's worktree selector within one polling interval while the document is visible
-- When the document returns from hidden to visible, the root file tree and active project worktree list SHOULD catch up immediately instead of waiting for the next interval tick
+- External filesystem changes made by terminals, editors, or background processes SHOULD appear after server-push invalidation plus canonical `/api/files` refresh while the stream is ready
+- In degraded mode, external filesystem changes SHOULD appear in the active root file tree within one 5000 ms fallback polling interval while the document is visible
+- Worktree additions and removals SHOULD appear in the active project's worktree selector through explicit refresh or degraded fallback polling within one 5000 ms interval while the document is visible
+- When fallback polling is active and the document returns from hidden to visible, the root file tree and active project worktree list SHOULD catch up immediately instead of waiting for the next interval tick
 - Silent refresh MUST NOT cause the explorer to remount, scroll-jump, lose folder expansion state, or flash a global spinner
 - Lazy loading MUST preserve visibility of all user-relevant entries. Internal tooling directories excluded by the server-side exclusion list (e.g. `.git`) are exempt from the visibility requirement.
 
@@ -218,7 +242,7 @@ Request deduplication and stale-response protection are required because React i
 
 Worktree file-tree integration extends the same lazy loading and stale-response model to multiple roots within one project. The project root and each linked worktree can contain identical relative paths such as `src/`, so request keys and cached UI state must include the active worktree dimension to prevent collisions and stale UI.
 
-Near-realtime synchronization uses conservative client-side polling because it reuses the existing no-store file-tree refresh contract, request deduplication, stale-response guards, and non-disruptive UI behavior without adding server-side filesystem watcher state, SSE connection management, or new deployment assumptions. A 5000 ms default satisfies the "within a few seconds" user expectation while limiting repeated `git status --porcelain -u` work on large repositories. Configurable intervals are deferred until a future config amendment demonstrates demand.
+Near-realtime synchronization uses server-push SSE invalidation as the primary contract because Issue #81 requires external filesystem changes to reach the explorer without waiting for fixed client polling. SSE keeps the transport one-way and compatible with HTTP auth middleware, while canonical `/api/files` refreshes preserve existing path validation, worktree scoping, git status, and lazy direct-child listing behavior. The existing 5000 ms polling implementation remains valuable as degraded fallback when EventSource or the watcher stream is unavailable, but it is no longer the primary near-realtime mechanism. Configurable fallback intervals are deferred until a future config amendment demonstrates demand.
 
 ## Usage Examples
 
@@ -286,38 +310,18 @@ async function handleDirectoryClick(node: FileNode) {
 ```
 
 ```tsx
-// Client-only near-realtime root synchronization sketch
-const intervalMs = 5000;
-
-useEffect(() => {
-  if (typeof document === "undefined") return;
-
-  let intervalId: number | undefined;
-  const refresh = () => void refreshFileTree(project.slug);
-  const stop = () => {
-    if (intervalId !== undefined) window.clearInterval(intervalId);
-    intervalId = undefined;
-  };
-  const start = () => {
-    if (document.visibilityState !== "hidden" && intervalId === undefined) {
-      intervalId = window.setInterval(refresh, intervalMs);
-    }
-  };
-  const handleVisibility = () => {
-    if (document.visibilityState === "hidden") stop();
-    else {
-      refresh();
-      start();
-    }
-  };
-
-  start();
-  document.addEventListener("visibilitychange", handleVisibility);
-  return () => {
-    stop();
-    document.removeEventListener("visibilitychange", handleVisibility);
-  };
-}, [project.slug, activeWorktree, refreshFileTree]);
+// Client-only server-push invalidation sketch
+useFileTreeSync({
+  slug: project.slug,
+  worktree: activeWorktree,
+  onChanged: async (event) => {
+    await invalidateFileTreeScope(event);
+  },
+  onDegraded: () => {
+    // Existing 5000 ms polling starts only in degraded mode.
+    startFallbackPolling();
+  },
+});
 ```
 
 ## Integration Guidelines
@@ -335,18 +339,19 @@ useEffect(() => {
 - Any component that mutates the working tree (file save, create, delete, rename) MUST call `refreshFileTree()` from `useWorkspace()` after the mutation succeeds; failure paths MUST NOT call it
 - Components rendering tree-derived UI (e.g., `ExplorerContent`) MUST consume `fileTreeLoading` for initial spinner gating and MUST NOT read `fileTreeRefreshing`
 - File tree UI must use per-directory state for child loading/error/retry/empty rendering and must preserve existing unreadable affordances
-- File-tree polling belongs at the client workspace boundary (`WorkspaceLayout` or a dedicated hook used by it) where the active project and active worktree are known
-- Poll ticks must call `refreshFileTree(...)` directly; only initial load and explicit retry flows may use wrappers that set `fileTreeLoading`
-- Worktree list polling belongs in `useWorktrees` or its caller and must share the 5000 ms interval, document visibility pause/resume, no-store fetch behavior, and cleanup contract
-- Polling tests must use fake timers, mocked `document.visibilityState`, and listener cleanup assertions rather than real-time sleeps
+- `useFileTreeSync` belongs at the client workspace boundary (`WorkspaceLayout` or a dedicated child hook used by it) where the active project and active worktree are known
+- SSE changed-event handling must call `invalidateFileTreeScope(...)`; only canonical `/api/files` refreshes may mutate file-tree nodes
+- Fallback poll ticks must call `refreshFileTree(...)` directly; only initial load and explicit retry flows may use wrappers that set `fileTreeLoading`
+- Worktree list fallback polling belongs in `useWorktrees` or its caller and must share the 5000 ms interval, document visibility pause/resume, no-store fetch behavior, and cleanup contract
+- Sync tests must cover EventSource lifecycle, fake-timer fallback polling, mocked `document.visibilityState`, stale-scope cleanup, and listener cleanup without real-time sleeps
 
 ## Exceptions
 
 - On cold start (full page refresh), workspace UI state starts fresh — only the slug list is restored from `localStorage`
 - If `/api/projects` is unreachable on cold start, stale slug pruning is skipped and previously stored slugs are kept
 - In test environments, request deduplication may be exercised with mocked fetch promises rather than real network requests
-- In SSR or non-browser test environments where `document` is unavailable, near-realtime polling is disabled and initial/manual refresh behavior remains authoritative
-- The 5000 ms polling interval is fixed for v1; per-user or config-file interval customization requires a future ADR-0006-aligned amendment
+- In SSR or non-browser test environments where `document` or `EventSource` is unavailable, server-push sync and fallback polling are disabled and initial/manual refresh behavior remains authoritative
+- The 5000 ms fallback polling interval is fixed for v1; per-user or config-file interval customization requires a future ADR-0006-aligned amendment
 - If a directory child-existence probe fails due to permissions, the directory may be marked unreadable and visible rather than failing the entire tree
 
 ## Enforcement
@@ -378,16 +383,20 @@ useEffect(() => {
 - [ ] Automated checks: FileTree tests must assert `.trees` directory nodes render the `Tree` icon in expanded and collapsed states
 - [ ] Automated checks: ProjectSidebar tests must assert collapsed icon-only tabs, native titles, always-visible collapsed close buttons, visible Copilot badges, and CSS-hidden mounted WorktreeTree
 - [ ] Automated checks: ProjectSidebar tests must assert Copilot-style bot badges for running/waiting, idle/unknown initial fallback, no overlay dot, `sr-only role="status"`, native titles, and independent per-project statuses
-- [ ] Automated checks: Workspace polling tests must assert 5000 ms root refresh ticks, no `fileTreeLoading` mutation, hidden pause, visible catch-up, unmount cleanup, and project/worktree lifecycle cleanup
-- [ ] Automated checks: Worktree polling tests must assert no-store interval refresh, hidden pause, visible catch-up, no overlapping same-slug requests, stale slug protection, and abort/listener cleanup
-- [ ] Automated checks: Near-realtime regression tests must assert polling reuses `refreshFileTree` deduplication and stale slug/worktree guards without remounting or globally spinning ExplorerContent
-- [ ] Test coverage requirements: Verification must include `npm run lint`, `npm run format:check`, `npm run build`, and `npm run test`
+- [ ] Automated checks: File-tree sync endpoint tests must assert ready/changed/degraded events, auth/origin rejection, invalid scope rejection, path redaction, batching, resource caps, and watcher cleanup
+- [ ] Automated checks: File-tree sync hook tests must assert EventSource lifecycle, scoped URL construction, ready/changed/degraded handling, heartbeat timeout, retry/backoff, Strict Mode cleanup, and degraded fallback handoff
+- [ ] Automated checks: Workspace invalidation tests must assert root refresh, loaded-directory refresh, collapsed `hasChildren` updates, empty transitions, stale project/worktree event rejection, and selected-file deletion behavior
+- [ ] Automated checks: Fallback polling tests must assert 5000 ms root refresh ticks only while degraded, no `fileTreeLoading` mutation, hidden pause, visible catch-up, unmount cleanup, and project/worktree lifecycle cleanup
+- [ ] Automated checks: Worktree fallback polling tests must assert no-store interval refresh, hidden pause, visible catch-up, no overlapping same-slug requests, stale slug protection, and abort/listener cleanup
+- [ ] Automated checks: Near-realtime regression tests must assert SSE and fallback polling reuse `refreshFileTree` deduplication and stale slug/worktree guards without remounting or globally spinning ExplorerContent
+- [ ] Test coverage requirements: Verification must include `./harness verify`, which covers lint, format check, build, tests, and smoke verification
 
 ## Related ADRs
 
 - [ADR-0002-tech-stack](../ADR/ADR-0002-tech-stack.md)
 - [ADR-0003-project-registry-persistence](../ADR/ADR-0003-project-registry-persistence.md)
 - [ADR-0005-copilot-cli-status-detection-strategy](../ADR/ADR-0005-copilot-cli-status-detection-strategy.md)
+- [ADR-0007-filesystem-sync-transport-strategy](../ADR/ADR-0007-filesystem-sync-transport-strategy.md)
 - [CORE-COMPONENT-0004-theming](CORE-COMPONENT-0004-theming.md)
 - [CORE-COMPONENT-0005-error-handling](CORE-COMPONENT-0005-error-handling.md)
 - [CORE-COMPONENT-0006-development-standards](CORE-COMPONENT-0006-development-standards.md)
