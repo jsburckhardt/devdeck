@@ -167,9 +167,9 @@ wss.on('connection', (ws, req) => {
 - [x] Automated checks: WebSocket connection tests
 - [x] Code review checklist: Verify PTY cleanup on disconnect
 - [x] Test coverage requirements: Terminal hook and WebSocket handler must have unit tests
-- [ ] Automated checks: `use-voice-input.test.ts` covers speech availability, secure-context guard, optional permission checks, start/stop/cancel/clear, interim/final transcript state, error normalization, cleanup, and stale-callback guards
-- [ ] Automated checks: `terminal-panel.test.tsx` covers microphone accessibility, live status/alert semantics, editable review, validation, exact `Send text` / `Send + Enter` dispatch strings, `sendInput(false)` retry behavior, focus restoration, disconnect/context cleanup, and terminal container stability
-- [ ] Verification: `./harness verify` passes before implementation completion
+- [x] Automated checks: `use-voice-input.test.ts` covers speech availability, secure-context guard, optional permission checks, start/stop/cancel/clear, interim/final transcript state, error normalization, cleanup, and stale-callback guards
+- [x] Automated checks: `terminal-panel.test.tsx` covers microphone accessibility, live status/alert semantics, editable review, validation, exact `Send text` / `Send + Enter` dispatch strings, `sendInput(false)` retry behavior, focus restoration, disconnect/context cleanup, and terminal container stability
+- [x] Verification: `./harness verify` passes before implementation completion
 
 ## Related ADRs
 

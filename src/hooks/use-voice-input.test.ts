@@ -236,6 +236,33 @@ describe("useVoiceInput", () => {
     expect(MockSpeechRecognition.instances).toHaveLength(0);
   });
 
+  it("TV1: aborts active recognition when advisory permission changes to denied", async () => {
+    installSpeechRecognition();
+    const { permissionStatus } = installPermissionsApi("prompt");
+    const { result } = renderHook(() => useVoiceInput());
+
+    await waitFor(() => expect(result.current.permissionState).toBe("prompt"));
+
+    act(() => {
+      result.current.start();
+    });
+    const recognition = MockSpeechRecognition.instances[0];
+    expect(result.current.status).toBe("listening");
+
+    act(() => {
+      permissionStatus.state = "denied";
+      permissionStatus.onchange?.();
+    });
+
+    expect(recognition.abort).toHaveBeenCalledTimes(1);
+    expect(recognition.onresult).toBeNull();
+    expect(recognition.onerror).toBeNull();
+    expect(recognition.onend).toBeNull();
+    expect(result.current.status).toBe("denied");
+    expect(result.current.errorDetails?.code).toBe("not-allowed");
+    expect(result.current.canStart).toBe(false);
+  });
+
   it("TV2: configures one-shot recognition with interim results and language fallback", () => {
     installSpeechRecognition();
     const { result } = renderHook(() => useVoiceInput());
@@ -277,8 +304,8 @@ describe("useVoiceInput", () => {
       recognition.onresult?.(
         createResultEvent(
           [
-            { isFinal: false, transcript: "ignored earlier draft" },
-            { isFinal: true, transcript: "hello && pwd" },
+            { isFinal: true, transcript: "hello " },
+            { isFinal: true, transcript: "&& pwd" },
           ],
           1,
         ),

@@ -303,9 +303,8 @@ function deriveStatus({
 function collectTranscripts(event: SpeechRecognitionEventLike) {
   const finalParts: string[] = [];
   const interimParts: string[] = [];
-  const startIndex = event.resultIndex ?? 0;
 
-  for (let index = startIndex; index < event.results.length; index += 1) {
+  for (let index = 0; index < event.results.length; index += 1) {
     const result = event.results[index];
     const transcript = result?.[0]?.transcript;
 
@@ -476,6 +475,8 @@ export function useVoiceInput({
       setPermissionStateValue(nextState);
 
       if (nextState === "denied") {
+        cleanupRecognition({ clearTranscripts: false, preferAbort: true, updateState: false });
+        setInterimTranscriptState("");
         setErrorState(makeVoiceError("not-allowed"));
         setPhaseState("denied");
         return;
@@ -510,7 +511,15 @@ export function useVoiceInput({
         permissionStatus.onchange = null;
       }
     };
-  }, [isSecureContext, isSupported, setErrorState, setPermissionStateValue, setPhaseState]);
+  }, [
+    cleanupRecognition,
+    isSecureContext,
+    isSupported,
+    setErrorState,
+    setInterimTranscriptState,
+    setPermissionStateValue,
+    setPhaseState,
+  ]);
 
   const start = useCallback(() => {
     const Recognition = resolveSpeechRecognitionConstructor();
