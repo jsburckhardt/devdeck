@@ -2,11 +2,11 @@
 
 ## Status
 
-Adopted (updated) - 2026-06-11
+Adopted (updated) - 2026-06-15
 
 ## Purpose
 
-Enable users to keep multiple projects "open" simultaneously via persistent sidebar tabs, preserving per-project workspace UI state (selected file, expanded folders, panel visibility, loaded file-tree state, and per-directory load state) in memory while switching between projects. This removes the need to navigate back to the landing page and re-enter a project, ensures the workspace feels stateful across tab switches, and prevents large workspaces from blocking initial explorer rendering through eager deep traversal.
+Enable users to keep multiple projects "open" simultaneously via persistent sidebar tabs, preserving per-project workspace UI state (selected file, expanded folders, panel visibility, loaded file-tree state, and per-directory load state) in memory while switching between projects. This removes the need to navigate back to the landing page and re-enter a project, ensures the workspace feels stateful across tab switches, prevents large workspaces from blocking initial explorer rendering through eager deep traversal, and keeps active file-tree and worktree-selector state synchronized with filesystem changes in near realtime.
 
 ## Scope
 
@@ -24,6 +24,7 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - Worktree-aware file-tree root switching, request scoping, and per-worktree state caching
 - Worktree-aware HTTP file APIs and FileViewer requests
 - Worktree selector visualization and `.trees/` directory icon behavior
+- Near-realtime client-side synchronization for active root file-tree and worktree list state
 
 ## Definition
 
@@ -137,12 +138,22 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - Sidebar Copilot bot badges MUST remain visible on project badges in expanded and collapsed modes
 - `WorktreeTree` MUST be rendered in `ProjectSidebar` for the active project, always mounted per Decision #84, hidden via CSS when the worktree list is empty or when the sidebar is collapsed, and MUST NOT render inside `ExplorerContent`
 - Worktree data MUST be fetched via `GET /api/worktrees?slug=<slug>` returning `Worktree[]`; an empty array MUST be returned (not a server error) when `.trees/` is absent or git is unavailable
-- A `useWorktrees(slug: string)` hook MUST be provided exposing `{ worktrees: Worktree[], loading: boolean, error: string | null, refresh: () => void }`
+- A `useWorktrees(slug: string | undefined)` hook MUST be provided exposing `{ worktrees: Worktree[], loading: boolean, error: string | null, refresh: () => void }`
 - `WorktreeTree` MUST render filesystem-style selector nodes with icons, indentation, keyboard-accessible buttons, `aria-current` on the active entry, and active-state affordances that do not rely on color alone
 - `WorktreeTree` MUST remain a selector only; it MUST NOT render nested inline file trees under each worktree
 - The project-root selector in `WorktreeTree` MUST clear `activeWorktree`; worktree selectors MUST set `activeWorktree` to the corresponding `.trees/<name>` relative path
 - If a restored or active worktree is no longer returned by `GET /api/worktrees`, `WorktreeTree` MUST reset `activeWorktree` to project root and show a non-fatal notice
 - `FileTree` directory nodes named `.trees` MUST render a `Tree` icon from `@phosphor-icons/react` in both expanded and collapsed states
+- Near-realtime file explorer synchronization MUST use client-side polling; server-side filesystem watchers, SSE, and new event-streaming infrastructure are out of scope for this contract
+- The active workspace root file tree MUST poll at a conservative default interval of 5000 ms while an active project is mounted
+- Poll ticks MUST call the existing `refreshFileTree(...)` path directly and MUST NOT call initial-load wrappers or mutate `fileTreeLoading`
+- Polling MUST reuse `refreshFileTree` no-store fetches, in-flight deduplication, root merge behavior, `fileTreeRefreshing`, stale slug/worktree guards, and silent refresh semantics
+- Polling MUST refresh only root file-tree state; loaded child directories remain lazy and MUST NOT be periodically polled
+- File-tree polling MUST pause while `document.visibilityState === "hidden"` and MUST perform an immediate catch-up refresh when the document becomes visible
+- Worktree list state MUST co-refresh on the same near-realtime interval and visibility lifecycle using no-store `GET /api/worktrees?slug=<slug>` requests for the active project
+- Worktree list poll ticks MUST avoid overlapping same-slug requests and MUST ignore or abort stale slug responses
+- Polling code MUST guard browser-only APIs with `typeof document !== "undefined"` and MUST clean up timers and visibility listeners on unmount, project changes, worktree changes, and slug changes
+- Polling failures MUST preserve existing visible file-tree/worktree state and follow non-disruptive refresh error behavior
 
 ### Interfaces
 
@@ -171,7 +182,9 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
   - `toggleWorktreesSection: () => void` — toggle worktrees section collapsed state
 - **Worktree:** `{ name: string; branch: string }`
 - **Worktree endpoint:** `GET /api/worktrees?slug=<slug>` → `Worktree[]` — parses `git worktree list --porcelain`, filters to `.trees/`-relative entries; returns `[]` on any error
-- **useWorktrees(slug: string):** Hook exposing `{ worktrees: Worktree[], loading: boolean, error: string | null, refresh: () => void }`
+- **Near-realtime workspace sync interval:** `5000` ms default for active root file-tree and worktree list polling; configurability is deferred until a future config-system amendment
+- **Near-realtime file-tree polling lifecycle:** Client-only workspace lifecycle that calls `refreshFileTree(project.slug)` on interval ticks and visibility catch-up without touching `fileTreeLoading`
+- **useWorktrees(slug: string | undefined):** Hook exposing `{ worktrees: Worktree[], loading: boolean, error: string | null, refresh: () => void }`; it also owns no-store active-project worktree list co-refresh with the near-realtime interval, visibility pause/resume, stale-response guards, and cleanup
 - **WorktreeTree:** Collapsible selector component rendered in the project sidebar; lists project root and worktrees as filesystem-style selector nodes without nested inline file trees
 - **ProjectSidebar:** Component rendering the collapsible vertical tab strip, conditional Copilot bot badge replacement, and the active project's CSS-hideable worktree selector; consumes `useOpenProjects()` and `usePathname()`
 - **WorkspaceLayout Close Project action:** Visible current-project control that consumes `useOpenProjects().requestProjectClose()`, `clearProjectCloseRequest()`, and `useRouter()` to mirror sidebar close navigation from wide workspace controls
@@ -189,6 +202,9 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - Duplicate root or same-directory requests MUST not create duplicate network calls while one equivalent request is already in flight
 - Switching projects while file-tree requests are in flight MUST NOT allow stale responses to overwrite the active project's tree
 - After every successful in-portal save, the file explorer's visible git-status badges (`M`, `A`, `D`, `??`) MUST refresh without a manual reload, page refresh, or tab switch
+- External filesystem changes made by terminals, editors, or background processes SHOULD appear in the active root file tree within one polling interval while the document is visible
+- Worktree additions and removals SHOULD appear in the active project's worktree selector within one polling interval while the document is visible
+- When the document returns from hidden to visible, the root file tree and active project worktree list SHOULD catch up immediately instead of waiting for the next interval tick
 - Silent refresh MUST NOT cause the explorer to remount, scroll-jump, lose folder expansion state, or flash a global spinner
 - Lazy loading MUST preserve visibility of all user-relevant entries. Internal tooling directories excluded by the server-side exclusion list (e.g. `.git`) are exempt from the visibility requirement.
 
@@ -201,6 +217,8 @@ The file tree previously performed an eager recursive traversal to depth 6 for e
 Request deduplication and stale-response protection are required because React initialization, project switching, and user expansion actions can overlap. Per-directory state is required so one failed or slow child load does not blank the whole explorer.
 
 Worktree file-tree integration extends the same lazy loading and stale-response model to multiple roots within one project. The project root and each linked worktree can contain identical relative paths such as `src/`, so request keys and cached UI state must include the active worktree dimension to prevent collisions and stale UI.
+
+Near-realtime synchronization uses conservative client-side polling because it reuses the existing no-store file-tree refresh contract, request deduplication, stale-response guards, and non-disruptive UI behavior without adding server-side filesystem watcher state, SSE connection management, or new deployment assumptions. A 5000 ms default satisfies the "within a few seconds" user expectation while limiting repeated `git status --porcelain -u` work on large repositories. Configurable intervals are deferred until a future config amendment demonstrates demand.
 
 ## Usage Examples
 
@@ -267,6 +285,41 @@ async function handleDirectoryClick(node: FileNode) {
 }
 ```
 
+```tsx
+// Client-only near-realtime root synchronization sketch
+const intervalMs = 5000;
+
+useEffect(() => {
+  if (typeof document === "undefined") return;
+
+  let intervalId: number | undefined;
+  const refresh = () => void refreshFileTree(project.slug);
+  const stop = () => {
+    if (intervalId !== undefined) window.clearInterval(intervalId);
+    intervalId = undefined;
+  };
+  const start = () => {
+    if (document.visibilityState !== "hidden" && intervalId === undefined) {
+      intervalId = window.setInterval(refresh, intervalMs);
+    }
+  };
+  const handleVisibility = () => {
+    if (document.visibilityState === "hidden") stop();
+    else {
+      refresh();
+      start();
+    }
+  };
+
+  start();
+  document.addEventListener("visibilitychange", handleVisibility);
+  return () => {
+    stop();
+    document.removeEventListener("visibilitychange", handleVisibility);
+  };
+}, [project.slug, activeWorktree, refreshFileTree]);
+```
+
 ## Integration Guidelines
 
 - `OpenProjectsProvider` wraps children in `src/app/layout.tsx` as a Client Component wrapper below `ThemeProvider`
@@ -282,12 +335,18 @@ async function handleDirectoryClick(node: FileNode) {
 - Any component that mutates the working tree (file save, create, delete, rename) MUST call `refreshFileTree()` from `useWorkspace()` after the mutation succeeds; failure paths MUST NOT call it
 - Components rendering tree-derived UI (e.g., `ExplorerContent`) MUST consume `fileTreeLoading` for initial spinner gating and MUST NOT read `fileTreeRefreshing`
 - File tree UI must use per-directory state for child loading/error/retry/empty rendering and must preserve existing unreadable affordances
+- File-tree polling belongs at the client workspace boundary (`WorkspaceLayout` or a dedicated hook used by it) where the active project and active worktree are known
+- Poll ticks must call `refreshFileTree(...)` directly; only initial load and explicit retry flows may use wrappers that set `fileTreeLoading`
+- Worktree list polling belongs in `useWorktrees` or its caller and must share the 5000 ms interval, document visibility pause/resume, no-store fetch behavior, and cleanup contract
+- Polling tests must use fake timers, mocked `document.visibilityState`, and listener cleanup assertions rather than real-time sleeps
 
 ## Exceptions
 
 - On cold start (full page refresh), workspace UI state starts fresh — only the slug list is restored from `localStorage`
 - If `/api/projects` is unreachable on cold start, stale slug pruning is skipped and previously stored slugs are kept
 - In test environments, request deduplication may be exercised with mocked fetch promises rather than real network requests
+- In SSR or non-browser test environments where `document` is unavailable, near-realtime polling is disabled and initial/manual refresh behavior remains authoritative
+- The 5000 ms polling interval is fixed for v1; per-user or config-file interval customization requires a future ADR-0006-aligned amendment
 - If a directory child-existence probe fails due to permissions, the directory may be marked unreadable and visible rather than failing the entire tree
 
 ## Enforcement
@@ -319,6 +378,9 @@ async function handleDirectoryClick(node: FileNode) {
 - [ ] Automated checks: FileTree tests must assert `.trees` directory nodes render the `Tree` icon in expanded and collapsed states
 - [ ] Automated checks: ProjectSidebar tests must assert collapsed icon-only tabs, native titles, always-visible collapsed close buttons, visible Copilot badges, and CSS-hidden mounted WorktreeTree
 - [ ] Automated checks: ProjectSidebar tests must assert Copilot-style bot badges for running/waiting, idle/unknown initial fallback, no overlay dot, `sr-only role="status"`, native titles, and independent per-project statuses
+- [ ] Automated checks: Workspace polling tests must assert 5000 ms root refresh ticks, no `fileTreeLoading` mutation, hidden pause, visible catch-up, unmount cleanup, and project/worktree lifecycle cleanup
+- [ ] Automated checks: Worktree polling tests must assert no-store interval refresh, hidden pause, visible catch-up, no overlapping same-slug requests, stale slug protection, and abort/listener cleanup
+- [ ] Automated checks: Near-realtime regression tests must assert polling reuses `refreshFileTree` deduplication and stale slug/worktree guards without remounting or globally spinning ExplorerContent
 - [ ] Test coverage requirements: Verification must include `npm run lint`, `npm run format:check`, `npm run build`, and `npm run test`
 
 ## Related ADRs
