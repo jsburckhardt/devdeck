@@ -445,6 +445,14 @@ function BinaryFileView({ name, size }: { name: string; size: number }) {
   );
 }
 
+function ImageView({ src, name }: { src: string; name: string }) {
+  return (
+    <div className="flex h-full items-center justify-center overflow-auto p-4">
+      <img src={src} alt={`Preview of ${name}`} className="max-h-full max-w-full object-contain" />
+    </div>
+  );
+}
+
 function EditView({ content, onChange }: { content: string; onChange: (value: string) => void }) {
   return (
     <textarea
@@ -983,6 +991,8 @@ export default function FileViewer() {
             ) : (
               <DiffView diff={diffContent ?? ""} />
             )
+          ) : fileContent.language === "image" ? (
+            <ImageView src={fileContent.content} name={fileContent.name} />
           ) : fileContent.isBinary ? (
             <BinaryFileView name={fileContent.name} size={fileContent.size} />
           ) : isExcalidraw && !showRaw ? (

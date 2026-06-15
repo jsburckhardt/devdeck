@@ -11,7 +11,7 @@
 ## Core-Components Created
 - None created.
 - Amended [CORE-COMPONENT-0003: WebSocket Terminal Communication](../../../architecture/core-components/CORE-COMPONENT-0003-websocket-terminal.md) for the authenticated browser voice review workflow.
-- Added Decision Log records [#175-#189](../../../architecture/ADR/DECISION-LOG.md) covering browser-only speech recognition, review-before-send, interim transcript display, validation, focus, alert semantics, panel-local state, cleanup, and stale-callback guards.
+- Added Decision Log records [#175-#197](../../../architecture/ADR/DECISION-LOG.md) covering browser-only speech recognition, review-before-send, interim transcript display, validation, focus, alert semantics, panel-local state, cleanup, and stale-callback guards.
 
 ## Implementation Tasks
 1. Replace the partial `useVoiceInput` contract with a browser-only stateful hook that exposes full status, interim/final transcript state, normalized errors, optional Permissions API advisory checks, cancel/clear actions, cleanup, and generation/context guards.

@@ -82,7 +82,29 @@ const binaryExtensions = new Set([
   "db",
 ]);
 
+const viewableImageMimeTypes: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  ico: "image/x-icon",
+  svg: "image/svg+xml",
+};
+
+function getExtension(filename: string): string {
+  return filename.split(".").pop()?.toLowerCase() ?? "";
+}
+
 export function isBinaryFile(filename: string): boolean {
-  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  const ext = getExtension(filename);
   return binaryExtensions.has(ext);
+}
+
+export function isViewableImage(filename: string): boolean {
+  return Object.prototype.hasOwnProperty.call(viewableImageMimeTypes, getExtension(filename));
+}
+
+export function getImageMimeType(filename: string): string {
+  return viewableImageMimeTypes[getExtension(filename)] ?? "application/octet-stream";
 }

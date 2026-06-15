@@ -6,7 +6,7 @@
 - **Complexity:** High
 - **Dependencies:** None
 - **Related ADRs:** ADR-0002
-- **Related Core-Components:** CORE-COMPONENT-0003 (Decisions #172, #173, #175-#178, #183-#185, #188), CORE-COMPONENT-0006 (Decision #19), CORE-COMPONENT-0009 (Decision #147)
+- **Related Core-Components:** CORE-COMPONENT-0003 (Decisions #175-#197), CORE-COMPONENT-0006 (Decision #19), CORE-COMPONENT-0009 (Decision #147)
 
 ### Description
 Replace the partial hook with a browser-only `SpeechRecognition` / `webkitSpeechRecognition` wrapper that owns support detection, status, interim/final transcript state, normalized errors, advisory permission checks, cleanup, cancel/clear behavior, and late-callback protection.
@@ -33,7 +33,7 @@ Replace the partial hook with a browser-only `SpeechRecognition` / `webkitSpeech
 - **Complexity:** High
 - **Dependencies:** T1
 - **Related ADRs:** ADR-0002, ADR-0004
-- **Related Core-Components:** CORE-COMPONENT-0003 (Decisions #154-#157, #175-#189), CORE-COMPONENT-0005 (Decision #26), CORE-COMPONENT-0006 (Decision #19), CORE-COMPONENT-0009 (Decision #147)
+- **Related Core-Components:** CORE-COMPONENT-0003 (Decisions #154-#157, #175-#197), CORE-COMPONENT-0005 (Decision #26), CORE-COMPONENT-0006 (Decision #19), CORE-COMPONENT-0009 (Decision #147)
 
 ### Description
 Replace direct final-transcript dispatch in `src/components/terminal-panel.tsx` with a panel-local review UI that lets users inspect/edit speech text before sending it through the existing authenticated terminal input path.
@@ -66,7 +66,7 @@ Replace direct final-transcript dispatch in `src/components/terminal-panel.tsx` 
 - **Complexity:** Medium
 - **Dependencies:** T1, T2
 - **Related ADRs:** ADR-0002
-- **Related Core-Components:** CORE-COMPONENT-0003 (Decisions #175-#189), CORE-COMPONENT-0006 (Decisions #18, #19), CORE-COMPONENT-0009 (Decisions #146-#149)
+- **Related Core-Components:** CORE-COMPONENT-0003 (Decisions #175-#197), CORE-COMPONENT-0006 (Decisions #18, #19), CORE-COMPONENT-0009 (Decisions #146-#149)
 
 ### Description
 Ensure the implementation has deterministic automated coverage for the authenticated checklist and records any E2E/manual coverage gaps in the issue implementation notes.
@@ -88,7 +88,7 @@ Ensure the implementation has deterministic automated coverage for the authentic
 - **Complexity:** Small
 - **Dependencies:** T3
 - **Related ADRs:** ADR-0002
-- **Related Core-Components:** CORE-COMPONENT-0003 (Decisions #175-#189), CORE-COMPONENT-0006 (Decision #18), CORE-COMPONENT-0009 (Decisions #146-#150)
+- **Related Core-Components:** CORE-COMPONENT-0003 (Decisions #175-#197), CORE-COMPONENT-0006 (Decision #18), CORE-COMPONENT-0009 (Decisions #146-#150)
 
 ### Description
 Run the repository verification surface through the repo-local harness and resolve failures before returning to Verify stage.

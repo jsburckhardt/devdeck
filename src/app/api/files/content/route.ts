@@ -2,11 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
 import {
+  isPathInside,
   resolveWorktreeRoot,
   WorktreeResolutionError,
   worktreeResolutionErrorResponse,
 } from "@/lib/worktree-utils";
-import { getLanguageFromFilename, isBinaryFile } from "@/lib/file-utils";
+import {
+  getImageMimeType,
+  getLanguageFromFilename,
+  isBinaryFile,
+  isViewableImage,
+} from "@/lib/file-utils";
 import type { FileContent, FileKind } from "@/lib/types";
 
 const MAX_FILE_SIZE = 1024 * 1024; // 1MB
@@ -28,6 +34,7 @@ interface FileSystemStats {
 interface PreviewTarget {
   ok: true;
   stat: FileSystemStats;
+  readPath: string;
 }
 
 interface PreviewError {
@@ -72,7 +79,10 @@ function classifyNonRegular(stat: FileSystemStats): FileKind {
   return "unknown";
 }
 
-async function classifyPreviewTarget(fullPath: string): Promise<PreviewTarget | PreviewError> {
+async function classifyPreviewTarget(
+  root: string,
+  fullPath: string,
+): Promise<PreviewTarget | PreviewError> {
   let lstat: FileSystemStats;
   try {
     lstat = (await fs.lstat(fullPath)) as FileSystemStats;
@@ -85,9 +95,24 @@ async function classifyPreviewTarget(fullPath: string): Promise<PreviewTarget | 
   }
 
   if (lstat.isSymbolicLink()) {
+    let realRoot: string;
+    let realTarget: string;
     try {
-      const stat = (await fs.stat(fullPath)) as FileSystemStats;
-      if (stat.isFile()) return { ok: true, stat };
+      realRoot = await fs.realpath(root);
+      realTarget = await fs.realpath(fullPath);
+    } catch (error) {
+      if (isPermissionError(error)) return nonRegularError("permission-denied");
+      if (isNotFoundError(error)) return nonRegularError("broken-symlink");
+      return { ok: false, status: 500, code: "READ_FAILED", kind: "symlink" };
+    }
+
+    if (!isPathInside(realRoot, realTarget)) {
+      return { ok: false, status: 403, code: "INVALID_PATH", kind: "symlink" };
+    }
+
+    try {
+      const stat = (await fs.stat(realTarget)) as FileSystemStats;
+      if (stat.isFile()) return { ok: true, stat, readPath: realTarget };
       return nonRegularError(
         classifyNonRegular(stat) as Exclude<FileKind, "regular-file" | "symlink">,
       );
@@ -97,7 +122,7 @@ async function classifyPreviewTarget(fullPath: string): Promise<PreviewTarget | 
     }
   }
 
-  if (lstat.isFile()) return { ok: true, stat: lstat };
+  if (lstat.isFile()) return { ok: true, stat: lstat, readPath: fullPath };
   return nonRegularError(
     classifyNonRegular(lstat) as Exclude<FileKind, "regular-file" | "symlink">,
   );
@@ -143,14 +168,37 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Invalid path", code: "INVALID_PATH" }, { status: 403 });
   }
 
-  const target = await classifyPreviewTarget(fullPath);
+  const target = await classifyPreviewTarget(root, fullPath);
   if (!target.ok) {
     return previewErrorResponse(target);
   }
 
   try {
     const stat = target.stat;
+    const readPath = target.readPath;
     const filename = path.basename(fullPath);
+
+    if (isViewableImage(filename)) {
+      if (stat.size > MAX_FILE_SIZE) {
+        return NextResponse.json(
+          { error: "File is too large to preview", code: "FILE_TOO_LARGE" },
+          { status: 413 },
+        );
+      }
+
+      const bytes = await fs.readFile(readPath);
+      const base64Content = Buffer.from(bytes).toString("base64");
+      const result: FileContent = {
+        content: `data:${getImageMimeType(filename)};base64,${base64Content}`,
+        language: "image",
+        size: stat.size,
+        isBinary: true,
+        path: filePath,
+        name: filename,
+        mtime: stat.mtimeMs,
+      };
+      return NextResponse.json(result, { headers: CACHE_HEADERS });
+    }
 
     if (isBinaryFile(filename)) {
       const result: FileContent = {
@@ -178,7 +226,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(result, { headers: CACHE_HEADERS });
     }
 
-    const content = await fs.readFile(fullPath, "utf-8");
+    const content = await fs.readFile(readPath, "utf-8");
     const result: FileContent = {
       content,
       language: getLanguageFromFilename(filename),

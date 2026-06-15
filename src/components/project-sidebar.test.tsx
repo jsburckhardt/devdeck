@@ -23,6 +23,8 @@ vi.mock("@/components/worktree-tree", () => ({
 }));
 
 const mockCloseProject = vi.fn();
+const mockRequestProjectClose = vi.fn();
+const mockClearProjectCloseRequest = vi.fn();
 let mockGetCopilotStatus = vi.fn(() => "idle" as const);
 const defaultOpenProjects: Project[] = [
   {
@@ -83,6 +85,8 @@ vi.mock("@/lib/open-projects-context", async (importOriginal) => {
     useOpenProjects: () => ({
       openProjects: mockOpenProjects,
       closeProject: mockCloseProject,
+      requestProjectClose: mockRequestProjectClose,
+      clearProjectCloseRequest: mockClearProjectCloseRequest,
       openProject: vi.fn(),
       saveWorkspaceState: vi.fn(),
       restoreWorkspaceState: vi.fn(),
@@ -98,6 +102,37 @@ describe("ProjectSidebar", () => {
     mockPathname = "/project/proj-b";
     mockOpenProjects = defaultOpenProjects;
     mockGetCopilotStatus = vi.fn(() => "idle" as const);
+    mockRequestProjectClose.mockImplementation((slug: string, activeSlug: string | null) => {
+      const normalizedSlug = slug.trim();
+      if (!normalizedSlug) {
+        return { accepted: false, target: null, reason: "invalid-slug" as const };
+      }
+
+      mockCloseProject(normalizedSlug);
+      if (activeSlug?.trim() !== normalizedSlug) {
+        return { accepted: true, target: null };
+      }
+
+      const closedIndex = mockOpenProjects.findIndex(
+        (project) => project.slug.trim() === normalizedSlug,
+      );
+      if (closedIndex === -1) {
+        return { accepted: true, target: "/" };
+      }
+
+      const remainingProjects = mockOpenProjects.filter(
+        (project) => project.slug.trim() !== normalizedSlug,
+      );
+      if (remainingProjects.length === 0) {
+        return { accepted: true, target: "/" };
+      }
+
+      const targetProject = remainingProjects[closedIndex] ?? remainingProjects[closedIndex - 1];
+      return {
+        accepted: true,
+        target: `/project/${encodeURIComponent(targetProject.slug.trim())}`,
+      };
+    });
     window.localStorage.clear();
   });
 
@@ -148,6 +183,7 @@ describe("ProjectSidebar", () => {
 
     await user.click(closeButtons[0]); // Close Alpha
 
+    expect(mockRequestProjectClose).toHaveBeenCalledWith("proj-a", "proj-b");
     expect(mockCloseProject).toHaveBeenCalledWith("proj-a");
     expect(mockPush).not.toHaveBeenCalled();
   });
@@ -159,6 +195,7 @@ describe("ProjectSidebar", () => {
 
     await user.click(screen.getAllByRole("button", { name: /Close project/ })[0]);
 
+    expect(mockRequestProjectClose).toHaveBeenCalledWith("proj-a", "proj-a");
     expect(mockCloseProject).toHaveBeenCalledWith("proj-a");
     expect(mockPush).toHaveBeenCalledTimes(1);
     expect(mockPush).toHaveBeenCalledWith("/project/proj-b");
@@ -171,6 +208,7 @@ describe("ProjectSidebar", () => {
 
     await user.click(screen.getAllByRole("button", { name: /Close project/ })[1]);
 
+    expect(mockRequestProjectClose).toHaveBeenCalledWith("proj-b", "proj-b");
     expect(mockCloseProject).toHaveBeenCalledWith("proj-b");
     expect(mockPush).toHaveBeenCalledTimes(1);
     expect(mockPush).toHaveBeenCalledWith("/project/proj-c");
@@ -183,6 +221,7 @@ describe("ProjectSidebar", () => {
 
     await user.click(screen.getAllByRole("button", { name: /Close project/ })[2]);
 
+    expect(mockRequestProjectClose).toHaveBeenCalledWith("proj-c", "proj-c");
     expect(mockCloseProject).toHaveBeenCalledWith("proj-c");
     expect(mockPush).toHaveBeenCalledTimes(1);
     expect(mockPush).toHaveBeenCalledWith("/project/proj-b");
@@ -196,6 +235,7 @@ describe("ProjectSidebar", () => {
 
     await user.click(screen.getByRole("button", { name: /Close project/ }));
 
+    expect(mockRequestProjectClose).toHaveBeenCalledWith("proj-a", "proj-a");
     expect(mockCloseProject).toHaveBeenCalledWith("proj-a");
     expect(mockPush).toHaveBeenCalledTimes(1);
     expect(mockPush).toHaveBeenCalledWith("/");

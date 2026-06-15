@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { House, SidebarSimple, X } from "@phosphor-icons/react";
 import { WorktreeTree } from "@/components/worktree-tree";
-import { closeNavigationTarget, projectRoute, useOpenProjects } from "@/lib/open-projects-context";
+import { projectRoute, useOpenProjects } from "@/lib/open-projects-context";
 import type { CopilotCliState } from "@/lib/types";
 import { languageColor } from "@/lib/utils";
 
@@ -69,7 +69,8 @@ function persistCollapsedState(collapsed: boolean) {
 export function ProjectSidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const { openProjects, closeProject, getCopilotStatus } = useOpenProjects();
+  const { openProjects, requestProjectClose, clearProjectCloseRequest, getCopilotStatus } =
+    useOpenProjects();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const activeSlug = openProjects.find((project) => pathname === projectRoute(project.slug))?.slug;
 
@@ -185,14 +186,20 @@ export function ProjectSidebar() {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  const navigationTarget = closeNavigationTarget(
-                    openProjects,
-                    project.slug,
-                    activeSlug,
-                  );
-                  closeProject(project.slug);
-                  if (navigationTarget) {
-                    router.push(navigationTarget);
+                  const normalizedSlug = project.slug.trim();
+                  const request = requestProjectClose(project.slug, activeSlug ?? null);
+                  if (!request.accepted || !request.target) {
+                    return;
+                  }
+
+                  try {
+                    router.push(request.target);
+                  } catch {
+                    clearProjectCloseRequest(normalizedSlug);
+                    console.error("Failed to navigate after closing project", {
+                      slug: normalizedSlug,
+                      target: request.target,
+                    });
                   }
                 }}
                 className={`absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] text-destructive-foreground transition-opacity ${
@@ -202,7 +209,7 @@ export function ProjectSidebar() {
                 }`}
                 aria-label={`Close project ${project.name}`}
               >
-                <X size={10} weight="bold" />
+                <X size={10} weight="bold" aria-hidden="true" />
               </button>
               {isActive && (
                 <div

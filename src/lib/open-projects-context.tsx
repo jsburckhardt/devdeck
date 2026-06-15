@@ -15,6 +15,15 @@ interface OpenProjectsContextValue {
   openProjects: Project[];
   openProject: (project: Project) => void;
   closeProject: (slug: string) => void;
+  requestProjectClose: (
+    slug: string,
+    activeSlug: string | null,
+  ) => {
+    accepted: boolean;
+    target: string | null;
+    reason?: "invalid-slug" | "pending";
+  };
+  clearProjectCloseRequest: (slug: string) => void;
   saveWorkspaceState: (slug: string, state: PerProjectWorkspaceState) => void;
   restoreWorkspaceState: (slug: string) => PerProjectWorkspaceState | undefined;
   updateCopilotStatus: (slug: string, status: CopilotCliState) => void;
@@ -25,6 +34,10 @@ const STORAGE_KEY = "devdeck-open-projects";
 
 const OpenProjectsContext = createContext<OpenProjectsContextValue | undefined>(undefined);
 
+function normalizeProjectSlug(slug: string): string {
+  return slug.trim();
+}
+
 export function projectRoute(slug: string): string {
   return `/project/${encodeURIComponent(slug)}`;
 }
@@ -34,22 +47,29 @@ export function closeNavigationTarget(
   closedSlug: string,
   activeSlug: string | null | undefined,
 ): string | null {
-  if (activeSlug !== closedSlug) {
+  const normalizedClosedSlug = normalizeProjectSlug(closedSlug);
+  const normalizedActiveSlug = activeSlug ? normalizeProjectSlug(activeSlug) : null;
+
+  if (!normalizedClosedSlug || normalizedActiveSlug !== normalizedClosedSlug) {
     return null;
   }
 
-  const closedIndex = openProjects.findIndex((project) => project.slug === closedSlug);
+  const closedIndex = openProjects.findIndex(
+    (project) => normalizeProjectSlug(project.slug) === normalizedClosedSlug,
+  );
   if (closedIndex === -1) {
     return null;
   }
 
-  const remainingProjects = openProjects.filter((project) => project.slug !== closedSlug);
+  const remainingProjects = openProjects.filter(
+    (project) => normalizeProjectSlug(project.slug) !== normalizedClosedSlug,
+  );
   if (remainingProjects.length === 0) {
     return "/";
   }
 
   const targetProject = remainingProjects[closedIndex] ?? remainingProjects[closedIndex - 1];
-  return targetProject ? projectRoute(targetProject.slug) : "/";
+  return targetProject ? projectRoute(normalizeProjectSlug(targetProject.slug)) : "/";
 }
 
 function readSlugsFromStorage(): string[] {
@@ -70,8 +90,13 @@ function writeSlugsToStorage(slugs: string[]): void {
 export function OpenProjectsProvider({ children }: { children: React.ReactNode }) {
   const [openProjects, setOpenProjects] = useState<Project[]>([]);
   const workspaceCache = useRef<Map<string, PerProjectWorkspaceState>>(new Map());
+  const pendingCloseSlugs = useRef<Set<string>>(new Set());
   const [copilotStatuses, setCopilotStatuses] = useState<Map<string, CopilotCliState>>(new Map());
   const hydrated = useRef(false);
+
+  useEffect(() => {
+    return () => pendingCloseSlugs.current.clear();
+  }, []);
 
   // Hydrate from localStorage + API on mount, merging with any projects opened during fetch
   useEffect(() => {
@@ -117,6 +142,17 @@ export function OpenProjectsProvider({ children }: { children: React.ReactNode }
     writeSlugsToStorage(openProjects.map((p) => p.slug));
   }, [openProjects]);
 
+  useEffect(() => {
+    const openSlugs = new Set(
+      openProjects.map((project) => normalizeProjectSlug(project.slug)).filter(Boolean),
+    );
+    for (const slug of pendingCloseSlugs.current) {
+      if (!openSlugs.has(slug)) {
+        pendingCloseSlugs.current.delete(slug);
+      }
+    }
+  }, [openProjects]);
+
   const openProject = useCallback((project: Project) => {
     setOpenProjects((prev) => {
       if (prev.some((p) => p.slug === project.slug)) {
@@ -127,15 +163,51 @@ export function OpenProjectsProvider({ children }: { children: React.ReactNode }
   }, []);
 
   const closeProject = useCallback((slug: string) => {
-    workspaceCache.current.delete(slug);
+    const normalizedSlug = normalizeProjectSlug(slug);
+    if (!normalizedSlug) return;
+
+    workspaceCache.current.delete(normalizedSlug);
     setCopilotStatuses((prev) => {
-      if (!prev.has(slug)) return prev;
+      if (!prev.has(normalizedSlug)) return prev;
       const next = new Map(prev);
-      next.delete(slug);
+      next.delete(normalizedSlug);
       return next;
     });
-    setOpenProjects((prev) => prev.filter((p) => p.slug !== slug));
+    setOpenProjects((prev) =>
+      prev.filter((project) => normalizeProjectSlug(project.slug) !== normalizedSlug),
+    );
   }, []);
+
+  const clearProjectCloseRequest = useCallback((slug: string) => {
+    const normalizedSlug = normalizeProjectSlug(slug);
+    if (normalizedSlug) {
+      pendingCloseSlugs.current.delete(normalizedSlug);
+    }
+  }, []);
+
+  const requestProjectClose = useCallback(
+    (slug: string, activeSlug: string | null) => {
+      const normalizedSlug = normalizeProjectSlug(slug);
+      if (!normalizedSlug) {
+        return { accepted: false, target: null, reason: "invalid-slug" as const };
+      }
+
+      if (pendingCloseSlugs.current.has(normalizedSlug)) {
+        return { accepted: false, target: null, reason: "pending" as const };
+      }
+
+      pendingCloseSlugs.current.add(normalizedSlug);
+      const normalizedActiveSlug = activeSlug ? normalizeProjectSlug(activeSlug) : null;
+      const target =
+        normalizedActiveSlug === normalizedSlug
+          ? (closeNavigationTarget(openProjects, normalizedSlug, normalizedActiveSlug) ?? "/")
+          : null;
+
+      closeProject(normalizedSlug);
+      return { accepted: true, target };
+    },
+    [closeProject, openProjects],
+  );
 
   const saveWorkspaceState = useCallback((slug: string, state: PerProjectWorkspaceState) => {
     workspaceCache.current.set(slug, state);
@@ -169,6 +241,8 @@ export function OpenProjectsProvider({ children }: { children: React.ReactNode }
       openProjects,
       openProject,
       closeProject,
+      requestProjectClose,
+      clearProjectCloseRequest,
       saveWorkspaceState,
       restoreWorkspaceState,
       updateCopilotStatus,
@@ -178,6 +252,8 @@ export function OpenProjectsProvider({ children }: { children: React.ReactNode }
       openProjects,
       openProject,
       closeProject,
+      requestProjectClose,
+      clearProjectCloseRequest,
       saveWorkspaceState,
       restoreWorkspaceState,
       updateCopilotStatus,
