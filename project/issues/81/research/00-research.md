@@ -4,90 +4,105 @@
 - **Issue:** #81
 - **Title:** feat(file-explorer): synchronize tree with filesystem changes in near realtime
 - **URL:** https://github.com/jsburckhardt/devdeck/issues/81
+- **Research revision:** v2 - supersedes the earlier polling-only brief after Verify found the issue checklist requires server-push synchronization.
 
 ## Scope Classification
 - **Scope Type:** issue
 
 ## Problem Statement
 
-The DevDeck file explorer tree currently reflects the filesystem state only at specific, user-triggered moments:
+The DevDeck file explorer currently updates only on explicit application-controlled refreshes:
 
-1. **Initial project/worktree load** - `WorkspaceLayout` fires a `useEffect` on `[activeWorktree, project.slug, loadRootFileTree]` mount/change, calling `loadRootFileTree(project.slug)` which sets `fileTreeLoading=true`, calls `refreshFileTree(slug)`, then clears the loading flag.
-2. **After a successful `FileViewer` save** - `FileViewer` calls `refreshFileTree()` after a successful `PUT /api/files/content` response (Decision #61, CORE-COMPONENT-0008).
-3. **Manual retry** - `ExplorerContent` exposes a retry button that calls `loadRootFileTree` when the tree is empty and an error is present.
+1. Initial project or active-worktree load through `WorkspaceLayout`.
+2. Successful in-portal `FileViewer` saves through `refreshFileTree()`.
+3. Manual retry after a root tree load error.
 
-Changes made via the terminal, external editors, or background processes are not reflected until one of the above triggers fires. A user working in the integrated terminal who creates, deletes, or moves files sees a stale tree until they switch projects or tabs, save a file in the viewer, or hard-reload.
+Issue #81 requires near-realtime synchronization for filesystem changes made outside the React save flow, including terminal commands, branch checkouts, generators, package installs, external editors, and git index changes. The GitHub issue checklist is broader than polling: it requires a server-push filesystem event stream, loaded-directory invalidation, degraded polling fallback, sync status/retry UI, auth/origin handling, watcher resource limits, and integration-style coverage.
 
-The issue requests that the file explorer synchronize with filesystem changes in near realtime, meaning the tree should update within a few seconds of actual filesystem changes without requiring explicit user action beyond the normal editing workflow.
+The previous polling-only implementation on this branch should be retained as degraded fallback, not treated as the complete solution.
 
 ## Existing Context
 
-### Refresh Infrastructure
+### Current branch state
 
-The core refresh mechanism is already implemented in `src/lib/workspace-context.tsx` and is designed for silent, non-disruptive refreshes:
+The first implementation pass already added a visibility-aware 5000 ms polling path:
 
-- `refreshFileTree(explicitSlug?: string)` fetches `GET /api/files?slug=<slug>[&worktree=<wt>]` with `{ cache: "no-store" }` (Decision #59).
-- Refreshes are deduplicated by `slug + activeWorktree + path` via the in-flight request map (Decision #70).
-- Responses are guarded against stale project/worktree contexts and ignored when they target obsolete state (Decision #106).
-- `refreshFileTree` mutates `fileTreeRefreshing`, not `fileTreeLoading`, so `ExplorerContent` does not show a global spinner during silent refreshes (Decisions #60 and #62).
-- Root refreshes merge with existing tree state so previously loaded child subtrees and expansion state can survive root updates.
+- `src/components/workspace-layout.tsx` defines root file-tree polling through `refreshFileTree(project.slug)`.
+- `src/hooks/use-worktrees.ts` defines worktree list polling with no-store fetches, abort/stale guards, and visibility pause/resume.
+- `project/architecture/core-components/CORE-COMPONENT-0008-multi-project-tabs.md` and `DECISION-LOG.md` currently record polling as the near-realtime contract in Decisions #198-#206.
 
-### File API Behavior
+Those decisions conflict with the issue acceptance criteria if they remain the primary strategy. The Plan stage must supersede them so polling becomes a degraded fallback beneath a server-push contract.
 
-`src/app/api/files/route.ts` handles file tree reads and already supports the relevant scoping:
+### Refresh infrastructure to reuse
 
-- Reads direct directory entries for root or path-scoped tree requests.
-- Runs `git status --porcelain -u` on each tree request so status badges can reflect current repository state.
-- Applies the server-side default exclusion list, including `.git` (Decision #73).
-- Supports optional `worktree` parameters for worktree-scoped file APIs (Decision #107).
-- Resolves worktree roots server-side with escape protection (Decision #108).
+`src/lib/workspace-context.tsx` already provides the canonical merge and fetch behavior:
 
-Because `refreshFileTree` uses `cache: "no-store"`, periodic root refreshes would bypass browser caching even though the API route returns caching headers.
+- `refreshFileTree(explicitSlug?)` fetches `GET /api/files?slug=<slug>[&worktree=<wt>]` with `cache: "no-store"`.
+- `loadDirectoryChildren(path, explicitSlug?)` fetches direct children for loaded directories.
+- File-tree fetches are scoped by project slug, active worktree, and path.
+- Existing stale slug/worktree guards prevent obsolete responses from mutating the visible tree.
+- Existing in-flight deduplication can collapse bursts of server-push invalidations into fewer canonical `/api/files` refreshes.
 
-### Worktree List Behavior
+The server-push implementation should emit invalidation hints only. The client should still refresh canonical tree state through existing `/api/files` calls instead of trusting event payloads as source-of-truth file rows.
 
-`src/hooks/use-worktrees.ts` fetches `GET /api/worktrees?slug=<slug>` on slug changes and exposes a manual `refresh()` method. There is no periodic refresh for worktree additions or removals, so the worktree selector can also become stale when terminal commands create or delete worktrees.
+### File APIs and worktree scoping
 
-### No Existing Polling or File Watch
+`src/app/api/files/route.ts` already supports project-root and worktree-root listing. It resolves roots server-side, rejects invalid paths, applies the `.git` exclusion list, runs git status, and returns direct children only. Server-push events must preserve those semantics:
 
-There is no existing file-tree polling, filesystem watching, SSE, `EventSource`, or `chokidar` integration in the application. The current code relies on explicit refresh triggers only.
+- no absolute filesystem paths to the client;
+- POSIX-style relative paths only;
+- project root and active worktree scopes are independent;
+- `.git` contents remain hidden while git metadata changes can still invalidate status badges.
 
-### Relevant Decisions
+### Auth and transport context
 
-| # | Decision | Relevance |
-|---|----------|-----------|
-| 59 | Expose `refreshFileTree()` and `fileTreeRefreshing`; use `cache: 'no-store'` | Existing root refresh API is suitable for silent polling |
-| 60 | `refreshFileTree` must no-op without an active project and never mutate `fileTreeLoading` | Polling can call it without global loading UI |
-| 61 | `FileViewer` calls `refreshFileTree()` on successful save only | Polling becomes an additional refresh trigger |
-| 62 | `ExplorerContent` must not gate spinners on `fileTreeRefreshing` | Poll refreshes remain visually quiet |
-| 70 | Deduplicate file-tree fetches by slug/path/worktree | Polling should not duplicate in-flight refreshes |
-| 104 | File-tree requests are keyed by slug, activeWorktree, and path | Polling must preserve active worktree scoping |
-| 106 | Guard file-tree responses against stale slug and activeWorktree contexts | Late poll responses are safely ignored |
+Relevant existing authentication and transport surfaces:
 
-### Relevant Architecture Artifacts
+- `src/middleware.ts` protects HTTP routes using the `devdeck_token` cookie after token entry.
+- `src/lib/auth.ts` exposes token loading and validation helpers.
+- `src/server/terminal-server.mts` is an informative reference for authenticated upgrade handling, token validation, close code `4401`, per-connection cleanup, and subscriber maps.
 
-- `project/architecture/core-components/CORE-COMPONENT-0008-multi-project-tabs.md` defines the file-tree refresh, worktree scoping, request deduplication, stale-response, and merge contracts.
-- `project/architecture/core-components/CORE-COMPONENT-0005-error-handling.md` defines error-handling expectations; polling failures should follow the existing non-disruptive refresh behavior unless the root tree is empty.
-- `project/architecture/ADR/ADR-0002-tech-stack.md` already establishes Next.js, React, TypeScript, and the existing client/server stack.
-- `project/architecture/ADR/ADR-0006-config-file-driven-configuration.md` is relevant only if the polling interval becomes configurable.
+Issue #81 proposes `/api/files/events` as a filesystem event stream. Research recommends Server-Sent Events (SSE) from the Next.js route layer instead of reusing the terminal WebSocket server because the events are one-way server-to-client invalidations and can rely on existing HTTP auth middleware. If the Plan stage chooses a WebSocket event stream instead, it must document how routing/auth does not regress `/api/terminal`.
+
+### Missing capabilities
+
+No current code implements:
+
+- `/api/files/events`;
+- `EventSource` or a file-tree sync client hook;
+- server-side filesystem watchers;
+- watcher sharing/ref-count cleanup;
+- debounce/batching of raw filesystem events;
+- `file-tree:ready`, `file-tree:changed`, or `file-tree:degraded` control messages;
+- accessible sync status and retry UI in the Explorer header;
+- loaded-directory invalidation after external changes;
+- integration/UI coverage for external create/delete/rename flows.
 
 ## Proposed ADRs
 
-ADRs are **not required** for the recommended client-side polling approach. It uses the existing React/Next.js stack established by ADR-0002 and the existing file-tree refresh architecture from CORE-COMPONENT-0008.
+An ADR is required because Issue #81 introduces a new synchronization transport and watcher lifecycle architecture not covered by existing ADRs.
 
-If the Plan stage chooses a server-push approach such as SSE plus filesystem watchers, a new ADR should be created for that server-side event streaming strategy.
+Proposed title:
+
+- **ADR-0007: Filesystem Sync Transport Strategy - Server-Push SSE with Polling Fallback**
+
+The ADR should decide:
+
+- Use SSE for file-tree invalidation events, not direct row transport.
+- Use existing `/api/files` responses as the canonical state after invalidation.
+- Use polling only as degraded fallback.
+- Define watcher implementation strategy and dependency choice (`fs.watch` vs `chokidar` or another watcher).
+- Define debounce/batching, payload limits, watcher sharing/ref-count cleanup, and fallback triggers.
+- Define auth/origin constraints for the event stream.
 
 ## Proposed Core-Components
 
-No new core-component is required. The Plan stage should amend `CORE-COMPONENT-0008` to codify near-realtime file explorer synchronization rules:
+No new core-component is required, but existing core-components must be amended:
 
-- Poll root file-tree state at a conservative default interval.
-- Pause interval polling while `document.visibilityState === "hidden"`.
-- Trigger an immediate catch-up refresh when the document becomes visible again.
-- Reuse existing `refreshFileTree` deduplication, stale-response guards, and silent refresh behavior.
-- Refresh worktree list state as part of the same near-realtime synchronization contract or define why worktree list refresh is out of scope.
-- Guard browser-only APIs for SSR/test environments.
-- Cover polling lifecycle, visibility behavior, unmount cleanup, project/worktree switching, and deduplication in tests.
+- **CORE-COMPONENT-0008: Multi-Project Tabs and Workspace State** must supersede polling-primary Decisions #198-#206 and define the server-push sync contract, loaded-directory invalidation, stale event handling, sync status state, retry API, fallback polling, and required tests.
+- **CORE-COMPONENT-0005: Error Handling** should define sync connection error/degraded behavior, retry semantics, accessible status announcements, auth failure no-retry behavior, and fallback polling rules.
+
+CORE-COMPONENT-0003 is an informative reference for authenticated connection lifecycle patterns but does not need an amendment if the chosen transport is a Next.js SSE endpoint.
 
 ## Risks and Open Questions
 
@@ -95,40 +110,49 @@ No new core-component is required. The Plan stage should amend `CORE-COMPONENT-0
 
 | Risk | Severity | Mitigation |
 |------|----------|------------|
-| `git status --porcelain -u` is slow on large repositories or many untracked files | Medium | Use a conservative interval and rely on in-flight deduplication; avoid adding more frequent per-directory polling in v1 |
-| Polling fires during project or worktree switches | Low | Existing stale slug/worktree guards should drop obsolete responses |
-| Browser `document` APIs are unavailable in SSR/test contexts | Low | Use `typeof document !== "undefined"` guards and tests that mock visibility state |
-| Interval leaks after project close or provider unmount | Medium | Cleanup must clear timers and event listeners |
-| Worktree list remains stale if only file tree polling is implemented | Medium | Plan should explicitly include or exclude worktree list co-refresh |
+| Filesystem watcher APIs differ across platforms and can miss events | High | Use debounced invalidation + canonical `/api/files` refresh; provide degraded polling fallback |
+| Watcher bursts from `npm install` or branch checkout can overwhelm clients | High | Batch raw events and cap payloads; refresh parent directories rather than every raw event |
+| Multiple tabs can create duplicate watchers | High | Share watchers by normalized `slug + worktree + root` and ref-count subscribers |
+| Stale events/responses can corrupt active project/worktree state | High | Include scope tokens and reuse existing stale slug/worktree guards |
+| Auth/origin handling is easy to under-specify for long-lived streams | High | ADR/core-component must define auth failure behavior and tests |
+| Loaded directory refresh can disrupt expansion/selection state | Medium | Invalidate/reload only loaded direct-child directories and merge immutably |
+| Polling-only branch commits already exist | Medium | Treat current polling as fallback and supersede architecture docs rather than deleting useful fallback code |
 
 ### Open Questions for Plan Stage
 
-1. Should the polling interval be hardcoded for v1 or configurable through the ADR-0006 config system?
-2. Should `git status --porcelain -u` be optimized for polling, or should status badge correctness be preserved unchanged?
-3. Should worktree list polling live in `useWorktrees`, `ProjectSidebar`, or a shared near-realtime synchronization hook?
-4. Should visibility restore trigger an immediate refresh, or wait for the next interval tick?
-5. Should polling live inside `WorkspaceProvider`, `WorkspaceLayout`, or a dedicated hook for testability?
-6. Should loaded directory children be periodically refreshed too, or should v1 poll only the root tree and preserve existing lazy-loaded child behavior?
-7. Should polling failures use backoff after repeated errors, or follow the current silent refresh behavior?
+1. Should the server watcher use Node `fs.watch` only, or add a watcher dependency such as `chokidar`? If a dependency is added, update package metadata and document it.
+2. Should `/api/files/events` be SSE or WebSocket? Research recommends SSE for one-way invalidation events.
+3. What debounce interval and event payload cap should be enforced?
+4. What exact event schema should be used for `file-tree:ready`, `file-tree:changed`, `file-tree:degraded`, and auth/error control messages?
+5. Which API should `WorkspaceContext` expose for loaded-directory refresh/invalidation?
+6. Should missing selected files clear selection immediately or rely on existing `FileViewer` missing-file handling?
+7. What integration coverage is feasible in Vitest versus Playwright for this repository?
 
 ## Preliminary Change Surfaces
 
-| File | Change Type | Notes |
-|------|-------------|-------|
-| `src/lib/workspace-context.tsx` | Runtime behavior | Add near-realtime polling or consume a dedicated polling hook |
-| `src/lib/workspace-context.test.tsx` | Tests | Cover interval lifecycle, visibility pause/resume, cleanup, stale guards, and deduplication |
-| `src/hooks/use-worktrees.ts` | Runtime behavior | Optionally add or expose periodic refresh behavior for worktree list changes |
-| `src/hooks/use-worktrees.test.ts` | Tests | Cover worktree polling if hook behavior changes |
-| `project/architecture/core-components/CORE-COMPONENT-0008-multi-project-tabs.md` | Architecture documentation | Amend existing file-tree/workspace state contract |
-| `project/architecture/ADR/DECISION-LOG.md` | Decision registry | Add decisions for the CORE-COMPONENT-0008 amendment |
+| File/Area | Change Type | Notes |
+|-----------|-------------|-------|
+| `project/architecture/ADR/ADR-0007-*.md` | New ADR | Server-push SSE with polling fallback |
+| `project/architecture/core-components/CORE-COMPONENT-0008-multi-project-tabs.md` | Amendment | Supersede polling-primary decisions; define sync contract |
+| `project/architecture/core-components/CORE-COMPONENT-0005-error-handling.md` | Amendment | Sync degraded/error/retry behavior |
+| `project/architecture/ADR/DECISION-LOG.md` | Amendment | Register ADR and updated decisions |
+| `src/app/api/files/events/route.ts` | New API | SSE endpoint for file-tree invalidation events |
+| `src/server/file-sync-*` or `src/lib/file-sync-*` | New server helper | Watcher registry, batching, path normalization, limits |
+| `src/hooks/use-file-tree-sync.ts` | New hook | EventSource lifecycle, backoff, degraded polling fallback, retry |
+| `src/lib/workspace-context.tsx` | Runtime behavior | Expose sync status/retry and loaded-directory refresh helpers if needed |
+| `src/components/workspace-layout.tsx` / Explorer header | UI | Sync status and retry control |
+| `src/components/file-tree.tsx` / tests | Regression coverage | Preserve states and loaded-directory behavior |
+| `src/hooks/use-worktrees.ts` | Runtime behavior | Retain existing polling fallback for worktree list |
+| `LLM.txt` | Documentation | Add new sync endpoint/hook/server helper references |
 
 ## Test Implications
 
-- Add fake-timer tests for root file-tree polling interval behavior.
-- Verify no global loading spinner state changes during poll ticks.
-- Verify polling pauses while the document is hidden.
-- Verify a catch-up refresh occurs when document visibility returns to visible.
-- Verify interval and event listeners are cleaned up on unmount.
-- Verify project/worktree changes do not allow stale polling responses to overwrite current state.
-- Verify in-flight refresh deduplication still prevents duplicate `GET /api/files` calls.
-- Add worktree list refresh tests if worktree list co-refresh is included in scope.
+Required test coverage should include:
+
+- Server watcher batching, path normalization, scope isolation, `.git` filtering, git metadata invalidation, resource caps, redaction, and cleanup.
+- `/api/files/events` auth, invalid slug/worktree rejection, no absolute path leakage, control messages, and degraded events.
+- Client hook URL construction, EventSource lifecycle, retry/backoff, no-retry auth failures, Strict Mode duplicate mount cleanup, and degraded polling fallback.
+- WorkspaceContext application of invalidations to root, loaded directories, collapsed `hasChildren`, empty directory transitions, stale events, inactive worktree isolation, and deleted selected-file behavior.
+- ExplorerContent/FileTree sync status UI, retry accessibility, `role="status"` / `aria-live`, and preservation of existing loading/error/empty states.
+- Integration or Playwright-style coverage that external create/delete/rename operations appear in the explorer without reload within the server-push timing window, and that degraded polling updates within the polling window.
+- `./harness verify` must pass before handoff.

@@ -50,25 +50,32 @@ src/app/globals.css                                            — Global styles
 src/middleware.ts                                              — Next.js middleware for token-based HTTP auth
 src/lib/auth.ts                                                — Env-driven token access, validation (timingSafeEqual), cookie parsing
 src/lib/config.ts                                              — Node-only config loader for $DEVDECK_DATA_DIR/config.json; validates env-over-config-over-default values, persists generated tokens, masks token display, and normalizes object-based initialProjects entries
-src/lib/types.ts                                               — Shared TypeScript types (FileContent, FileNode, per-worktree workspace state, DiffHunk, DiffLine, etc.)
+src/lib/types.ts                                               — Shared TypeScript types (FileContent, FileNode, file-tree sync event/status types, per-worktree workspace state, DiffHunk, DiffLine, etc.)
 src/lib/registry.ts                                          — Project registry persistence plus idempotent initialProjects seeding with metadata persistence and slug/path/auto-discovery duplicate checks
 src/lib/file-utils.ts                                          — Language detection and binary file identification
 src/lib/worktree-utils.ts                                      — Shared symlink-safe HTTP worktree root resolver for file APIs
 src/lib/diff-parser.ts                                         — Unified diff parser utility (parseDiff)
-src/lib/workspace-context.tsx                                  — Workspace state provider (project, worktree-aware file tree, selection)
+src/lib/workspace-context.tsx                                  — Workspace state provider (project, worktree-aware file tree, selection, file-tree sync status/error/retry APIs, scoped invalidation via canonical /api/files refreshes)
+src/hooks/use-file-tree-sync.ts                                — Client EventSource lifecycle hook for /api/files/events, scoped ready/changed/degraded parsing, retry/backoff, heartbeat timeout, manual retry, and degraded polling handoff
+src/server/file-tree-sync.ts                                   — Server-only chokidar watcher registry for file-tree SSE: shared root/worktree watchers, ref-count cleanup, 250 ms debounce, 1000 ms force flush, 256 path cap, POSIX relative hints, git metadata invalidation, and resource-cap degradation
 src/server/start-dev.mts                                       — Dev startup script: loads config, seeds initial projects, prints source-aware auth banner, forwards resolved env, starts Next.js + terminal server
 src/server/terminal-server.mts                                 — WebSocket terminal server with token auth, per-project CWD via slug, optional tmux session attachment
 src/hooks/use-terminal.ts                                      — React hook for terminal WebSocket connection with slug param and 4401 handling
+src/hooks/use-worktrees.ts                                     — Worktree list hook; initial/manual fetches stay foreground while 5000 ms no-store polling is enabled only during degraded file-tree sync fallback
 src/app/project/layout.tsx                                     — Project route layout; wraps sidebar and workspace in WorkspaceProvider for shared worktree state
 src/components/project-sidebar.tsx                             — Project panel/sidebar with project tabs, Copilot status, and active project worktree selector
 src/components/terminal-panel.tsx                              — Terminal panel UI with slug prop forwarding and auth error state
 src/components/diff-view.tsx                                   — Diff view component: renders unified diff with colored lines and dual line numbers
 src/components/file-viewer.tsx                                 — Worktree-aware file viewer with markdown preview (including mermaid diagram rendering), raw toggle, diff tabs, edit mode
 src/components/worktree-tree.tsx                               — Worktree selector tree; resets missing restored active worktrees to project root with notice
-src/components/workspace-layout.tsx                            — Project workspace shell; reloads file tree on project and active worktree changes
+src/components/workspace-layout.tsx                            — Project workspace shell; uses SSE file-tree sync as primary, renders accessible Explorer sync status/retry UI, and runs 5000 ms root polling only as degraded fallback
 src/app/api/files/route.ts                                     — GET /api/files — worktree-aware file tree with git status
 src/app/api/files/content/route.ts                             — /api/files/content GET/PUT worktree-aware read and write file content with mtime 
 src/app/api/files/diff/route.ts                                — GET /api/files/diff — worktree-aware git diff for a single file (handles untracked, staged, modified)
+src/app/api/files/events/route.ts                              — GET /api/files/events SSE stream — same-origin/auth-protected file-tree invalidation endpoint emitting file-tree:ready, file-tree:changed, and file-tree:degraded events with no absolute path leakage
+src/server/file-tree-sync.test.ts                              — Vitest coverage for watcher sharing/ref-count cleanup, path redaction, git metadata invalidation, debounce/force flush, payload caps, resource caps, and abort cleanup
+src/app/api/files/events/route.test.ts                         — Vitest coverage for SSE ready/changed/degraded streaming, structured auth/origin/scope rejection, no watcher allocation on rejected requests, path redaction, and abort cleanup
+src/hooks/use-file-tree-sync.test.ts                            — Vitest coverage for EventSource URL construction, ready/changed/degraded handling, stale-scope rejection, retry/backoff, heartbeat timeout, no-retry classifications, manual retry, and Strict Mode cleanup
 project/architecture/ADR/ADR-0003-project-registry-persistence.md — Project registry persistence decision
 project/architecture/ADR/ADR-0004-token-authentication.md      — Token-based authentication decision
 e2e/terminal.spec.ts                                           — Playwright E2E tests for terminal with token auth

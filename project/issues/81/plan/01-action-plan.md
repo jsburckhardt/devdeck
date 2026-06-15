@@ -1,27 +1,33 @@
-# Action Plan: Near-Realtime File Explorer Synchronization
+# Action Plan: Server-Push File Explorer Synchronization
 
 ## Feature
 - **ID:** 81
 - **Research Brief:** project/issues/81/research/00-research.md
 
 ## ADRs Created
-- None. Issue #81 stays within the React/Next.js client behavior already covered by [ADR-0002](../../../architecture/ADR/ADR-0002-tech-stack.md). No server-push, filesystem watcher, or new streaming architecture is planned.
+- [ADR-0007: Filesystem Sync Transport Strategy - Server-Push SSE with Polling Fallback](../../../architecture/ADR/ADR-0007-filesystem-sync-transport-strategy.md)
 
 ## Core-Components Created
-- None.
-- Amended [CORE-COMPONENT-0008](../../../architecture/core-components/CORE-COMPONENT-0008-multi-project-tabs.md) on 2026-06-15 to define near-realtime file explorer synchronization through conservative client-side polling, visibility pause/resume, `refreshFileTree` reuse, worktree list co-refresh, SSR/test guards, and cleanup requirements.
+- None created.
+- Amended [CORE-COMPONENT-0008: Multi-Project Tabs and Workspace State](../../../architecture/core-components/CORE-COMPONENT-0008-multi-project-tabs.md) to supersede polling-primary Decisions #198-#206, define `/api/files/events` SSE invalidation, loaded-directory invalidation, sync status/retry API, stale scope handling, and degraded 5000 ms fallback polling.
+- Amended [CORE-COMPONENT-0005: Error Handling](../../../architecture/core-components/CORE-COMPONENT-0005-error-handling.md) to define file-tree sync degraded/error handling, accessible live status, bounded retry, no-retry auth/invalid-param states, and fallback polling behavior.
 
 ## Implementation Tasks
-1. Add a client-only, visibility-aware root file-tree polling lifecycle at the active workspace boundary.
-2. Extend worktree list refresh behavior so active project worktrees co-refresh with the same interval and visibility lifecycle.
-3. Add deterministic fake-timer, visibility, cleanup, deduplication, stale-context, and harness verification coverage.
+1. Add the server-side file sync watcher helper and direct `chokidar` dependency.
+2. Add `GET /api/files/events` SSE endpoint for `file-tree:ready`, `file-tree:changed`, and `file-tree:degraded`.
+3. Extend shared sync types and `WorkspaceContext` with scoped invalidation, sync status, sync error, and retry APIs.
+4. Implement the client `useFileTreeSync` EventSource hook with stale-scope cleanup, retry/backoff, heartbeat timeout, and degraded fallback handoff.
+5. Wire Explorer status/retry UI with accessible `role="status"` / `aria-live` semantics.
+6. Preserve the current 5000 ms polling implementation as degraded fallback for root file-tree and worktree list refresh, not as primary sync.
+7. Update `LLM.txt` with the new endpoint, hook, server helper, event schema, and fallback references.
+8. Complete integration/regression coverage and run `./harness verify`.
 
 ## Architecture Direction
-- Use a fixed 5000 ms v1 polling interval rather than ADR-0006 config-file customization.
-- Poll only the active root file tree; loaded child directories remain lazy and are not periodically polled.
-- Call the existing `refreshFileTree(...)` path directly so polling inherits `cache: "no-store"`, in-flight deduplication, stale slug/worktree guards, root merge behavior, `fileTreeRefreshing`, and silent refresh semantics.
-- Do not call the existing `loadRootFileTree` wrapper from polling because it mutates `fileTreeLoading` and is reserved for initial load and explicit retry.
-- Pause interval ticks while `document.visibilityState === "hidden"` and perform an immediate catch-up refresh when visibility returns.
-- Co-refresh `GET /api/worktrees?slug=<slug>` for the active project using no-store fetches, same visibility behavior, no overlapping same-slug poll requests, and cleanup on slug changes/unmount.
-- Guard all `document`/timer browser APIs for SSR and jsdom tests.
-- Verify through `./harness test` during implementation and `./harness verify` before completion.
+- Use SSE `/api/files/events?slug=<slug>[&worktree=<relative-worktree>]` as the primary server-push invalidation transport.
+- Use existing `/api/files` root and directory responses as the only canonical file-tree data source after invalidation.
+- Use a shared, ref-counted `chokidar` watcher registry keyed by normalized project/worktree scope and resolved root.
+- Debounce watcher bursts for 250 ms, force-flush by 1000 ms, cap changed path hints at 256 per event, and degrade when watcher/subscriber/resource limits are exceeded.
+- Never send absolute filesystem paths or raw `.git` paths to the browser; use POSIX-style relative path hints and git-status/root invalidation flags.
+- Preserve the existing 5000 ms polling behavior as degraded fallback only; fallback polling must stay visibility-aware and silent.
+- Treat authentication, invalid-origin, invalid slug, invalid worktree, and invalid parameter failures as non-retryable sync errors that do not enter fallback polling.
+- Verify through targeted unit/integration tests during implementation and `./harness verify` before handoff.
