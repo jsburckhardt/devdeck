@@ -13,6 +13,7 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - Frontend: xterm.js terminal widget and WebSocket client
 - Backend: WebSocket server, PTY process lifecycle management
 - Communication protocol between frontend and backend
+- Terminal input helper controls, including keyboard helpers and browser-only microphone review input, that inject raw input through `useTerminal.sendInput(data)`
 
 ## Definition
 
@@ -61,6 +62,31 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - `sendInput(data)` MUST encode strings with `TextEncoder` and send only when the active WebSocket is open
 - `sendInput(data)` MUST return `false` without throwing when the active WebSocket is absent or not open, and MUST NOT queue stale input across reconnects
 - The `useTerminal` hook MUST expose `focusTerminal(): boolean` so terminal helper controls can restore xterm focus after touch or pointer activation
+- Browser microphone voice input MUST be implemented as a standalone `useVoiceInput` hook that owns the `SpeechRecognition` lifecycle outside `TerminalPanel`
+- Browser microphone voice input MUST use only browser-provided `SpeechRecognition` / `webkitSpeechRecognition` and MUST NOT introduce raw audio transport, server-side speech processing, new endpoints, third-party speech SDKs/APIs, secrets, persistence, telemetry, or transcript/permission/error logging
+- `useVoiceInput` MUST remain SSR, hydration, and jsdom safe by resolving browser globals behind `typeof window !== "undefined"` and treating missing Web Speech support as `unsupported`
+- `useVoiceInput` MUST expose a voice status model that can represent `unsupported`, `insecure-context`, `permission-needed`, `listening`, `transcribing`, `ready-to-send`, `denied`, and `errored`
+- `useVoiceInput` MAY query the browser Permissions API for microphone permission state, but missing Permissions API support MUST be treated as unknown permission state rather than failure
+- Browser speech recognition MUST start only from an explicit user gesture and MUST check `window.isSecureContext` immediately before starting recognition
+- Browser speech recognition MUST run one-shot recognition with `continuous = false`, `interimResults = true`, and `lang = navigator.language || "en-US"`
+- Interim voice transcripts MUST be displayed as plain text with polite live semantics and MUST NOT be sent to the terminal
+- Final voice transcripts MUST populate a labelled editable review field and MUST NOT be sent to the terminal automatically
+- Terminal voice review UI MUST stay panel-local and MUST NOT persist voice status, permission state, transcripts, or review text in OpenProjects, `localStorage`, or `sessionStorage`
+- Terminal voice review UI MUST disclose that browser/vendor speech processing may occur and that sent text may enter shell history
+- TerminalPanel MUST render the microphone entry point visibly by default and communicate unsupported or inaccessible states accessibly
+- Terminal microphone controls MUST expose accessible `aria-label`, `title`, `aria-pressed`, and `aria-controls` when the review panel is rendered
+- Voice status copy MUST use `role="status"` with polite live semantics for idle/listening/transcribing/ready states, and voice permission/recognition/send errors MUST use assertive alert semantics
+- Permission and recognition errors MUST be normalized to actionable messages for `not-allowed`, `service-not-allowed`, `no-speech`, `audio-capture`, `network`, `aborted`, and unknown errors
+- Voice review send actions MUST validate non-empty reviewed text and reject reviewed text longer than 500 characters before terminal dispatch
+- `Send text` MUST call `sendInput(reviewText)` exactly, preserving reviewed spacing and shell metacharacters
+- `Send + Enter` MUST call ``sendInput(`${reviewText}\r`)`` exactly and MUST be the only voice action that appends an enter sequence
+- If `sendInput(data)` returns `false`, TerminalPanel MUST retain the reviewed text, show a retryable terminal-unavailable alert, and MUST NOT call `focusTerminal()`
+- Successful voice review sends MUST clear transient voice state and restore xterm focus by calling `focusTerminal()`
+- Cancel and Escape handling MUST stop active recognition, clear transient voice state, and call `focusTerminal()` when possible
+- Disconnect, slug change, worktree change, and unmount MUST stop active recognition and clear transient voice state
+- Voice recognition callbacks MUST use a generation or terminal-context guard so late callbacks after stop, cancel, unmount, disconnect, slug change, or worktree change cannot update stale UI or send to a stale terminal
+- Voice transcript and review text MUST be rendered as text only; HTML injection mechanisms such as `dangerouslySetInnerHTML` MUST NOT be used
+- Terminal microphone controls MUST be disabled while terminal input is unavailable and MUST NOT start recognition when disconnected
 
 ### Interfaces
 - **WebSocket endpoint:** `/api/terminal?token=<bearer>&slug=<project-slug>&worktree=<relative-path>&cols=<N>&rows=<N>` — accepts WebSocket upgrade requests with valid token (via query param or cookie); `slug` is optional and selects per-project CWD and tmux session; `worktree` is optional and, when combined with `slug`, overrides CWD to the worktree directory in shell-only mode; `cols`/`rows` are optional initial dimensions (clamped server-side, defaults to 80×24)
@@ -72,6 +98,8 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - **CopilotCliState type:** `"idle" | "running" | "waiting"` — inlined in `terminal-server.mts` (no `@/` imports) and exported from `src/lib/types.ts` for client-side use
 - **Frontend hook (extended):** `useTerminal(options?)` additionally returns `copilotStatus: CopilotCliState` (`"idle"` by default, updated on `"status"` frames)
 - **Helper input actions:** `sendInput(data: string): boolean` returns `true` only after sending encoded bytes to the active open WebSocket; `focusTerminal(): boolean` returns `true` only after focusing the active xterm instance
+- **Voice input hook:** `useVoiceInput(...)` encapsulates browser `SpeechRecognition` detection and lifecycle, exposes support/status/interim/final transcript state, normalized errors, start/stop/cancel/clear actions, and a late-callback generation guard without adding a server interface
+- **Terminal microphone review action:** `TerminalPanel` uses `useVoiceInput` to start/stop one-shot recognition from a toolbar button, displays interim transcripts, copies final transcripts into an editable review field, and sends only user-reviewed text through `sendInput(data)` or ``sendInput(`${reviewText}\r`)``
 - **Terminal server configuration:** startup resolves ADR-0006 config values and forwards them as `DEVDECK_TOKEN`, `TERMINAL_HOST`, `TERMINAL_PORT`, `DEVDECK_PROJECTS_DIR`, `DEVDECK_DATA_DIR`, and `DEVDECK_WORKSPACE_ROOT`; `TerminalServerOptions` remain available for direct test overrides.
 
 ### Expectations
@@ -79,10 +107,13 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - PTY processes MUST be killed when the client disconnects
 - The terminal MUST support resize (xterm.js addon-fit → resize message → node-pty.resize)
 - Connection loss MUST show a visible error state in the terminal UI
+- Voice input MUST degrade gracefully when browser speech recognition, microphone permission, secure context, or terminal connectivity is unavailable, without weakening keyboard or xterm input
 
 ## Rationale
 
 Raw WebSocket with binary data provides the lowest latency for terminal I/O. xterm.js natively supports binary attachments. node-pty is the standard Node.js PTY library used by VS Code's terminal. This combination is battle-tested and well-documented.
+
+Browser microphone input is intentionally constrained to a review-and-send helper because speech recognition can misrecognize shell commands. Keeping recognition browser-only avoids DevDeck audio custody, while requiring editable review plus explicit send actions prevents final transcripts from executing commands or entering shell history without user confirmation.
 
 ## Usage Examples
 
@@ -120,6 +151,11 @@ wss.on('connection', (ws, req) => {
 - xterm.js addons (fit, web-links, unicode11, clipboard) should be loaded in the hook
 - PTY shell selection should default to the user's `$SHELL` or fall back to `/bin/bash`
 - **Binary framing note:** `node-pty`'s `onData` emits `string`; the server must call `ws.send(Buffer.from(data, 'utf8'))` to produce a binary WebSocket frame. The frontend must set `ws.binaryType = "arraybuffer"` and check `event.data instanceof ArrayBuffer` in `onmessage`.
+- Resolve browser speech recognition with an SSR-safe `typeof window !== "undefined"` guard and prefer `window.SpeechRecognition`, falling back to `window.webkitSpeechRecognition`
+- Configure browser recognition with `continuous = false`, `interimResults = true`, and `lang = navigator.language || "en-US"`
+- Keep microphone activation user-initiated from the terminal toolbar, use native `title` attributes rather than tooltip dependencies, and use the existing `@phosphor-icons/react` icon library
+- Keep the voice review panel local to `TerminalPanel`, connect the microphone control with `aria-controls`, and restore focus according to the review workflow rules
+- Render interim transcripts and reviewed text through React text/textarea content only; do not inject transcript HTML
 
 ## Exceptions
 
@@ -131,6 +167,9 @@ wss.on('connection', (ws, req) => {
 - [x] Automated checks: WebSocket connection tests
 - [x] Code review checklist: Verify PTY cleanup on disconnect
 - [x] Test coverage requirements: Terminal hook and WebSocket handler must have unit tests
+- [x] Automated checks: `use-voice-input.test.ts` covers speech availability, secure-context guard, optional permission checks, start/stop/cancel/clear, interim/final transcript state, error normalization, cleanup, and stale-callback guards
+- [x] Automated checks: `terminal-panel.test.tsx` covers microphone accessibility, live status/alert semantics, editable review, validation, exact `Send text` / `Send + Enter` dispatch strings, `sendInput(false)` retry behavior, focus restoration, disconnect/context cleanup, and terminal container stability
+- [x] Verification: `./harness verify` passes before implementation completion
 
 ## Related ADRs
 

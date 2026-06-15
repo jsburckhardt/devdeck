@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, act, fireEvent } from "@testing-library/react";
+import { render, screen, act, fireEvent, waitFor } from "@testing-library/react";
 
 // Mock useTerminal hook
 const mockUseTerminal = vi.fn();
@@ -7,6 +7,20 @@ const mockSendInput = vi.fn(() => true);
 const mockFocusTerminal = vi.fn(() => true);
 vi.mock("@/hooks/use-terminal", () => ({
   useTerminal: (...args: unknown[]) => mockUseTerminal(...args),
+}));
+
+// Mock useVoiceInput hook
+const mockUseVoiceInput = vi.fn();
+const mockStartVoiceInput = vi.fn(() => true);
+const mockStopVoiceInput = vi.fn();
+const mockCancelVoiceInput = vi.fn();
+const mockClearVoiceInput = vi.fn();
+let latestVoiceInputOptions: { contextKey?: string | number | null } | null = null;
+vi.mock("@/hooks/use-voice-input", () => ({
+  useVoiceInput: (options: { contextKey?: string | number | null }) => {
+    latestVoiceInputOptions = options;
+    return mockUseVoiceInput(options);
+  },
 }));
 
 // Mock useOpenProjects
@@ -32,6 +46,7 @@ vi.mock("@phosphor-icons/react", () => ({
   Palette: () => <span data-testid="palette-icon" />,
   Check: () => <span data-testid="check-icon" />,
   Keyboard: () => <span data-testid="keyboard-icon" />,
+  Microphone: () => <span data-testid="microphone-icon" />,
 }));
 
 // Mock terminal theme hook
@@ -76,10 +91,34 @@ function defaultMockReturn(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function defaultVoiceInputReturn(overrides: Record<string, unknown> = {}) {
+  return {
+    isSupported: false,
+    isAvailable: false,
+    isSecureContext: true,
+    canStart: false,
+    isListening: false,
+    status: "unsupported",
+    permissionState: "unknown",
+    interimTranscript: "",
+    finalTranscript: "",
+    error: null,
+    errorDetails: null,
+    errorMessage: null,
+    start: mockStartVoiceInput,
+    stop: mockStopVoiceInput,
+    cancel: mockCancelVoiceInput,
+    clear: mockClearVoiceInput,
+    ...overrides,
+  };
+}
+
 describe("TerminalPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    latestVoiceInputOptions = null;
     mockUseTerminal.mockReturnValue(defaultMockReturn());
+    mockUseVoiceInput.mockReturnValue(defaultVoiceInputReturn());
   });
 
   afterEach(() => {
@@ -322,6 +361,429 @@ describe("TerminalPanel", () => {
     rerender(<TerminalPanel slug="project-two" worktree=".trees/one" />);
 
     expect(screen.queryByTestId("terminal-keyboard-helper")).toBeNull();
+  });
+
+  it("Issue #80: microphone control stays visible and accessible when unsupported", () => {
+    mockUseVoiceInput.mockReturnValue(defaultVoiceInputReturn());
+
+    render(<TerminalPanel slug="test" />);
+
+    const button = screen.getByRole("button", { name: "Terminal voice input unsupported" });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).toHaveAttribute("aria-pressed", "false");
+    expect(button).toHaveAttribute("title", "Terminal voice input unsupported");
+    expect(screen.getByTestId("voice-input-status")).toHaveAttribute("role", "status");
+    expect(screen.getByTestId("voice-input-status")).toHaveTextContent(/not supported/i);
+  });
+
+  it("Issue #80: microphone control exposes title, pressed state, and aria-controls when panel exists", () => {
+    mockUseVoiceInput.mockReturnValue(
+      defaultVoiceInputReturn({
+        isSupported: true,
+        isAvailable: true,
+        canStart: true,
+        status: "permission-needed",
+      }),
+    );
+    const { rerender } = render(<TerminalPanel slug="test" />);
+
+    const startButton = screen.getByRole("button", { name: "Start terminal voice input" });
+    expect(startButton).toHaveAttribute("title", "Start terminal voice input");
+    expect(startButton).toHaveAttribute("aria-pressed", "false");
+    expect(startButton).not.toHaveAttribute("aria-controls");
+
+    mockUseVoiceInput.mockReturnValue(
+      defaultVoiceInputReturn({
+        isSupported: true,
+        isAvailable: true,
+        canStart: false,
+        isListening: true,
+        status: "listening",
+      }),
+    );
+    rerender(<TerminalPanel slug="test" />);
+
+    const stopButton = screen.getByRole("button", { name: "Stop terminal voice input" });
+    const panel = screen.getByTestId("voice-input-panel");
+    expect(stopButton).toHaveAttribute("title", "Stop terminal voice input");
+    expect(stopButton).toHaveAttribute("aria-pressed", "true");
+    expect(stopButton).toHaveAttribute("aria-controls", panel.id);
+  });
+
+  it("Issue #80: starts and stops voice input from the toolbar without moving focus", () => {
+    mockUseVoiceInput.mockReturnValue(
+      defaultVoiceInputReturn({
+        isSupported: true,
+        isAvailable: true,
+        canStart: true,
+        status: "permission-needed",
+      }),
+    );
+    const { rerender } = render(<TerminalPanel slug="test" />);
+
+    const startButton = screen.getByRole("button", { name: "Start terminal voice input" });
+    startButton.focus();
+    fireEvent.click(startButton);
+
+    expect(mockStartVoiceInput).toHaveBeenCalledTimes(1);
+    expect(mockStopVoiceInput).not.toHaveBeenCalled();
+    expect(startButton).toHaveFocus();
+
+    mockUseVoiceInput.mockReturnValue(
+      defaultVoiceInputReturn({
+        isSupported: true,
+        isAvailable: true,
+        canStart: false,
+        isListening: true,
+        status: "listening",
+      }),
+    );
+    rerender(<TerminalPanel slug="test" />);
+
+    const stopButton = screen.getByRole("button", { name: "Stop terminal voice input" });
+    stopButton.focus();
+    fireEvent.click(stopButton);
+
+    expect(mockStopVoiceInput).toHaveBeenCalledTimes(1);
+    expect(stopButton).toHaveFocus();
+  });
+
+  it("Issue #80: disables microphone control while disconnected and does not start recognition", () => {
+    mockUseTerminal.mockReturnValue(
+      defaultMockReturn({ isConnected: false, status: "failed", error: "Connection lost" }),
+    );
+    mockUseVoiceInput.mockReturnValue(
+      defaultVoiceInputReturn({
+        isSupported: true,
+        isAvailable: true,
+        canStart: true,
+        status: "permission-needed",
+      }),
+    );
+
+    render(<TerminalPanel slug="test" />);
+
+    const button = screen.getByRole("button", {
+      name: "Terminal voice input unavailable while terminal is disconnected",
+    });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByTestId("voice-input-status")).toHaveTextContent(/disconnected/i);
+
+    fireEvent.click(button);
+
+    expect(mockStartVoiceInput).not.toHaveBeenCalled();
+    expect(mockStopVoiceInput).not.toHaveBeenCalled();
+  });
+
+  it("Issue #80: renders insecure, denied, and recognition errors as alerts", () => {
+    mockUseVoiceInput.mockReturnValue(
+      defaultVoiceInputReturn({
+        isSupported: true,
+        isAvailable: true,
+        isSecureContext: false,
+        canStart: false,
+        status: "insecure-context",
+        errorMessage: "Voice input requires HTTPS or localhost.",
+      }),
+    );
+    const { rerender } = render(<TerminalPanel slug="test" />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/HTTPS or localhost/i);
+    expect(screen.getByRole("button", { name: /secure context/i })).toBeDisabled();
+
+    mockUseVoiceInput.mockReturnValue(
+      defaultVoiceInputReturn({
+        isSupported: true,
+        isAvailable: true,
+        canStart: false,
+        status: "denied",
+        errorMessage: "Microphone permission was denied.",
+      }),
+    );
+    rerender(<TerminalPanel slug="test" />);
+    expect(screen.getByRole("alert")).toHaveTextContent(/permission was denied/i);
+
+    mockUseVoiceInput.mockReturnValue(
+      defaultVoiceInputReturn({
+        isSupported: true,
+        isAvailable: true,
+        canStart: true,
+        status: "errored",
+        errorMessage: "No speech was detected.",
+      }),
+    );
+    rerender(<TerminalPanel slug="test" />);
+    expect(screen.getByRole("alert")).toHaveTextContent(/No speech was detected/i);
+  });
+
+  it("Issue #80: displays interim transcript as plain polite text with disclosure", () => {
+    mockUseVoiceInput.mockReturnValue(
+      defaultVoiceInputReturn({
+        isSupported: true,
+        isAvailable: true,
+        canStart: false,
+        isListening: true,
+        status: "transcribing",
+        interimTranscript: "<b>rm -rf</b>",
+      }),
+    );
+
+    render(<TerminalPanel slug="test" />);
+
+    const interim = screen.getByTestId("voice-interim-transcript");
+    expect(interim).toHaveAttribute("aria-live", "polite");
+    expect(interim).toHaveTextContent("<b>rm -rf</b>");
+    expect(interim.querySelector("b")).toBeNull();
+    expect(screen.getByText(/Browser or vendor speech processing may occur/i)).toBeInTheDocument();
+    expect(screen.getByText(/may enter shell history/i)).toBeInTheDocument();
+  });
+
+  it("Issue #80: final transcript populates an editable review field and focuses it", async () => {
+    mockUseVoiceInput.mockReturnValue(
+      defaultVoiceInputReturn({
+        isSupported: true,
+        isAvailable: true,
+        canStart: true,
+        status: "permission-needed",
+      }),
+    );
+    const { rerender } = render(<TerminalPanel slug="test" />);
+    const terminalContainer = screen.getByTestId("terminal-container");
+
+    mockUseVoiceInput.mockReturnValue(
+      defaultVoiceInputReturn({
+        isSupported: true,
+        isAvailable: true,
+        canStart: true,
+        status: "ready-to-send",
+        finalTranscript: "echo hello",
+      }),
+    );
+    rerender(<TerminalPanel slug="test" />);
+
+    const reviewField = screen.getByLabelText("Review voice transcript");
+    await waitFor(() => expect(reviewField).toHaveFocus());
+    expect(reviewField).toHaveValue("echo hello");
+    expect(screen.getByRole("button", { name: "Send text" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send + Enter" })).toBeInTheDocument();
+    expect(screen.getByTestId("terminal-container")).toBe(terminalContainer);
+  });
+
+  it("Issue #80: sends reviewed text exactly and appends carriage return only via Send + Enter", async () => {
+    mockUseVoiceInput.mockReturnValue(
+      defaultVoiceInputReturn({
+        isSupported: true,
+        isAvailable: true,
+        canStart: true,
+        status: "ready-to-send",
+        finalTranscript: "echo hello",
+      }),
+    );
+    const { rerender } = render(<TerminalPanel slug="test" />);
+
+    const reviewField = screen.getByLabelText("Review voice transcript");
+    await waitFor(() => expect(reviewField).toHaveValue("echo hello"));
+    fireEvent.change(reviewField, { target: { value: "  echo '$HOME' && pwd  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Send text" }));
+
+    expect(mockSendInput).toHaveBeenCalledWith("  echo '$HOME' && pwd  ");
+    expect(mockSendInput).not.toHaveBeenCalledWith("  echo '$HOME' && pwd  \r");
+    expect(mockClearVoiceInput).toHaveBeenCalledTimes(1);
+    expect(mockFocusTerminal).toHaveBeenCalledTimes(1);
+
+    mockUseVoiceInput.mockReturnValue(
+      defaultVoiceInputReturn({
+        isSupported: true,
+        isAvailable: true,
+        canStart: true,
+        status: "ready-to-send",
+        finalTranscript: "git status",
+      }),
+    );
+    rerender(<TerminalPanel slug="test" />);
+
+    const nextReviewField = screen.getByLabelText("Review voice transcript");
+    await waitFor(() => expect(nextReviewField).toHaveValue("git status"));
+    fireEvent.click(screen.getByRole("button", { name: "Send + Enter" }));
+
+    expect(mockSendInput).toHaveBeenCalledWith("git status\r");
+    expect(mockFocusTerminal).toHaveBeenCalledTimes(2);
+  });
+
+  it("Issue #80: validates empty and overlong reviewed text without clearing it", async () => {
+    mockUseVoiceInput.mockReturnValue(
+      defaultVoiceInputReturn({
+        isSupported: true,
+        isAvailable: true,
+        canStart: true,
+        status: "ready-to-send",
+        finalTranscript: "echo hello",
+      }),
+    );
+    render(<TerminalPanel slug="test" />);
+
+    const reviewField = screen.getByLabelText("Review voice transcript");
+    await waitFor(() => expect(reviewField).toHaveValue("echo hello"));
+
+    fireEvent.change(reviewField, { target: { value: "   " } });
+    fireEvent.click(screen.getByRole("button", { name: "Send text" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/empty/i);
+    expect(reviewField).toHaveValue("   ");
+    expect(mockSendInput).not.toHaveBeenCalled();
+
+    const overlong = "x".repeat(501);
+    fireEvent.change(reviewField, { target: { value: overlong } });
+    fireEvent.click(screen.getByRole("button", { name: "Send + Enter" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/500 characters/i);
+    expect(reviewField).toHaveValue(overlong);
+    expect(mockSendInput).not.toHaveBeenCalled();
+  });
+
+  it("Issue #80: retains review text and focus when sendInput returns false", async () => {
+    mockSendInput.mockReturnValueOnce(false);
+    mockUseVoiceInput.mockReturnValue(
+      defaultVoiceInputReturn({
+        isSupported: true,
+        isAvailable: true,
+        canStart: true,
+        status: "ready-to-send",
+        finalTranscript: "echo retry",
+      }),
+    );
+    render(<TerminalPanel slug="test" />);
+
+    const reviewField = screen.getByLabelText("Review voice transcript");
+    await waitFor(() => expect(reviewField).toHaveValue("echo retry"));
+    fireEvent.change(reviewField, { target: { value: "printf '%s' retry" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send text" }));
+
+    expect(mockSendInput).toHaveBeenCalledWith("printf '%s' retry");
+    expect(screen.getByRole("alert")).toHaveTextContent(/retry sending/i);
+    expect(reviewField).toHaveValue("printf '%s' retry");
+    expect(reviewField).toHaveFocus();
+    expect(mockClearVoiceInput).not.toHaveBeenCalled();
+    expect(mockFocusTerminal).not.toHaveBeenCalled();
+  });
+
+  it("Issue #80: Cancel and Escape clear voice state and restore terminal focus", () => {
+    mockUseVoiceInput.mockReturnValue(
+      defaultVoiceInputReturn({
+        isSupported: true,
+        isAvailable: true,
+        canStart: false,
+        isListening: true,
+        status: "listening",
+      }),
+    );
+    const { rerender } = render(<TerminalPanel slug="test" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(mockCancelVoiceInput).toHaveBeenCalledTimes(1);
+    expect(mockFocusTerminal).toHaveBeenCalledTimes(1);
+
+    mockUseVoiceInput.mockReturnValue(
+      defaultVoiceInputReturn({
+        isSupported: true,
+        isAvailable: true,
+        canStart: true,
+        status: "ready-to-send",
+        finalTranscript: "echo cancel",
+      }),
+    );
+    rerender(<TerminalPanel slug="test" />);
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(mockCancelVoiceInput).toHaveBeenCalledTimes(2);
+    expect(mockFocusTerminal).toHaveBeenCalledTimes(2);
+  });
+
+  it("Issue #80: disconnect, slug/worktree changes, and unmount clear voice state", () => {
+    mockUseVoiceInput.mockReturnValue(
+      defaultVoiceInputReturn({
+        isSupported: true,
+        isAvailable: true,
+        canStart: true,
+        status: "ready-to-send",
+        finalTranscript: "echo stale",
+      }),
+    );
+    const { rerender, unmount } = render(
+      <TerminalPanel slug="project-one" worktree=".trees/one" />,
+    );
+
+    expect(latestVoiceInputOptions?.contextKey).toContain("project-one");
+
+    mockUseTerminal.mockReturnValue(
+      defaultMockReturn({ isConnected: false, status: "reconnecting" }),
+    );
+    mockUseVoiceInput.mockReturnValue(
+      defaultVoiceInputReturn({
+        isSupported: true,
+        isAvailable: true,
+        canStart: true,
+        status: "permission-needed",
+      }),
+    );
+    rerender(<TerminalPanel slug="project-one" worktree=".trees/one" />);
+    expect(mockClearVoiceInput).toHaveBeenCalledTimes(1);
+
+    mockUseTerminal.mockReturnValue(defaultMockReturn());
+    rerender(<TerminalPanel slug="project-two" worktree=".trees/one" />);
+    expect(mockClearVoiceInput).toHaveBeenCalledTimes(2);
+
+    rerender(<TerminalPanel slug="project-two" worktree=".trees/two" />);
+    expect(mockClearVoiceInput).toHaveBeenCalledTimes(3);
+
+    unmount();
+    expect(mockClearVoiceInput).toHaveBeenCalledTimes(4);
+  });
+
+  it("Issue #80: terminal container remains stable while voice UI changes", async () => {
+    mockUseVoiceInput.mockReturnValue(
+      defaultVoiceInputReturn({
+        isSupported: true,
+        isAvailable: true,
+        canStart: true,
+        status: "permission-needed",
+      }),
+    );
+    const { rerender } = render(<TerminalPanel slug="test" />);
+    const terminalContainer = screen.getByTestId("terminal-container");
+
+    mockUseVoiceInput.mockReturnValue(
+      defaultVoiceInputReturn({
+        isSupported: true,
+        isAvailable: true,
+        canStart: false,
+        isListening: true,
+        status: "transcribing",
+        interimTranscript: "draft",
+      }),
+    );
+    rerender(<TerminalPanel slug="test" />);
+    expect(screen.getByTestId("terminal-container")).toBe(terminalContainer);
+
+    mockUseVoiceInput.mockReturnValue(
+      defaultVoiceInputReturn({
+        isSupported: true,
+        isAvailable: true,
+        canStart: true,
+        status: "ready-to-send",
+        finalTranscript: "echo stable",
+      }),
+    );
+    rerender(<TerminalPanel slug="test" />);
+    await waitFor(() =>
+      expect(screen.getByLabelText("Review voice transcript")).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("terminal-container")).toBe(terminalContainer);
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByTestId("terminal-container")).toBe(terminalContainer);
   });
 
   it("Issue #67: status overlays and terminal controls remain accessible", () => {

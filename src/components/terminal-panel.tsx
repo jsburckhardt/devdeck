@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useTerminal } from "@/hooks/use-terminal";
 import { useTerminalTheme } from "@/hooks/use-terminal-theme";
+import { useVoiceInput } from "@/hooks/use-voice-input";
 import type { TerminalThemeDefinition } from "@/hooks/use-terminal-theme";
 import { useOpenProjects } from "@/lib/open-projects-context";
 import {
@@ -13,6 +14,7 @@ import {
   Palette,
   Check,
   Keyboard,
+  Microphone,
 } from "@phosphor-icons/react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 
@@ -24,6 +26,7 @@ interface TerminalPanelProps {
 type TerminalHelperKey = "tab" | "up" | "right";
 
 const TERMINAL_HELPER_KEYS: TerminalHelperKey[] = ["tab", "up", "right"];
+const MAX_VOICE_REVIEW_LENGTH = 500;
 
 const TERMINAL_HELPER_SEQUENCES: Record<
   TerminalHelperKey,
@@ -34,8 +37,110 @@ const TERMINAL_HELPER_SEQUENCES: Record<
   right: { label: "Right", display: "→", plain: "\x1b[C", ctrl: "\x1b[1;5C" },
 };
 
+type VoicePanelStatus =
+  | "unsupported"
+  | "insecure-context"
+  | "permission-needed"
+  | "listening"
+  | "transcribing"
+  | "ready-to-send"
+  | "denied"
+  | "errored";
+
+function getVoiceControlLabel({
+  isListening,
+  isTerminalInputUnavailable,
+  status,
+}: {
+  isListening: boolean;
+  isTerminalInputUnavailable: boolean;
+  status: VoicePanelStatus;
+}) {
+  if (isListening) {
+    return "Stop terminal voice input";
+  }
+
+  if (isTerminalInputUnavailable) {
+    return "Terminal voice input unavailable while terminal is disconnected";
+  }
+
+  if (status === "unsupported") {
+    return "Terminal voice input unsupported";
+  }
+
+  if (status === "insecure-context") {
+    return "Terminal voice input requires a secure context";
+  }
+
+  if (status === "denied") {
+    return "Terminal voice input permission denied";
+  }
+
+  return "Start terminal voice input";
+}
+
+function getVoiceStatusMessage({
+  isTerminalInputUnavailable,
+  status,
+}: {
+  isTerminalInputUnavailable: boolean;
+  status: VoicePanelStatus;
+}) {
+  if (isTerminalInputUnavailable) {
+    return "Voice input is unavailable while terminal input is disconnected.";
+  }
+
+  switch (status) {
+    case "unsupported":
+      return "Voice input is not supported in this browser.";
+    case "insecure-context":
+      return "Voice input requires HTTPS or localhost.";
+    case "listening":
+      return "Listening for speech…";
+    case "transcribing":
+      return "Transcribing speech…";
+    case "ready-to-send":
+      return "Review the voice transcript before sending.";
+    case "denied":
+      return "Microphone permission needs attention.";
+    case "errored":
+      return "Voice input needs attention.";
+    case "permission-needed":
+    default:
+      return "Voice input ready. Start dictation with the microphone button.";
+  }
+}
+
+function getVoiceAlertMessage({
+  errorMessage,
+  status,
+}: {
+  errorMessage: string | null;
+  status: VoicePanelStatus;
+}) {
+  if (status === "insecure-context") {
+    return (
+      errorMessage ??
+      "Voice input requires HTTPS or localhost. Open DevDeck in a secure browser context."
+    );
+  }
+
+  if (status === "denied" || status === "errored") {
+    return errorMessage ?? "Voice input is unavailable. Check microphone settings and try again.";
+  }
+
+  return null;
+}
+
 export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
   const { themeId, theme, setThemeId, themes } = useTerminalTheme();
+  const voicePanelId = useId();
+  const voiceReviewFieldId = `${voicePanelId}-review`;
+  const voiceDisclosureId = `${voicePanelId}-disclosure`;
+  const voiceReviewRef = useRef<HTMLTextAreaElement>(null);
+  const firstVoiceSendButtonRef = useRef<HTMLButtonElement>(null);
+  const lastAppliedFinalTranscriptRef = useRef("");
+  const previousVoiceContextRef = useRef<string | null>(null);
   const {
     containerRef,
     status,
@@ -51,6 +156,27 @@ export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
     focusTerminal,
   } = useTerminal({ slug, worktree, theme: theme.colors });
   const { updateCopilotStatus } = useOpenProjects();
+  const {
+    isSupported: isVoiceInputSupported,
+    isListening: isVoiceInputListening,
+    canStart: canStartVoiceInput,
+    status: voiceInputStatus,
+    interimTranscript: voiceInterimTranscript,
+    finalTranscript: voiceFinalTranscript,
+    errorMessage: voiceInputError,
+    start: startVoiceInput,
+    stop: stopVoiceInput,
+    cancel: cancelVoiceInput,
+    clear: clearVoiceInput,
+  } = useVoiceInput({
+    contextKey: `${slug ?? "default"}\u0000${worktree ?? "root"}\u0000${
+      isConnected ? "connected" : "disconnected"
+    }`,
+  });
+  const [reviewText, setReviewText] = useState("");
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [shouldFocusVoiceReview, setShouldFocusVoiceReview] = useState(false);
 
   useEffect(() => {
     if (slug && isConnected) {
@@ -61,6 +187,102 @@ export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
   const [isKeyboardHelperOpen, setKeyboardHelperOpen] = useState(false);
   const [isCtrlActive, setCtrlActive] = useState(false);
   const isTerminalInputUnavailable = !isConnected;
+  const isVoiceStartBlocked =
+    isTerminalInputUnavailable ||
+    !isVoiceInputSupported ||
+    voiceInputStatus === "insecure-context" ||
+    voiceInputStatus === "denied" ||
+    (!isVoiceInputListening && !canStartVoiceInput);
+  const isVoiceControlDisabled =
+    isTerminalInputUnavailable || (!isVoiceInputListening && isVoiceStartBlocked);
+  const voiceInputLabel = getVoiceControlLabel({
+    isListening: isVoiceInputListening,
+    isTerminalInputUnavailable,
+    status: voiceInputStatus,
+  });
+  const voiceStatusMessage = getVoiceStatusMessage({
+    isTerminalInputUnavailable,
+    status: voiceInputStatus,
+  });
+  const voiceAlertMessage = getVoiceAlertMessage({
+    errorMessage: voiceInputError,
+    status: voiceInputStatus,
+  });
+  const isVoiceReviewReady = voiceInputStatus === "ready-to-send" || reviewText.length > 0;
+  const isVoicePanelVisible =
+    isVoiceInputListening ||
+    voiceInputStatus === "transcribing" ||
+    isVoiceReviewReady ||
+    Boolean(voiceInterimTranscript) ||
+    Boolean(voiceAlertMessage) ||
+    Boolean(validationError) ||
+    Boolean(sendError);
+
+  const clearLocalVoiceState = useCallback(() => {
+    lastAppliedFinalTranscriptRef.current = "";
+    setReviewText("");
+    setValidationError(null);
+    setSendError(null);
+    setShouldFocusVoiceReview(false);
+  }, []);
+
+  const handleCancelVoiceInput = useCallback(() => {
+    cancelVoiceInput();
+    clearLocalVoiceState();
+    focusTerminal();
+  }, [cancelVoiceInput, clearLocalVoiceState, focusTerminal]);
+
+  const handleVoiceReviewChange = useCallback((value: string) => {
+    setReviewText(value);
+    setValidationError(null);
+    setSendError(null);
+  }, []);
+
+  const focusVoiceReviewField = useCallback(() => {
+    const target = voiceReviewRef.current ?? firstVoiceSendButtonRef.current;
+    target?.focus();
+  }, []);
+
+  const handleVoiceSend = useCallback(
+    (appendEnter: boolean) => {
+      setValidationError(null);
+      setSendError(null);
+
+      if (reviewText.trim().length === 0) {
+        setValidationError("Review text is empty. Edit the transcript before sending.");
+        focusVoiceReviewField();
+        return;
+      }
+
+      if (reviewText.length > MAX_VOICE_REVIEW_LENGTH) {
+        setValidationError("Voice review text must be 500 characters or fewer before sending.");
+        focusVoiceReviewField();
+        return;
+      }
+
+      const input = appendEnter ? `${reviewText}\r` : reviewText;
+      const sent = sendInput(input);
+      if (!sent) {
+        setSendError(
+          "Terminal input is unavailable. Reconnect and retry sending the reviewed text.",
+        );
+        focusVoiceReviewField();
+        return;
+      }
+
+      clearVoiceInput();
+      clearLocalVoiceState();
+      focusTerminal();
+    },
+    [
+      clearLocalVoiceState,
+      clearVoiceInput,
+      focusTerminal,
+      focusVoiceReviewField,
+      reviewText,
+      sendInput,
+    ],
+  );
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset transient helper UI when terminal context changes
@@ -75,6 +297,58 @@ export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
       setCtrlActive(false);
     }
   }, [isConnected]);
+
+  useEffect(() => {
+    const nextVoiceContext = `${slug ?? "default"}\u0000${worktree ?? "root"}\u0000${
+      isConnected ? "connected" : "disconnected"
+    }`;
+
+    if (previousVoiceContextRef.current === null) {
+      previousVoiceContextRef.current = nextVoiceContext;
+      return;
+    }
+
+    if (previousVoiceContextRef.current === nextVoiceContext) {
+      return;
+    }
+
+    previousVoiceContextRef.current = nextVoiceContext;
+    clearVoiceInput();
+    clearLocalVoiceState();
+  }, [clearLocalVoiceState, clearVoiceInput, isConnected, slug, worktree]);
+
+  useEffect(() => {
+    return () => {
+      clearVoiceInput();
+    };
+  }, [clearVoiceInput]);
+
+  useEffect(() => {
+    if (!voiceFinalTranscript) {
+      return;
+    }
+
+    if (lastAppliedFinalTranscriptRef.current === voiceFinalTranscript) {
+      return;
+    }
+
+    lastAppliedFinalTranscriptRef.current = voiceFinalTranscript;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- final browser transcript opens the user review field
+    setReviewText(voiceFinalTranscript);
+    setValidationError(null);
+    setSendError(null);
+    setShouldFocusVoiceReview(true);
+  }, [voiceFinalTranscript]);
+
+  useEffect(() => {
+    if (!shouldFocusVoiceReview || !isVoicePanelVisible) {
+      return;
+    }
+
+    focusVoiceReviewField();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot focus request has been consumed
+    setShouldFocusVoiceReview(false);
+  }, [focusVoiceReviewField, isVoicePanelVisible, shouldFocusVoiceReview]);
 
   function closeKeyboardHelper() {
     setKeyboardHelperOpen(false);
@@ -97,6 +371,22 @@ export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isKeyboardHelperOpen]);
 
+  useEffect(() => {
+    if (!isVoicePanelVisible && !isVoiceInputListening) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        handleCancelVoiceInput();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleCancelVoiceInput, isVoiceInputListening, isVoicePanelVisible]);
+
   function toggleKeyboardHelper() {
     if (isKeyboardHelperOpen) {
       closeKeyboardHelper();
@@ -104,6 +394,19 @@ export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
     }
 
     setKeyboardHelperOpen(true);
+  }
+
+  function toggleVoiceInput() {
+    if (isVoiceControlDisabled) {
+      return;
+    }
+
+    if (isVoiceInputListening) {
+      stopVoiceInput();
+      return;
+    }
+
+    startVoiceInput();
   }
 
   function handleCtrlPress() {
@@ -171,6 +474,31 @@ export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
           >
             <Keyboard size={14} aria-hidden="true" />
           </button>
+          <button
+            type="button"
+            onClick={toggleVoiceInput}
+            disabled={isVoiceControlDisabled}
+            aria-disabled={isVoiceControlDisabled ? "true" : "false"}
+            aria-label={voiceInputLabel}
+            aria-pressed={isVoiceInputListening}
+            aria-controls={isVoicePanelVisible ? voicePanelId : undefined}
+            title={voiceInputLabel}
+            data-testid="voice-input-toggle"
+            className={`flex items-center rounded p-1 transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50 ${
+              isVoiceInputListening ? "text-primary" : "text-muted-foreground"
+            }`}
+          >
+            <Microphone size={14} aria-hidden="true" />
+          </button>
+          <span
+            role="status"
+            aria-live="polite"
+            data-testid="voice-input-status"
+            title={voiceStatusMessage}
+            className="max-w-56 truncate text-[10px] text-muted-foreground"
+          >
+            {voiceStatusMessage}
+          </span>
           <span
             className={`inline-block h-2 w-2 rounded-full ${
               isConnected
@@ -212,6 +540,115 @@ export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
             />
           </div>
         </div>
+        {isVoicePanelVisible && (
+          <section
+            id={voicePanelId}
+            data-testid="voice-input-panel"
+            aria-label="Terminal voice input review"
+            className="shrink-0 border-t border-border bg-card/95 px-3 py-2 text-xs shadow-[0_-8px_24px_rgba(0,0,0,0.18)]"
+          >
+            <div className="flex flex-col gap-2">
+              <p role="status" aria-live="polite" className="text-muted-foreground">
+                {voiceStatusMessage}
+              </p>
+              {voiceAlertMessage && (
+                <p
+                  role="alert"
+                  data-testid="voice-input-alert"
+                  className="rounded border border-destructive/30 bg-destructive/10 px-2 py-1 text-destructive"
+                >
+                  {voiceAlertMessage}
+                </p>
+              )}
+              {voiceInterimTranscript && (
+                <div className="rounded border border-border bg-background/70 p-2">
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Interim transcript
+                  </span>
+                  <p
+                    data-testid="voice-interim-transcript"
+                    aria-live="polite"
+                    className="mt-1 whitespace-pre-wrap text-foreground"
+                  >
+                    {voiceInterimTranscript}
+                  </p>
+                </div>
+              )}
+              {isVoiceReviewReady && (
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor={voiceReviewFieldId} className="font-medium text-foreground">
+                    Review voice transcript
+                  </label>
+                  <textarea
+                    id={voiceReviewFieldId}
+                    ref={voiceReviewRef}
+                    value={reviewText}
+                    onChange={(event) => handleVoiceReviewChange(event.target.value)}
+                    aria-describedby={voiceDisclosureId}
+                    className="min-h-16 resize-y rounded border border-border bg-background p-2 font-mono text-xs text-foreground outline-none focus:border-primary"
+                  />
+                  <span className="text-[10px] text-muted-foreground">
+                    {reviewText.length}/{MAX_VOICE_REVIEW_LENGTH} characters
+                  </span>
+                </div>
+              )}
+              <p id={voiceDisclosureId} className="text-[10px] text-muted-foreground">
+                Browser or vendor speech processing may occur. Send + Enter behaves like typed
+                terminal input and may enter shell history.
+              </p>
+              {validationError && (
+                <p
+                  role="alert"
+                  data-testid="voice-validation-alert"
+                  className="rounded border border-destructive/30 bg-destructive/10 px-2 py-1 text-destructive"
+                >
+                  {validationError}
+                </p>
+              )}
+              {sendError && (
+                <p
+                  role="alert"
+                  data-testid="voice-send-alert"
+                  className="rounded border border-destructive/30 bg-destructive/10 px-2 py-1 text-destructive"
+                >
+                  {sendError}
+                </p>
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                {isVoiceReviewReady && (
+                  <>
+                    <button
+                      type="button"
+                      ref={firstVoiceSendButtonRef}
+                      onClick={() => handleVoiceSend(false)}
+                      disabled={isTerminalInputUnavailable}
+                      aria-disabled={isTerminalInputUnavailable ? "true" : "false"}
+                      className="rounded border border-border bg-background px-2 py-1 font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Send text
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleVoiceSend(true)}
+                      disabled={isTerminalInputUnavailable}
+                      aria-disabled={isTerminalInputUnavailable ? "true" : "false"}
+                      className="rounded border border-border bg-background px-2 py-1 font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Send + Enter
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={handleCancelVoiceInput}
+                  className="rounded border border-border px-2 py-1 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
         {isKeyboardHelperOpen && (
           <TerminalKeyboardHelper
             ctrlActive={isCtrlActive}

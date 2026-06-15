@@ -6,8 +6,7 @@ async function openFirstProjectTerminal(page: Page) {
   // Navigate with token to authenticate
   await page.goto(`/?token=${TOKEN}`);
 
-  // Middleware should set cookie and redirect — wait for the final page
-  await page.waitForURL("/", { timeout: 10000 });
+  await page.waitForLoadState("domcontentloaded");
 
   // Wait for projects to load and click the first one
   await page.waitForSelector('[data-testid="project-card"]', { timeout: 10000 });
@@ -64,6 +63,92 @@ async function expectTerminalLine(page: Page, expectedLine: string) {
     .toContain(expectedLine);
 }
 
+async function installMockSpeechRecognition(page: Page) {
+  await page.addInitScript(() => {
+    interface MockRecognitionResultEvent {
+      resultIndex: number;
+      results: Array<{
+        isFinal: boolean;
+        length: number;
+        0: { transcript: string };
+      }>;
+    }
+
+    interface MockSpeechRecognitionWindow extends Window {
+      SpeechRecognition?: new () => MockSpeechRecognition;
+      webkitSpeechRecognition?: new () => MockSpeechRecognition;
+      __devdeckSpeechRecognitionInstances?: MockSpeechRecognition[];
+      __devdeckEmitSpeechResult?: (transcript: string, isFinal: boolean) => void;
+      __devdeckEndSpeechRecognition?: () => void;
+    }
+
+    class MockSpeechRecognition {
+      continuous = true;
+      interimResults = false;
+      lang = "";
+      onresult: ((event: MockRecognitionResultEvent) => void) | null = null;
+      onerror: ((event: { error: string }) => void) | null = null;
+      onend: (() => void) | null = null;
+
+      start() {
+        const speechWindow = window as MockSpeechRecognitionWindow;
+        speechWindow.__devdeckSpeechRecognitionInstances ??= [];
+        speechWindow.__devdeckSpeechRecognitionInstances.push(this);
+      }
+
+      stop() {
+        this.onend?.();
+      }
+
+      abort() {
+        this.onend?.();
+      }
+
+      emitResult(transcript: string, isFinal: boolean) {
+        this.onresult?.({
+          resultIndex: 0,
+          results: [
+            {
+              isFinal,
+              length: 1,
+              0: { transcript },
+            },
+          ],
+        });
+      }
+    }
+
+    const speechWindow = window as MockSpeechRecognitionWindow;
+    Object.defineProperty(window, "isSecureContext", {
+      configurable: true,
+      value: true,
+    });
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: {
+        query: async ({ name }: { name: string }) => ({
+          state: name === "microphone" ? "prompt" : "granted",
+          onchange: null,
+        }),
+      },
+    });
+    Object.defineProperty(speechWindow, "SpeechRecognition", {
+      configurable: true,
+      value: MockSpeechRecognition,
+    });
+    Object.defineProperty(speechWindow, "webkitSpeechRecognition", {
+      configurable: true,
+      value: MockSpeechRecognition,
+    });
+    speechWindow.__devdeckEmitSpeechResult = (transcript, isFinal) => {
+      speechWindow.__devdeckSpeechRecognitionInstances?.at(-1)?.emitResult(transcript, isFinal);
+    };
+    speechWindow.__devdeckEndSpeechRecognition = () => {
+      speechWindow.__devdeckSpeechRecognitionInstances?.at(-1)?.onend?.();
+    };
+  });
+}
+
 test("terminal connects, fits without horizontal overflow, and executes commands", async ({
   page,
 }) => {
@@ -115,6 +200,43 @@ test("mobile keyboard helper sends an arrow key without disconnecting", async ({
   await expectTerminalLine(page, marker);
 
   await expect(page.locator("[data-testid=terminal-panel]").getByText("Connected")).toBeVisible();
+});
+
+test("terminal voice input reviews mocked speech before sending to xterm", async ({ page }) => {
+  await installMockSpeechRecognition(page);
+  await openFirstProjectTerminal(page);
+
+  const terminalContainer = page.locator('[data-testid="terminal-container"]');
+  await terminalContainer.click();
+  await page.getByRole("button", { name: "Start terminal voice input" }).click();
+
+  await page.evaluate(() => {
+    const speechWindow = window as typeof window & {
+      __devdeckEmitSpeechResult?: (transcript: string, isFinal: boolean) => void;
+    };
+    speechWindow.__devdeckEmitSpeechResult?.("draft voice transcript", false);
+  });
+  await expect(page.getByTestId("voice-interim-transcript")).toContainText(
+    "draft voice transcript",
+  );
+
+  await page.evaluate(() => {
+    const speechWindow = window as typeof window & {
+      __devdeckEmitSpeechResult?: (transcript: string, isFinal: boolean) => void;
+      __devdeckEndSpeechRecognition?: () => void;
+    };
+    speechWindow.__devdeckEmitSpeechResult?.("echo SHOULD_NOT_SEND", true);
+    speechWindow.__devdeckEndSpeechRecognition?.();
+  });
+
+  const reviewField = page.getByLabel("Review voice transcript");
+  await expect(reviewField).toHaveValue("echo SHOULD_NOT_SEND");
+  await reviewField.fill("printf 'VOICE_E2E\\n'");
+  await page.getByRole("button", { name: "Send + Enter" }).click();
+
+  await expectTerminalLine(page, "VOICE_E2E");
+  await expect(page.locator("[data-testid=terminal-panel]").getByText("Connected")).toBeVisible();
+  await expectNoTerminalHorizontalOverflow(page);
 });
 
 test("rejects access without token", async ({ page }) => {

@@ -205,3 +205,26 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 172 | Require normalized slug handling and stale-active fallback navigation for project close requests | CORE-COMPONENT-0008 | 2026-06-11 |
 | 173 | Require a non-interactive divider before WorkspaceLayout Close Project controls | CORE-COMPONENT-0007 | 2026-06-11 |
 | 174 | Render WorkspaceLayout Close Project disabled, not hidden, when the normalized slug is empty | CORE-COMPONENT-0007 | 2026-06-11 |
+| 175 | Dispatch voice transcripts through `sendInput(data)` without new WebSocket messages | CORE-COMPONENT-0003 | 2026-06-11 |
+| 176 | Run SpeechRecognition one-shot with interim results disabled | CORE-COMPONENT-0003 | 2026-06-11 |
+| 177 | Send final SpeechRecognition transcripts only; prohibit newline auto-append | CORE-COMPONENT-0003 | 2026-06-11 |
+| 178 | Hide terminal microphone controls when SpeechRecognition is unavailable | CORE-COMPONENT-0003 | 2026-06-11 |
+| 179 | Disable terminal microphone controls while terminal input is disconnected | CORE-COMPONENT-0003 | 2026-06-11 |
+| 180 | Check `window.isSecureContext` before starting browser speech recognition | CORE-COMPONENT-0003 | 2026-06-11 |
+| 181 | Isolate SpeechRecognition lifecycle in standalone `useVoiceInput` hook | CORE-COMPONENT-0003 | 2026-06-11 |
+| 182 | Expose microphone listening state with label, title, and aria-pressed | CORE-COMPONENT-0003 | 2026-06-11 |
+| 183 | Use browser-only SpeechRecognition without DevDeck audio transport or speech services | CORE-COMPONENT-0003 | 2026-06-11 |
+| 184 | Expose full voice status states from `useVoiceInput` for terminal review UI | CORE-COMPONENT-0003 | 2026-06-11 |
+| 185 | Treat missing Permissions API as unknown voice permission, not failure | CORE-COMPONENT-0003 | 2026-06-11 |
+| 186 | Supersede Decision #176: display interim transcripts without sending them | CORE-COMPONENT-0003 | 2026-06-11 |
+| 187 | Supersede Decision #177: require editable review before any voice terminal send | CORE-COMPONENT-0003 | 2026-06-11 |
+| 188 | Send reviewed voice text exactly; append `\r` only via Send + Enter | CORE-COMPONENT-0003 | 2026-06-11 |
+| 189 | Enforce non-empty and 500-character limits before sending reviewed voice text | CORE-COMPONENT-0003 | 2026-06-11 |
+| 190 | Retain reviewed voice text when `sendInput` returns false and show retryable alert | CORE-COMPONENT-0003 | 2026-06-11 |
+| 191 | Normalize Web Speech permission and recognition errors into actionable alert copy | CORE-COMPONENT-0003 | 2026-06-11 |
+| 192 | Guard voice callbacks against stale terminal context before UI updates or sends | CORE-COMPONENT-0003 | 2026-06-11 |
+| 193 | Clear voice state on cancel, Escape, disconnect, context change, and unmount | CORE-COMPONENT-0003 | 2026-06-11 |
+| 194 | Restore xterm focus after successful send or cancel; keep review focus on failure | CORE-COMPONENT-0003 | 2026-06-11 |
+| 195 | Disclose browser speech processing and shell-history implications beside voice review | CORE-COMPONENT-0003 | 2026-06-11 |
+| 196 | Keep voice transcripts panel-local; prohibit OpenProjects or browser-storage persistence | CORE-COMPONENT-0003 | 2026-06-11 |
+| 197 | Supersede Decision #178: render visible microphone entry point with accessible unsupported state | CORE-COMPONENT-0003 | 2026-06-11 |
