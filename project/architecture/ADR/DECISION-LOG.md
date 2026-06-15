@@ -22,7 +22,7 @@ This file is the single registry of all architectural decisions and core-compone
 | CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2025-07-16 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
 | CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-06-11 |
-| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-06-11 |
+| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-06-15 |
 | CORE-COMPONENT-0009 | Engineering Harness | Adopted (updated) | 2026-06-11 |
 
 ## Decisions
@@ -228,3 +228,12 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 195 | Disclose browser speech processing and shell-history implications beside voice review | CORE-COMPONENT-0003 | 2026-06-11 |
 | 196 | Keep voice transcripts panel-local; prohibit OpenProjects or browser-storage persistence | CORE-COMPONENT-0003 | 2026-06-11 |
 | 197 | Supersede Decision #178: render visible microphone entry point with accessible unsupported state | CORE-COMPONENT-0003 | 2026-06-11 |
+| 198 | Use client-side polling for near-realtime file explorer synchronization | CORE-COMPONENT-0008 | 2026-06-15 |
+| 199 | Poll active root file-tree state every five seconds | CORE-COMPONENT-0008 | 2026-06-15 |
+| 200 | Limit polling to root file-tree refreshes; keep child directories lazy | CORE-COMPONENT-0008 | 2026-06-15 |
+| 201 | Pause polling while documents are hidden | CORE-COMPONENT-0008 | 2026-06-15 |
+| 202 | Refresh file-tree and worktree lists immediately when visible | CORE-COMPONENT-0008 | 2026-06-15 |
+| 203 | Reuse refreshFileTree no-store, deduplication, stale guards, and silent refresh | CORE-COMPONENT-0008 | 2026-06-15 |
+| 204 | Co-refresh active project worktree lists with no-store polling | CORE-COMPONENT-0008 | 2026-06-15 |
+| 205 | Clean up polling timers and visibility listeners on lifecycle changes | CORE-COMPONENT-0008 | 2026-06-15 |
+| 206 | Guard polling browser APIs for SSR and tests | CORE-COMPONENT-0008 | 2026-06-15 |
