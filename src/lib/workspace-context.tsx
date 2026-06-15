@@ -9,7 +9,15 @@ import {
   useRef,
   useState,
 } from "react";
-import type { FileNode, PerProjectWorkspaceState, Project, WorktreeFileTreeState } from "./types";
+import type {
+  FileNode,
+  FileTreeChangedEvent,
+  FileTreeSyncError,
+  FileTreeSyncStatus,
+  PerProjectWorkspaceState,
+  Project,
+  WorktreeFileTreeState,
+} from "./types";
 import { useOpenProjects } from "./open-projects-context";
 
 interface WorkspaceState {
@@ -26,6 +34,10 @@ interface WorkspaceState {
   directoryErrors: Map<string, string>;
   activeWorktree: string | null;
   worktreesSectionCollapsed: boolean;
+  fileTreeSyncStatus: FileTreeSyncStatus;
+  fileTreeSyncError: FileTreeSyncError | null;
+  fileTreeSyncFallbackActive: boolean;
+  fileTreeSyncRetryNonce: number;
 }
 
 interface WorkspaceContextValue extends WorkspaceState {
@@ -42,6 +54,10 @@ interface WorkspaceContextValue extends WorkspaceState {
   fileTreeRefreshing: boolean;
   setActiveWorktree: (name: string | null) => void;
   toggleWorktreesSection: () => void;
+  retryFileTreeSync: () => void;
+  invalidateFileTreeScope: (event: FileTreeChangedEvent) => Promise<void>;
+  updateFileTreeSyncState: (status: FileTreeSyncStatus, error?: FileTreeSyncError | null) => void;
+  setFileTreeSyncFallbackActive: (active: boolean) => void;
 }
 
 const ROOT_REQUEST_PATH = "";
@@ -132,6 +148,51 @@ function mergeDirectoryChildren(
   });
 }
 
+function findNodeByPath(nodes: FileNode[], targetPath: string): FileNode | null {
+  for (const node of nodes) {
+    if (node.path === targetPath) return node;
+    if (node.children) {
+      const nested = findNodeByPath(node.children, targetPath);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
+function directListingProvesMissing(
+  directoryPath: string,
+  children: FileNode[],
+  selectedPath: string | null,
+): boolean {
+  if (!selectedPath) return false;
+  if (directoryPath) {
+    if (selectedPath !== directoryPath && !selectedPath.startsWith(`${directoryPath}/`)) {
+      return false;
+    }
+  }
+
+  const relativePath = directoryPath ? selectedPath.slice(directoryPath.length + 1) : selectedPath;
+  if (!relativePath || relativePath.startsWith("../")) return false;
+
+  const [firstSegment] = relativePath.split("/");
+  const expectedChildPath = directoryPath ? `${directoryPath}/${firstSegment}` : firstSegment;
+  return !children.some((child) => child.path === expectedChildPath);
+}
+
+function eventParentDirectories(event: FileTreeChangedEvent): Set<string> {
+  const directories = new Set(event.directories);
+  for (const changedPath of event.paths) {
+    const parent = changedPath.includes("/")
+      ? changedPath.slice(0, changedPath.lastIndexOf("/"))
+      : "";
+    directories.add(parent);
+    if (changedPath && directories.has(changedPath)) {
+      directories.add(changedPath);
+    }
+  }
+  return directories;
+}
+
 function responseErrorMessage(response: Response): string {
   return `HTTP ${response.status}`;
 }
@@ -212,11 +273,17 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
   const [worktreesSectionCollapsed, setWorktreesSectionCollapsed] = useState(
     cachedStateRef.current?.worktreesSectionCollapsed ?? false,
   );
+  const [fileTreeSyncStatus, setFileTreeSyncStatusState] =
+    useState<FileTreeSyncStatus>("connecting");
+  const [fileTreeSyncError, setFileTreeSyncError] = useState<FileTreeSyncError | null>(null);
+  const [fileTreeSyncFallbackActive, setFileTreeSyncFallbackActiveState] = useState(false);
+  const [fileTreeSyncRetryNonce, setFileTreeSyncRetryNonce] = useState(0);
 
   const currentSlugRef = useRef<string | undefined>(slug);
   const currentWorktreeRef = useRef<string | null>(cachedStateRef.current?.activeWorktree ?? null);
   const rootRefreshCountRef = useRef(0);
   const inFlightFileTreeRequests = useRef<Map<string, Promise<void>>>(new Map());
+  const invalidationGenerationRef = useRef(0);
 
   useEffect(() => {
     currentSlugRef.current = project?.slug ?? slug;
@@ -232,6 +299,10 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
     directoryErrors,
     activeWorktree,
     worktreesSectionCollapsed,
+    fileTreeSyncStatus,
+    fileTreeSyncError,
+    fileTreeSyncFallbackActive,
+    fileTreeSyncRetryNonce,
   });
 
   useEffect(() => {
@@ -245,6 +316,10 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       directoryErrors,
       activeWorktree,
       worktreesSectionCollapsed,
+      fileTreeSyncStatus,
+      fileTreeSyncError,
+      fileTreeSyncFallbackActive,
+      fileTreeSyncRetryNonce,
     };
   }, [
     selectedFile,
@@ -256,6 +331,10 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
     directoryErrors,
     activeWorktree,
     worktreesSectionCollapsed,
+    fileTreeSyncStatus,
+    fileTreeSyncError,
+    fileTreeSyncFallbackActive,
+    fileTreeSyncRetryNonce,
   ]);
 
   const saveVisibleScope = useCallback((worktree: string | null) => {
@@ -324,6 +403,10 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       scopedStatesRef.current = new Map();
       currentWorktreeRef.current = null;
       setActiveWorktreeState(null);
+      setFileTreeSyncStatusState("connecting");
+      setFileTreeSyncError(null);
+      setFileTreeSyncFallbackActiveState(false);
+      setFileTreeSyncRetryNonce((nonce) => nonce + 1);
     }
     setRestoredFromCache((wasRestored) => {
       if (!wasRestored) {
@@ -339,6 +422,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
 
   const selectFile = useCallback(
     (path: string | null) => {
+      stateRef.current = { ...stateRef.current, selectedFile: path };
       setSelectedFile(path);
       if (path && !showFileViewer) {
         setShowFileViewer(true);
@@ -369,6 +453,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
   }, []);
 
   const setFileTree = useCallback((tree: FileNode[]) => {
+    stateRef.current = { ...stateRef.current, fileTree: tree };
     setFileTreeState(tree);
   }, []);
 
@@ -409,7 +494,23 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
           return;
         }
         const data = (await res.json()) as FileNode[];
-        setFileTreeState((prev) => mergeRootTrees(data, prev));
+        const clearSelectedFile = directListingProvesMissing(
+          ROOT_REQUEST_PATH,
+          data,
+          stateRef.current.selectedFile,
+        );
+        setFileTreeState((prev) => {
+          const merged = mergeRootTrees(data, prev);
+          stateRef.current = {
+            ...stateRef.current,
+            fileTree: merged,
+            selectedFile: clearSelectedFile ? null : stateRef.current.selectedFile,
+          };
+          return merged;
+        });
+        if (clearSelectedFile) {
+          setSelectedFile(null);
+        }
       } catch (err) {
         const activeSlug = currentSlugRef.current;
         const activeWorktree = currentWorktreeRef.current;
@@ -456,7 +557,23 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
         const activeSlug = currentSlugRef.current;
         const activeWorktree = currentWorktreeRef.current;
         if (activeSlug && (activeSlug !== targetSlug || activeWorktree !== targetWorktree)) return;
-        setFileTreeState((prev) => mergeDirectoryChildren(prev, relativePath, data));
+        const clearSelectedFile = directListingProvesMissing(
+          relativePath,
+          data,
+          stateRef.current.selectedFile,
+        );
+        setFileTreeState((prev) => {
+          const merged = mergeDirectoryChildren(prev, relativePath, data);
+          stateRef.current = {
+            ...stateRef.current,
+            fileTree: merged,
+            selectedFile: clearSelectedFile ? null : stateRef.current.selectedFile,
+          };
+          return merged;
+        });
+        if (clearSelectedFile) {
+          setSelectedFile(null);
+        }
       } catch (err) {
         const activeSlug = currentSlugRef.current;
         const activeWorktree = currentWorktreeRef.current;
@@ -495,6 +612,10 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       currentWorktreeRef.current = nextWorktree;
       setActiveWorktreeState(nextWorktree);
       restoreVisibleScope(nextWorktree);
+      setFileTreeSyncStatusState("connecting");
+      setFileTreeSyncError(null);
+      setFileTreeSyncFallbackActiveState(false);
+      setFileTreeSyncRetryNonce((nonce) => nonce + 1);
     },
     [restoreVisibleScope, saveVisibleScope],
   );
@@ -502,6 +623,84 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
   const toggleWorktreesSection = useCallback(() => {
     setWorktreesSectionCollapsed((prev) => !prev);
   }, []);
+
+  const updateFileTreeSyncState = useCallback(
+    (status: FileTreeSyncStatus, error: FileTreeSyncError | null = null) => {
+      setFileTreeSyncStatusState(status);
+      setFileTreeSyncError(error);
+      if (status === "ready") {
+        setFileTreeSyncFallbackActiveState(false);
+      }
+    },
+    [],
+  );
+
+  const setFileTreeSyncFallbackActive = useCallback((active: boolean) => {
+    setFileTreeSyncFallbackActiveState(active);
+  }, []);
+
+  const retryFileTreeSync = useCallback(() => {
+    setFileTreeSyncStatusState("connecting");
+    setFileTreeSyncError(null);
+    setFileTreeSyncRetryNonce((nonce) => nonce + 1);
+  }, []);
+
+  const invalidateFileTreeScope = useCallback(
+    async (event: FileTreeChangedEvent) => {
+      const activeSlug = currentSlugRef.current;
+      const activeWorktree = currentWorktreeRef.current;
+      if (
+        !activeSlug ||
+        event.scope.slug !== activeSlug ||
+        event.scope.worktree !== activeWorktree
+      ) {
+        return;
+      }
+
+      const generation = invalidationGenerationRef.current + 1;
+      invalidationGenerationRef.current = generation;
+
+      const loadedDirectories = new Set(collectLoadedDirectories(stateRef.current.fileTree));
+      const hintedDirectories = eventParentDirectories(event);
+      const directoriesToRefresh = new Set<string>();
+      let rootChanged =
+        event.rootChanged || event.gitStatusChanged || event.truncated || event.paths.length === 0;
+
+      for (const directory of hintedDirectories) {
+        if (!directory) {
+          rootChanged = true;
+          continue;
+        }
+        if (loadedDirectories.has(directory)) {
+          directoriesToRefresh.add(directory);
+        }
+      }
+
+      const operations: Promise<void>[] = [];
+      if (rootChanged) {
+        operations.push(refreshFileTree(activeSlug));
+      }
+      for (const directory of directoriesToRefresh) {
+        operations.push(loadDirectoryChildren(directory, activeSlug));
+      }
+
+      await Promise.all(operations);
+      if (invalidationGenerationRef.current !== generation) return;
+
+      const selected = stateRef.current.selectedFile;
+      if (selected && findNodeByPath(stateRef.current.fileTree, selected) === null) {
+        const loadedScopes = new Set([ROOT_REQUEST_PATH, ...loadedDirectories]);
+        const selectedParent = selected.includes("/")
+          ? selected.slice(0, selected.lastIndexOf("/"))
+          : ROOT_REQUEST_PATH;
+        if (loadedScopes.has(selectedParent)) {
+          stateRef.current = { ...stateRef.current, selectedFile: null };
+          setSelectedFile(null);
+        }
+      }
+    },
+    [loadDirectoryChildren, refreshFileTree],
+  );
 
   const value = useMemo(
     () => ({
@@ -519,6 +718,10 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       fileTreeRefreshing,
       activeWorktree,
       worktreesSectionCollapsed,
+      fileTreeSyncStatus,
+      fileTreeSyncError,
+      fileTreeSyncFallbackActive,
+      fileTreeSyncRetryNonce,
       setProject,
       selectFile,
       toggleFolder,
@@ -531,6 +734,10 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       loadDirectoryChildren,
       setActiveWorktree,
       toggleWorktreesSection,
+      retryFileTreeSync,
+      invalidateFileTreeScope,
+      updateFileTreeSyncState,
+      setFileTreeSyncFallbackActive,
     }),
     [
       project,
@@ -547,6 +754,10 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       fileTreeRefreshing,
       activeWorktree,
       worktreesSectionCollapsed,
+      fileTreeSyncStatus,
+      fileTreeSyncError,
+      fileTreeSyncFallbackActive,
+      fileTreeSyncRetryNonce,
       setProject,
       selectFile,
       toggleFolder,
@@ -559,6 +770,10 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       loadDirectoryChildren,
       setActiveWorktree,
       toggleWorktreesSection,
+      retryFileTreeSync,
+      invalidateFileTreeScope,
+      updateFileTreeSyncState,
+      setFileTreeSyncFallbackActive,
     ],
   );
 

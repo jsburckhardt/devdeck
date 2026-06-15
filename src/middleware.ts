@@ -46,7 +46,7 @@ export function middleware(request: NextRequest) {
 
   // Unauthorized
   if (request.nextUrl.pathname.startsWith("/api/")) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized", code: "AUTH_REQUIRED" }, { status: 401 });
   }
 
   return new NextResponse(

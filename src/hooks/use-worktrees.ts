@@ -12,6 +12,10 @@ interface UseWorktreesReturn {
 
 const WORKTREE_POLL_INTERVAL_MS = 5000;
 
+interface UseWorktreesOptions {
+  pollingEnabled?: boolean;
+}
+
 type FetchWorktreesMode = "foreground" | "poll";
 
 interface InFlightWorktreesRequest {
@@ -20,7 +24,11 @@ interface InFlightWorktreesRequest {
   promise: Promise<void>;
 }
 
-export function useWorktrees(slug: string | undefined): UseWorktreesReturn {
+export function useWorktrees(
+  slug: string | undefined,
+  options: UseWorktreesOptions = {},
+): UseWorktreesReturn {
+  const pollingEnabled = options.pollingEnabled ?? false;
   const [worktrees, setWorktrees] = useState<Worktree[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,7 +113,14 @@ export function useWorktrees(slug: string | undefined): UseWorktreesReturn {
   }, [slug, fetchWorktrees]);
 
   useEffect(() => {
-    if (!slug || typeof window === "undefined" || typeof document === "undefined") return;
+    if (
+      !slug ||
+      !pollingEnabled ||
+      typeof window === "undefined" ||
+      typeof document === "undefined"
+    ) {
+      return;
+    }
 
     let intervalId: number | undefined;
     const refresh = () => {
@@ -137,7 +152,7 @@ export function useWorktrees(slug: string | undefined): UseWorktreesReturn {
       stopPolling();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [slug, fetchWorktrees]);
+  }, [slug, pollingEnabled, fetchWorktrees]);
 
   const refresh = useCallback(() => {
     if (slug) void fetchWorktrees(slug, "foreground");

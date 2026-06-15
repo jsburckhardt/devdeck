@@ -19,9 +19,16 @@ interface WorktreeTreeProps {
 }
 
 export function WorktreeTree({ slug }: WorktreeTreeProps) {
-  const { worktrees, loading, error, refresh } = useWorktrees(slug);
-  const { activeWorktree, worktreesSectionCollapsed, setActiveWorktree, toggleWorktreesSection } =
-    useWorkspace();
+  const {
+    activeWorktree,
+    fileTreeSyncFallbackActive,
+    worktreesSectionCollapsed,
+    setActiveWorktree,
+    toggleWorktreesSection,
+  } = useWorkspace();
+  const { worktrees, loading, error, refresh } = useWorktrees(slug, {
+    pollingEnabled: fileTreeSyncFallbackActive,
+  });
   const lastMissingNoticeRef = useRef<string | null>(null);
 
   useEffect(() => {
