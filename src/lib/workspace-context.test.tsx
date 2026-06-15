@@ -476,6 +476,44 @@ describe("WorkspaceProvider.refreshFileTree", () => {
     expect(errSpy).toHaveBeenCalled();
   });
 
+  it("Issue #81 T3: root refresh failures preserve selected file, expansion, and loaded subtrees", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("nope", { status: 503 }));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { captured } = renderHarness({ withProject: true });
+
+    await act(async () => {
+      captured.state!.setFileTree([
+        {
+          name: "src",
+          path: "src",
+          type: "directory",
+          kind: "directory",
+          hasChildren: true,
+          childrenLoaded: true,
+          children: [
+            {
+              name: "index.ts",
+              path: "src/index.ts",
+              type: "file",
+              kind: "regular-file",
+            },
+          ],
+        },
+      ]);
+      captured.state!.selectFile("src/index.ts");
+      captured.state!.toggleFolder("src");
+    });
+
+    await act(async () => {
+      await captured.state!.refreshFileTree();
+    });
+
+    expect(screen.getByTestId("file-tree-error").textContent).toBe("HTTP 503");
+    expect(screen.getByTestId("tree-json").textContent).toContain("src/index.ts");
+    expect(screen.getByTestId("selected-json").textContent).toBe("src/index.ts");
+    expect(screen.getByTestId("expanded-json").textContent).toBe("src");
+  });
+
   it("T9: refreshFileTree(explicitSlug) fetches that slug even when no context project is set", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify([{ name: "x", path: "x", type: "file" }]), {

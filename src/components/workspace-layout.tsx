@@ -29,6 +29,8 @@ import { useWorkspace } from "@/lib/workspace-context";
 import { cn } from "@/lib/utils";
 import type { Project } from "@/lib/types";
 
+const ROOT_FILE_TREE_POLL_INTERVAL_MS = 5000;
+
 function PanelToggle({
   icon: Icon,
   label,
@@ -188,6 +190,41 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
       cancelled = true;
     };
   }, [activeWorktree, project.slug, loadRootFileTree]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+
+    let intervalId: number | undefined;
+    const refresh = () => {
+      void refreshFileTree(project.slug);
+    };
+    const stopPolling = () => {
+      if (intervalId === undefined) return;
+      window.clearInterval(intervalId);
+      intervalId = undefined;
+    };
+    const startPolling = () => {
+      if (document.visibilityState === "hidden" || intervalId !== undefined) return;
+      intervalId = window.setInterval(refresh, ROOT_FILE_TREE_POLL_INTERVAL_MS);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        stopPolling();
+        return;
+      }
+
+      refresh();
+      startPolling();
+    };
+
+    startPolling();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [activeWorktree, project.slug, refreshFileTree]);
 
   const handleRetry = useCallback(() => {
     void loadRootFileTree(project.slug);

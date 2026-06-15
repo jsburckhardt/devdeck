@@ -1,5 +1,5 @@
 import type React from "react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Project } from "@/lib/types";
@@ -224,6 +224,11 @@ beforeEach(() => {
   );
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
 describe("WorkspaceLayout", () => {
   it("T7: initial mount calls refreshFileTree once and toggles fileTreeLoading true→false", async () => {
     let resolveRefresh: () => void = () => {};
@@ -273,6 +278,169 @@ describe("WorkspaceLayout", () => {
 
     // FileTree rendered (no spinner gating from refreshing flag).
     expect(screen.getByTestId("file-tree")).toBeInTheDocument();
+  });
+
+  it("Issue #81 T1: polls the root file tree every 5000 ms without mutating fileTreeLoading", async () => {
+    vi.useFakeTimers();
+    const refreshFileTree = vi.fn().mockResolvedValue(undefined);
+    const setFileTreeLoading = vi.fn();
+
+    mockUseWorkspace.mockReturnValue(
+      makeContext({
+        refreshFileTree,
+        setFileTreeLoading,
+      }),
+    );
+
+    render(<WorkspaceLayout project={project} />);
+
+    expect(refreshFileTree).toHaveBeenCalledWith(project.slug);
+    await act(async () => {});
+    refreshFileTree.mockClear();
+    setFileTreeLoading.mockClear();
+
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+    });
+
+    expect(refreshFileTree).toHaveBeenCalledTimes(1);
+    expect(refreshFileTree).toHaveBeenCalledWith(project.slug);
+    expect(setFileTreeLoading).not.toHaveBeenCalled();
+  });
+
+  it("Issue #81 T1: pauses file-tree polling while hidden and catches up immediately when visible", async () => {
+    vi.useFakeTimers();
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    const addListener = vi.spyOn(document, "addEventListener");
+    const removeListener = vi.spyOn(document, "removeEventListener");
+    const refreshFileTree = vi.fn().mockResolvedValue(undefined);
+
+    mockUseWorkspace.mockReturnValue(makeContext({ refreshFileTree }));
+
+    const { unmount } = render(<WorkspaceLayout project={project} />);
+    await act(async () => {});
+    refreshFileTree.mockClear();
+
+    visibility.mockReturnValue("hidden");
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(15000);
+    });
+    expect(refreshFileTree).not.toHaveBeenCalled();
+
+    visibility.mockReturnValue("visible");
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    expect(refreshFileTree).toHaveBeenCalledTimes(1);
+    expect(refreshFileTree).toHaveBeenCalledWith(project.slug);
+
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(refreshFileTree).toHaveBeenCalledTimes(2);
+
+    unmount();
+    expect(addListener).toHaveBeenCalledWith("visibilitychange", expect.any(Function));
+    expect(removeListener).toHaveBeenCalledWith("visibilitychange", expect.any(Function));
+  });
+
+  it("Issue #81 T1: cleans up file-tree polling on worktree changes, project changes, and unmount", async () => {
+    vi.useFakeTimers();
+    const refreshFileTree = vi.fn().mockResolvedValue(undefined);
+    const setFileTreeLoading = vi.fn();
+
+    mockUseWorkspace.mockReturnValue(
+      makeContext({
+        activeWorktree: null,
+        refreshFileTree,
+        setFileTreeLoading,
+      }),
+    );
+    const { rerender, unmount } = render(<WorkspaceLayout project={project} />);
+    await act(async () => {});
+
+    mockUseWorkspace.mockReturnValue(
+      makeContext({
+        activeWorktree: ".trees/feat",
+        refreshFileTree,
+        setFileTreeLoading,
+      }),
+    );
+    rerender(<WorkspaceLayout project={project} />);
+    await act(async () => {});
+    refreshFileTree.mockClear();
+
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(refreshFileTree).toHaveBeenCalledTimes(1);
+    expect(refreshFileTree).toHaveBeenCalledWith(project.slug);
+
+    const nextProject = makeProject({ slug: "other", name: "Other", path: "/other" });
+    mockUseWorkspace.mockReturnValue(
+      makeContext({
+        activeWorktree: ".trees/feat",
+        refreshFileTree,
+        setFileTreeLoading,
+      }),
+    );
+    rerender(<WorkspaceLayout project={nextProject} />);
+    await act(async () => {});
+    refreshFileTree.mockClear();
+
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(refreshFileTree).toHaveBeenCalledTimes(1);
+    expect(refreshFileTree).toHaveBeenCalledWith("other");
+    expect(refreshFileTree).not.toHaveBeenCalledWith(project.slug);
+
+    unmount();
+    refreshFileTree.mockClear();
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(refreshFileTree).not.toHaveBeenCalled();
+  });
+
+  it("Issue #81 T1: overlapping initial loads still use refreshFileTree directly for deduplication", async () => {
+    vi.useFakeTimers();
+    let resolveInitialRefresh: () => void = () => {};
+    const refreshFileTree = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveInitialRefresh = resolve;
+        }),
+    );
+    const setFileTreeLoading = vi.fn();
+
+    mockUseWorkspace.mockReturnValue(
+      makeContext({
+        refreshFileTree,
+        setFileTreeLoading,
+      }),
+    );
+
+    render(<WorkspaceLayout project={project} />);
+    expect(refreshFileTree).toHaveBeenCalledTimes(1);
+    setFileTreeLoading.mockClear();
+
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+    });
+
+    expect(refreshFileTree).toHaveBeenCalledTimes(2);
+    expect(refreshFileTree).toHaveBeenLastCalledWith(project.slug);
+    expect(setFileTreeLoading).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveInitialRefresh();
+    });
   });
 
   it("does not render the worktree selector inside the file explorer", () => {
