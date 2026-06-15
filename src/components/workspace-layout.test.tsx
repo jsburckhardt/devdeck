@@ -174,6 +174,7 @@ function makeContext(overrides: Record<string, unknown> = {}) {
     fileTreeSyncFallbackActive: false,
     fileTreeSyncRetryNonce: 0,
     retryFileTreeSync: vi.fn(),
+    refreshFileTreeScope: vi.fn().mockResolvedValue(undefined),
     invalidateFileTreeScope: vi.fn().mockResolvedValue(undefined),
     updateFileTreeSyncState: vi.fn(),
     setFileTreeSyncFallbackActive: vi.fn(),
@@ -295,11 +296,13 @@ describe("WorkspaceLayout", () => {
     expect(screen.getByTestId("file-tree")).toBeInTheDocument();
   });
 
-  it("Issue #81 T4/T5: wires EventSource hook and renders accessible sync status UI", () => {
+  it("Issue #81 T4/T5: wires EventSource hook and renders accessible sync status UI", async () => {
     const retryFileTreeSync = vi.fn();
+    const refreshFileTreeScope = vi.fn().mockResolvedValue(undefined);
     const invalidateFileTreeScope = vi.fn().mockResolvedValue(undefined);
     const updateFileTreeSyncState = vi.fn();
     const setFileTreeSyncFallbackActive = vi.fn();
+    const setFileTreeLoading = vi.fn();
 
     mockUseWorkspace.mockReturnValue(
       makeContext({
@@ -313,18 +316,23 @@ describe("WorkspaceLayout", () => {
           pollIntervalMs: 5000,
         },
         retryFileTreeSync,
+        refreshFileTreeScope,
         invalidateFileTreeScope,
         updateFileTreeSyncState,
         setFileTreeSyncFallbackActive,
+        setFileTreeLoading,
       }),
     );
 
     render(<WorkspaceLayout project={project} />);
+    await act(async () => {});
+    setFileTreeLoading.mockClear();
 
     expect(mockUseFileTreeSync).toHaveBeenCalledWith(
       expect.objectContaining({
         slug: "demo",
         worktree: ".trees/feat",
+        onReady: refreshFileTreeScope,
         onChanged: invalidateFileTreeScope,
         onStatusChange: updateFileTreeSyncState,
         onFallbackChange: setFileTreeSyncFallbackActive,
@@ -337,6 +345,13 @@ describe("WorkspaceLayout", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Retry file tree sync" }));
     expect(retryFileTreeSync).toHaveBeenCalledTimes(1);
+
+    const hookOptions = mockUseFileTreeSync.mock.calls.at(-1)?.[0];
+    await act(async () => {
+      await hookOptions?.onReady?.({ slug: "demo", worktree: ".trees/feat" });
+    });
+    expect(refreshFileTreeScope).toHaveBeenCalledWith({ slug: "demo", worktree: ".trees/feat" });
+    expect(setFileTreeLoading).not.toHaveBeenCalled();
   });
 
   it.each([

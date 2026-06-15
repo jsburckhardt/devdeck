@@ -13,6 +13,7 @@ import type {
   FileNode,
   FileTreeChangedEvent,
   FileTreeSyncError,
+  FileTreeSyncScope,
   FileTreeSyncStatus,
   PerProjectWorkspaceState,
   Project,
@@ -55,6 +56,7 @@ interface WorkspaceContextValue extends WorkspaceState {
   setActiveWorktree: (name: string | null) => void;
   toggleWorktreesSection: () => void;
   retryFileTreeSync: () => void;
+  refreshFileTreeScope: (scope: FileTreeSyncScope) => Promise<void>;
   invalidateFileTreeScope: (event: FileTreeChangedEvent) => Promise<void>;
   updateFileTreeSyncState: (status: FileTreeSyncStatus, error?: FileTreeSyncError | null) => void;
   setFileTreeSyncFallbackActive: (active: boolean) => void;
@@ -645,6 +647,42 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
     setFileTreeSyncRetryNonce((nonce) => nonce + 1);
   }, []);
 
+  const refreshFileTreeScope = useCallback(
+    async (scope: FileTreeSyncScope) => {
+      const activeSlug = currentSlugRef.current;
+      const activeWorktree = currentWorktreeRef.current;
+      if (!activeSlug || scope.slug !== activeSlug || scope.worktree !== activeWorktree) {
+        return;
+      }
+
+      const generation = invalidationGenerationRef.current + 1;
+      invalidationGenerationRef.current = generation;
+
+      const loadedDirectories = new Set(collectLoadedDirectories(stateRef.current.fileTree));
+      await Promise.all([
+        refreshFileTree(activeSlug),
+        ...Array.from(loadedDirectories).map((directory) =>
+          loadDirectoryChildren(directory, activeSlug),
+        ),
+      ]);
+
+      if (invalidationGenerationRef.current !== generation) return;
+
+      const selected = stateRef.current.selectedFile;
+      if (selected && findNodeByPath(stateRef.current.fileTree, selected) === null) {
+        const loadedScopes = new Set([ROOT_REQUEST_PATH, ...loadedDirectories]);
+        const selectedParent = selected.includes("/")
+          ? selected.slice(0, selected.lastIndexOf("/"))
+          : ROOT_REQUEST_PATH;
+        if (loadedScopes.has(selectedParent)) {
+          stateRef.current = { ...stateRef.current, selectedFile: null };
+          setSelectedFile(null);
+        }
+      }
+    },
+    [loadDirectoryChildren, refreshFileTree],
+  );
+
   const invalidateFileTreeScope = useCallback(
     async (event: FileTreeChangedEvent) => {
       const activeSlug = currentSlugRef.current;
@@ -735,6 +773,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       setActiveWorktree,
       toggleWorktreesSection,
       retryFileTreeSync,
+      refreshFileTreeScope,
       invalidateFileTreeScope,
       updateFileTreeSyncState,
       setFileTreeSyncFallbackActive,
@@ -771,6 +810,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       setActiveWorktree,
       toggleWorktreesSection,
       retryFileTreeSync,
+      refreshFileTreeScope,
       invalidateFileTreeScope,
       updateFileTreeSyncState,
       setFileTreeSyncFallbackActive,

@@ -74,6 +74,7 @@ function Harness() {
     retryNonce: ws.fileTreeSyncRetryNonce,
     onStatusChange: ws.updateFileTreeSyncState,
     onFallbackChange: ws.setFileTreeSyncFallbackActive,
+    onReady: ws.refreshFileTreeScope,
     onChanged: ws.invalidateFileTreeScope,
   });
 
@@ -108,34 +109,74 @@ afterEach(() => {
 });
 
 describe("file-tree sync integration", () => {
-  it("applies external create and delete invalidations through EventSource → WorkspaceContext canonical refreshes", async () => {
+  it("applies ready, external create, and delete invalidations through EventSource → WorkspaceContext canonical refreshes", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
-    fetchSpy
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            ok: true,
-            scope: { slug: "demo", worktree: null },
-            pollIntervalMs: 5000,
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify([
-            { name: "old.ts", path: "src/old.ts", type: "file", kind: "regular-file" },
-            { name: "new.ts", path: "src/new.ts", type: "file", kind: "regular-file" },
-          ]),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify([]), {
+    const jsonResponse = (payload: unknown) =>
+      Promise.resolve(
+        new Response(JSON.stringify(payload), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         }),
       );
+    let srcRefreshCount = 0;
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/files/events?slug=demo&preflight=1") {
+        return jsonResponse({
+          ok: true,
+          scope: { slug: "demo", worktree: null },
+          pollIntervalMs: 5000,
+        });
+      }
+      if (url === "/api/files?slug=demo") {
+        return jsonResponse([
+          {
+            name: "src",
+            path: "src",
+            type: "directory",
+            kind: "directory",
+            hasChildren: true,
+            childrenLoaded: false,
+          },
+        ]);
+      }
+      if (url === "/api/files?slug=demo&path=src") {
+        srcRefreshCount += 1;
+        if (srcRefreshCount === 1) {
+          return jsonResponse([
+            { name: "old.ts", path: "src/old.ts", type: "file", kind: "regular-file" },
+            {
+              name: "ready-gap.ts",
+              path: "src/ready-gap.ts",
+              type: "file",
+              kind: "regular-file",
+            },
+          ]);
+        }
+        if (srcRefreshCount === 2) {
+          return jsonResponse([
+            { name: "old.ts", path: "src/old.ts", type: "file", kind: "regular-file" },
+            {
+              name: "ready-gap.ts",
+              path: "src/ready-gap.ts",
+              type: "file",
+              kind: "regular-file",
+            },
+            { name: "new.ts", path: "src/new.ts", type: "file", kind: "regular-file" },
+          ]);
+        }
+        return jsonResponse([
+          {
+            name: "ready-gap.ts",
+            path: "src/ready-gap.ts",
+            type: "file",
+            kind: "regular-file",
+          },
+          { name: "new.ts", path: "src/new.ts", type: "file", kind: "regular-file" },
+        ]);
+      }
+      return Promise.resolve(new Response("Unexpected request", { status: 500 }));
+    });
 
     const { unmount } = renderHarness();
     await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
@@ -154,8 +195,16 @@ describe("file-tree sync integration", () => {
         scope: { slug: "demo", worktree: null },
         pollIntervalMs: 5000,
       });
+      await Promise.resolve();
     });
     expect(screen.getByTestId("sync-status").textContent).toBe("ready");
+    await waitFor(() =>
+      expect(screen.getByTestId("tree-json").textContent).toContain("src/ready-gap.ts"),
+    );
+    expect(fetchSpy).toHaveBeenCalledWith("/api/files?slug=demo", { cache: "no-store" });
+    expect(fetchSpy).toHaveBeenCalledWith("/api/files?slug=demo&path=src", {
+      cache: "no-store",
+    });
 
     const createEvent: FileTreeChangedEvent = {
       type: "file-tree:changed",

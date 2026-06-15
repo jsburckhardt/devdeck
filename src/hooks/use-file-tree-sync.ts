@@ -32,6 +32,7 @@ export interface UseFileTreeSyncOptions {
   retryNonce?: number;
   onStatusChange: (status: FileTreeSyncStatus, error?: FileTreeSyncError | null) => void;
   onFallbackChange: (active: boolean) => void;
+  onReady?: (scope: FileTreeSyncScope) => Promise<void> | void;
   onChanged: (event: FileTreeChangedEvent) => Promise<void> | void;
   heartbeatTimeoutMs?: number;
   eventSourceFactory?: (url: string) => EventSource;
@@ -169,6 +170,7 @@ export function useFileTreeSync({
   retryNonce = 0,
   onStatusChange,
   onFallbackChange,
+  onReady,
   onChanged,
   heartbeatTimeoutMs = FILE_TREE_SYNC_HEARTBEAT_TIMEOUT_MS,
   eventSourceFactory,
@@ -353,6 +355,18 @@ export function useFileTreeSync({
         resetHeartbeatTimer(heartbeatTimeout);
         onFallbackChange(false);
         onStatusChange("ready", null);
+        if (onReady) {
+          void Promise.resolve()
+            .then(() => onReady(payload.scope))
+            .catch(() => {
+              if (!closed && source === nextSource) {
+                console.error("Failed to refresh file tree after ready event", {
+                  slug: activeSlug,
+                  worktree: normalizedWorktree,
+                });
+              }
+            });
+        }
       });
 
       nextSource.addEventListener("file-tree:changed", (event) => {
@@ -447,6 +461,7 @@ export function useFileTreeSync({
     heartbeatTimeoutMs,
     onChanged,
     onFallbackChange,
+    onReady,
     onStatusChange,
     retryNonce,
     slug,

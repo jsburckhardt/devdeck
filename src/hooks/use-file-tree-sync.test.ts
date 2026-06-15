@@ -116,6 +116,7 @@ async function flushPreflight() {
 function setup(overrides: Partial<Parameters<typeof useFileTreeSync>[0]> = {}) {
   const onStatusChange = vi.fn();
   const onFallbackChange = vi.fn();
+  const onReady = vi.fn().mockResolvedValue(undefined);
   const onChanged = vi.fn().mockResolvedValue(undefined);
   const eventSourceFactory = vi.fn(
     (url: string) => new MockEventSource(url) as unknown as EventSource,
@@ -129,6 +130,7 @@ function setup(overrides: Partial<Parameters<typeof useFileTreeSync>[0]> = {}) {
         retryNonce: props.retryNonce,
         onStatusChange,
         onFallbackChange,
+        onReady,
         onChanged,
         heartbeatTimeoutMs: 10000,
         eventSourceFactory,
@@ -139,7 +141,14 @@ function setup(overrides: Partial<Parameters<typeof useFileTreeSync>[0]> = {}) {
     },
   );
 
-  return { ...renderResult, onStatusChange, onFallbackChange, onChanged, eventSourceFactory };
+  return {
+    ...renderResult,
+    onStatusChange,
+    onFallbackChange,
+    onReady,
+    onChanged,
+    eventSourceFactory,
+  };
 }
 
 beforeEach(() => {
@@ -158,7 +167,7 @@ afterEach(() => {
 
 describe("useFileTreeSync", () => {
   it("preflights validation, constructs scoped URLs, and handles ready/changed/degraded events", async () => {
-    const { onStatusChange, onFallbackChange, onChanged } = setup();
+    const { onStatusChange, onFallbackChange, onReady, onChanged } = setup();
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/files/events?slug=demo&worktree=.trees%2Ffeat&preflight=1",
@@ -173,11 +182,13 @@ describe("useFileTreeSync", () => {
     );
     expect(onStatusChange).toHaveBeenCalledWith("connecting", null);
 
-    act(() => {
+    await act(async () => {
       MockEventSource.instances[0].emitOpen();
       MockEventSource.instances[0].emit("file-tree:ready", readyEvent);
+      await Promise.resolve();
     });
 
+    expect(onReady).toHaveBeenCalledWith(scope);
     expect(onStatusChange).toHaveBeenLastCalledWith("ready", null);
     expect(onFallbackChange).toHaveBeenLastCalledWith(false);
 
@@ -203,15 +214,20 @@ describe("useFileTreeSync", () => {
   });
 
   it("ignores stale scopes and retries parse/network/heartbeat failures before fallback", async () => {
-    const { onStatusChange, onFallbackChange, onChanged } = setup();
+    const { onStatusChange, onFallbackChange, onReady, onChanged } = setup();
     await flushPreflight();
 
     act(() => {
+      MockEventSource.instances[0].emit("file-tree:ready", {
+        ...readyEvent,
+        scope: { slug: "other", worktree: ".trees/feat" },
+      });
       MockEventSource.instances[0].emit("file-tree:changed", {
         ...changedEvent,
         scope: { slug: "other", worktree: ".trees/feat" },
       });
     });
+    expect(onReady).not.toHaveBeenCalled();
     expect(onChanged).not.toHaveBeenCalled();
 
     act(() => {
@@ -264,6 +280,28 @@ describe("useFileTreeSync", () => {
       expect.objectContaining({ code: "STREAM_RETRY_EXHAUSTED", pollIntervalMs: 5000 }),
     );
     expect(onFallbackChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it("keeps accepted ready streams usable when the silent ready refresh fails transiently", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const onReady = vi.fn().mockRejectedValue(new Error("transient refresh failure"));
+    const { onStatusChange, onFallbackChange } = setup({ onReady });
+    await flushPreflight();
+
+    await act(async () => {
+      MockEventSource.instances[0].emit("file-tree:ready", readyEvent);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onReady).toHaveBeenCalledWith(scope);
+    expect(onFallbackChange).toHaveBeenLastCalledWith(false);
+    expect(onStatusChange).toHaveBeenLastCalledWith("ready", null);
+    expect(MockEventSource.instances[0].close).not.toHaveBeenCalled();
+    expect(consoleSpy).toHaveBeenCalledWith(
+      "Failed to refresh file tree after ready event",
+      expect.objectContaining({ slug: "demo", worktree: ".trees/feat" }),
+    );
   });
 
   it.each([

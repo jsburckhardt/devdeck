@@ -183,6 +183,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     fileTreeSyncFallbackActive,
     fileTreeSyncRetryNonce,
     retryFileTreeSync,
+    refreshFileTreeScope,
     invalidateFileTreeScope,
     updateFileTreeSyncState,
     setFileTreeSyncFallbackActive,
@@ -209,6 +210,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     retryNonce: fileTreeSyncRetryNonce,
     onStatusChange: updateFileTreeSyncState,
     onFallbackChange: setFileTreeSyncFallbackActive,
+    onReady: refreshFileTreeScope,
     onChanged: invalidateFileTreeScope,
   });
 
