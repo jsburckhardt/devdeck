@@ -31,6 +31,10 @@ vi.mock("@/lib/workspace-context", () => ({
   useWorkspace: vi.fn(),
 }));
 
+vi.mock("@/hooks/use-file-tree-sync", () => ({
+  useFileTreeSync: vi.fn(),
+}));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     push: routerMockState.push,
@@ -132,9 +136,11 @@ vi.mock("react-resizable-panels", () => ({
 }));
 
 import { useWorkspace } from "@/lib/workspace-context";
+import { useFileTreeSync } from "@/hooks/use-file-tree-sync";
 import { WorkspaceLayout } from "./workspace-layout";
 
 const mockUseWorkspace = vi.mocked(useWorkspace);
+const mockUseFileTreeSync = vi.mocked(useFileTreeSync);
 
 const project: Project = {
   slug: "demo",
@@ -163,6 +169,14 @@ function makeContext(overrides: Record<string, unknown> = {}) {
     fileTreeLoading: false,
     fileTreeError: null,
     fileTreeRefreshing: false,
+    fileTreeSyncStatus: "ready",
+    fileTreeSyncError: null,
+    fileTreeSyncFallbackActive: false,
+    fileTreeSyncRetryNonce: 0,
+    retryFileTreeSync: vi.fn(),
+    invalidateFileTreeScope: vi.fn().mockResolvedValue(undefined),
+    updateFileTreeSyncState: vi.fn(),
+    setFileTreeSyncFallbackActive: vi.fn(),
     activeWorktree: null,
     worktreesSectionCollapsed: false,
     setProject: vi.fn(),
@@ -185,6 +199,7 @@ function makeContext(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockUseFileTreeSync.mockImplementation(() => undefined);
   panelMockState.panelHandles = [];
   panelMockState.panelIndex = 0;
   panelMockState.separatorIndex = 0;
@@ -280,13 +295,118 @@ describe("WorkspaceLayout", () => {
     expect(screen.getByTestId("file-tree")).toBeInTheDocument();
   });
 
-  it("Issue #81 T1: polls the root file tree every 5000 ms without mutating fileTreeLoading", async () => {
+  it("Issue #81 T4/T5: wires EventSource hook and renders accessible sync status UI", () => {
+    const retryFileTreeSync = vi.fn();
+    const invalidateFileTreeScope = vi.fn().mockResolvedValue(undefined);
+    const updateFileTreeSyncState = vi.fn();
+    const setFileTreeSyncFallbackActive = vi.fn();
+
+    mockUseWorkspace.mockReturnValue(
+      makeContext({
+        activeWorktree: ".trees/feat",
+        fileTree: [{ name: "a", path: "a", type: "file" }],
+        fileTreeSyncStatus: "degraded",
+        fileTreeSyncError: {
+          code: "WATCHER_ERROR",
+          message: "File sync degraded — polling every 5 seconds.",
+          retryable: true,
+          pollIntervalMs: 5000,
+        },
+        retryFileTreeSync,
+        invalidateFileTreeScope,
+        updateFileTreeSyncState,
+        setFileTreeSyncFallbackActive,
+      }),
+    );
+
+    render(<WorkspaceLayout project={project} />);
+
+    expect(mockUseFileTreeSync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        slug: "demo",
+        worktree: ".trees/feat",
+        onChanged: invalidateFileTreeScope,
+        onStatusChange: updateFileTreeSyncState,
+        onFallbackChange: setFileTreeSyncFallbackActive,
+      }),
+    );
+    const status = screen.getByRole("status", {
+      name: "File sync degraded — polling every 5 seconds.",
+    });
+    expect(status).toHaveAttribute("aria-live", "polite");
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry file tree sync" }));
+    expect(retryFileTreeSync).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["connecting", "File sync connecting…", null],
+    ["ready", "File sync ready", null],
+    ["syncing", "File sync applying changes…", null],
+    [
+      "error",
+      "Invalid file sync parameters.",
+      { code: "INVALID_PARAMETERS", message: "Invalid file sync parameters.", retryable: false },
+    ],
+    [
+      "unauthorized",
+      "File sync unauthorized — reopen DevDeck with a valid token.",
+      { code: "AUTH_REQUIRED", message: "Unauthorized", retryable: false },
+    ],
+  ] as const)(
+    "Issue #81 T5: renders %s sync status without retry when not retryable",
+    (status, text, error) => {
+      mockUseWorkspace.mockReturnValue(
+        makeContext({
+          fileTree: [{ name: "a", path: "a", type: "file" }],
+          fileTreeSyncStatus: status,
+          fileTreeSyncError: error,
+        }),
+      );
+
+      render(<WorkspaceLayout project={project} />);
+
+      expect(screen.getByText(text)).toBeInTheDocument();
+      expect(screen.getByText(text)).toHaveAttribute("role", "status");
+      expect(
+        screen.queryByRole("button", { name: "Retry file tree sync" }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByTestId("file-tree")).toBeInTheDocument();
+    },
+  );
+
+  it("Issue #81 T6: does not run primary 5000 ms polling while SSE is ready", async () => {
+    vi.useFakeTimers();
+    const refreshFileTree = vi.fn().mockResolvedValue(undefined);
+
+    mockUseWorkspace.mockReturnValue(
+      makeContext({
+        fileTreeSyncStatus: "ready",
+        fileTreeSyncFallbackActive: false,
+        refreshFileTree,
+      }),
+    );
+
+    render(<WorkspaceLayout project={project} />);
+    await act(async () => {});
+    refreshFileTree.mockClear();
+
+    await act(async () => {
+      vi.advanceTimersByTime(15000);
+    });
+
+    expect(refreshFileTree).not.toHaveBeenCalled();
+  });
+
+  it("Issue #81 T6: fallback polls the root file tree every 5000 ms without mutating fileTreeLoading", async () => {
     vi.useFakeTimers();
     const refreshFileTree = vi.fn().mockResolvedValue(undefined);
     const setFileTreeLoading = vi.fn();
 
     mockUseWorkspace.mockReturnValue(
       makeContext({
+        fileTreeSyncStatus: "degraded",
+        fileTreeSyncFallbackActive: true,
         refreshFileTree,
         setFileTreeLoading,
       }),
@@ -308,14 +428,20 @@ describe("WorkspaceLayout", () => {
     expect(setFileTreeLoading).not.toHaveBeenCalled();
   });
 
-  it("Issue #81 T1: pauses file-tree polling while hidden and catches up immediately when visible", async () => {
+  it("Issue #81 T6: pauses fallback polling while hidden and catches up immediately when visible", async () => {
     vi.useFakeTimers();
     const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
     const addListener = vi.spyOn(document, "addEventListener");
     const removeListener = vi.spyOn(document, "removeEventListener");
     const refreshFileTree = vi.fn().mockResolvedValue(undefined);
 
-    mockUseWorkspace.mockReturnValue(makeContext({ refreshFileTree }));
+    mockUseWorkspace.mockReturnValue(
+      makeContext({
+        fileTreeSyncStatus: "degraded",
+        fileTreeSyncFallbackActive: true,
+        refreshFileTree,
+      }),
+    );
 
     const { unmount } = render(<WorkspaceLayout project={project} />);
     await act(async () => {});
@@ -349,7 +475,7 @@ describe("WorkspaceLayout", () => {
     expect(removeListener).toHaveBeenCalledWith("visibilitychange", expect.any(Function));
   });
 
-  it("Issue #81 T1: cleans up file-tree polling on worktree changes, project changes, and unmount", async () => {
+  it("Issue #81 T6: cleans up fallback polling on worktree changes, project changes, and unmount", async () => {
     vi.useFakeTimers();
     const refreshFileTree = vi.fn().mockResolvedValue(undefined);
     const setFileTreeLoading = vi.fn();
@@ -357,6 +483,8 @@ describe("WorkspaceLayout", () => {
     mockUseWorkspace.mockReturnValue(
       makeContext({
         activeWorktree: null,
+        fileTreeSyncStatus: "degraded",
+        fileTreeSyncFallbackActive: true,
         refreshFileTree,
         setFileTreeLoading,
       }),
@@ -367,6 +495,8 @@ describe("WorkspaceLayout", () => {
     mockUseWorkspace.mockReturnValue(
       makeContext({
         activeWorktree: ".trees/feat",
+        fileTreeSyncStatus: "degraded",
+        fileTreeSyncFallbackActive: true,
         refreshFileTree,
         setFileTreeLoading,
       }),
@@ -385,6 +515,8 @@ describe("WorkspaceLayout", () => {
     mockUseWorkspace.mockReturnValue(
       makeContext({
         activeWorktree: ".trees/feat",
+        fileTreeSyncStatus: "degraded",
+        fileTreeSyncFallbackActive: true,
         refreshFileTree,
         setFileTreeLoading,
       }),
@@ -408,7 +540,7 @@ describe("WorkspaceLayout", () => {
     expect(refreshFileTree).not.toHaveBeenCalled();
   });
 
-  it("Issue #81 T1: overlapping initial loads still use refreshFileTree directly for deduplication", async () => {
+  it("Issue #81 T6: overlapping initial loads still use fallback refreshFileTree directly", async () => {
     vi.useFakeTimers();
     let resolveInitialRefresh: () => void = () => {};
     const refreshFileTree = vi.fn(
@@ -421,6 +553,8 @@ describe("WorkspaceLayout", () => {
 
     mockUseWorkspace.mockReturnValue(
       makeContext({
+        fileTreeSyncStatus: "degraded",
+        fileTreeSyncFallbackActive: true,
         refreshFileTree,
         setFileTreeLoading,
       }),

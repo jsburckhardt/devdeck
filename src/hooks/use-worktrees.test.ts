@@ -137,11 +137,26 @@ describe("useWorktrees", () => {
     );
   });
 
-  it("Issue #81 T2: interval polling refreshes worktrees with no-store fetches", async () => {
+  it("Issue #81 T6: does not poll worktrees unless degraded fallback is enabled", async () => {
     vi.useFakeTimers();
     mockSuccess([{ name: "feat", branch: "feat" }]);
 
-    const { result } = renderHook(() => useWorktrees("demo"));
+    renderHook(() => useWorktrees("demo"));
+    await flushPromises();
+    mockFetch.mockClear();
+
+    await act(async () => {
+      vi.advanceTimersByTime(10000);
+    });
+
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("Issue #81 T6: degraded fallback interval polling refreshes worktrees with no-store fetches", async () => {
+    vi.useFakeTimers();
+    mockSuccess([{ name: "feat", branch: "feat" }]);
+
+    const { result } = renderHook(() => useWorktrees("demo", { pollingEnabled: true }));
     await flushPromises();
 
     expect(result.current.worktrees).toEqual([{ name: "feat", branch: "feat" }]);
@@ -159,14 +174,14 @@ describe("useWorktrees", () => {
     );
   });
 
-  it("Issue #81 T2: pauses worktree polling while hidden and catches up when visible", async () => {
+  it("Issue #81 T6: pauses worktree fallback polling while hidden and catches up when visible", async () => {
     vi.useFakeTimers();
     const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
     const addListener = vi.spyOn(document, "addEventListener");
     const removeListener = vi.spyOn(document, "removeEventListener");
     mockSuccess([{ name: "feat", branch: "feat" }]);
 
-    const { unmount } = renderHook(() => useWorktrees("demo"));
+    const { unmount } = renderHook(() => useWorktrees("demo", { pollingEnabled: true }));
     await flushPromises();
     mockFetch.mockClear();
 
@@ -199,11 +214,11 @@ describe("useWorktrees", () => {
     expect(removeListener).toHaveBeenCalledWith("visibilitychange", expect.any(Function));
   });
 
-  it("Issue #81 T2: skips same-slug polling while a request is already in flight", async () => {
+  it("Issue #81 T6: skips same-slug fallback polling while a request is already in flight", async () => {
     vi.useFakeTimers();
     const resolvers = mockPendingFetch();
 
-    const { result } = renderHook(() => useWorktrees("demo"));
+    const { result } = renderHook(() => useWorktrees("demo", { pollingEnabled: true }));
     expect(mockFetch).toHaveBeenCalledTimes(1);
 
     await act(async () => {
@@ -223,13 +238,16 @@ describe("useWorktrees", () => {
     expect(result.current.worktrees).toEqual([{ name: "feat", branch: "feat" }]);
   });
 
-  it("Issue #81 T2: disables polling and resets state when slug is undefined", async () => {
+  it("Issue #81 T6: disables fallback polling and resets state when slug is undefined", async () => {
     vi.useFakeTimers();
     const resolvers = mockPendingFetch();
 
-    const { result, rerender } = renderHook(({ slug }) => useWorktrees(slug), {
-      initialProps: { slug: "demo" as string | undefined },
-    });
+    const { result, rerender } = renderHook(
+      ({ slug }) => useWorktrees(slug, { pollingEnabled: true }),
+      {
+        initialProps: { slug: "demo" as string | undefined },
+      },
+    );
     const initialSignal = (mockFetch.mock.calls[0][1] as RequestInit).signal as AbortSignal;
 
     rerender({ slug: undefined });
@@ -289,12 +307,12 @@ describe("useWorktrees", () => {
     });
   });
 
-  it("Issue #81 T2: aborts pending requests and removes visibility listeners on unmount", () => {
+  it("Issue #81 T6: aborts pending fallback requests and removes visibility listeners on unmount", () => {
     vi.useFakeTimers();
     mockPendingFetch();
     const removeListener = vi.spyOn(document, "removeEventListener");
 
-    const { unmount } = renderHook(() => useWorktrees("demo"));
+    const { unmount } = renderHook(() => useWorktrees("demo", { pollingEnabled: true }));
     const signal = (mockFetch.mock.calls[0][1] as RequestInit).signal as AbortSignal;
 
     unmount();
@@ -308,7 +326,7 @@ describe("useWorktrees", () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
-  it("Issue #81 T3: preserves the existing worktree list on transient poll failures", async () => {
+  it("Issue #81 T6: preserves the existing worktree list on transient fallback failures", async () => {
     vi.useFakeTimers();
     mockFetch
       .mockResolvedValueOnce({
@@ -317,7 +335,7 @@ describe("useWorktrees", () => {
       })
       .mockRejectedValueOnce(new Error("Network error"));
 
-    const { result } = renderHook(() => useWorktrees("demo"));
+    const { result } = renderHook(() => useWorktrees("demo", { pollingEnabled: true }));
     await flushPromises();
 
     expect(result.current.worktrees).toEqual([{ name: "feat", branch: "feat" }]);

@@ -321,6 +321,10 @@ describe("WorkspaceProvider.refreshFileTree", () => {
           <span data-testid="selected-json">{ws.selectedFile ?? ""}</span>
           <span data-testid="expanded-json">{Array.from(ws.expandedFolders).join(",")}</span>
           <span data-testid="active-worktree">{ws.activeWorktree ?? "root"}</span>
+          <span data-testid="sync-status">{ws.fileTreeSyncStatus}</span>
+          <span data-testid="sync-error">{ws.fileTreeSyncError?.code ?? ""}</span>
+          <span data-testid="sync-fallback">{String(ws.fileTreeSyncFallbackActive)}</span>
+          <span data-testid="sync-retry-nonce">{ws.fileTreeSyncRetryNonce}</span>
         </div>
       );
     }
@@ -903,6 +907,267 @@ describe("WorkspaceProvider.refreshFileTree", () => {
     expect(screen.getByTestId("tree-json").textContent).toContain("worktree.ts");
     expect(screen.getByTestId("selected-json").textContent).toBe("worktree.ts");
     expect(screen.getByTestId("expanded-json").textContent).toBe("worktree-folder");
+  });
+
+  it("Issue #81 T3: invalidates root and loaded directories through canonical no-store requests", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const { captured } = renderHarness({ withProject: true });
+
+    await act(async () => {
+      captured.state!.setFileTree([
+        {
+          name: "src",
+          path: "src",
+          type: "directory",
+          kind: "directory",
+          hasChildren: true,
+          childrenLoaded: true,
+          children: [{ name: "old.ts", path: "src/old.ts", type: "file", kind: "regular-file" }],
+        },
+      ]);
+      captured.state!.toggleFolder("src");
+    });
+
+    fetchSpy
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            {
+              name: "src",
+              path: "src",
+              type: "directory",
+              kind: "directory",
+              hasChildren: true,
+              childrenLoaded: false,
+            },
+            { name: "package.json", path: "package.json", type: "file", kind: "regular-file" },
+          ]),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            { name: "new.ts", path: "src/new.ts", type: "file", kind: "regular-file" },
+          ]),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+
+    await act(async () => {
+      await captured.state!.invalidateFileTreeScope({
+        type: "file-tree:changed",
+        scope: { slug: "demo", worktree: null },
+        paths: ["package.json", "src/new.ts"],
+        directories: ["src"],
+        rootChanged: true,
+        gitStatusChanged: false,
+        truncated: false,
+        version: 1,
+      });
+    });
+
+    expect(fetchSpy).toHaveBeenNthCalledWith(1, "/api/files?slug=demo", { cache: "no-store" });
+    expect(fetchSpy).toHaveBeenNthCalledWith(2, "/api/files?slug=demo&path=src", {
+      cache: "no-store",
+    });
+    expect(screen.getByTestId("tree-json").textContent).toContain("package.json");
+    expect(screen.getByTestId("tree-json").textContent).toContain("src/new.ts");
+    expect(screen.getByTestId("expanded-json").textContent).toBe("src");
+    expect(screen.getByTestId("loading").textContent).toBe("false");
+  });
+
+  it("Issue #81 T3: updates collapsed hasChildren metadata and empty transitions", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const { captured } = renderHarness({ withProject: true });
+
+    await act(async () => {
+      captured.state!.setFileTree([
+        {
+          name: "empty",
+          path: "empty",
+          type: "directory",
+          kind: "directory",
+          hasChildren: false,
+          childrenLoaded: true,
+          children: [],
+        },
+        {
+          name: "collapsed",
+          path: "collapsed",
+          type: "directory",
+          kind: "directory",
+          hasChildren: false,
+          childrenLoaded: true,
+          children: [],
+        },
+      ]);
+      captured.state!.toggleFolder("empty");
+    });
+
+    fetchSpy
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            {
+              name: "empty",
+              path: "empty",
+              type: "directory",
+              kind: "directory",
+              hasChildren: true,
+              childrenLoaded: false,
+            },
+            {
+              name: "collapsed",
+              path: "collapsed",
+              type: "directory",
+              kind: "directory",
+              hasChildren: true,
+              childrenLoaded: false,
+            },
+          ]),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            { name: "child.txt", path: "empty/child.txt", type: "file", kind: "regular-file" },
+          ]),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            {
+              name: "new.txt",
+              path: "collapsed/new.txt",
+              type: "file",
+              kind: "regular-file",
+            },
+          ]),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
+    await act(async () => {
+      await captured.state!.invalidateFileTreeScope({
+        type: "file-tree:changed",
+        scope: { slug: "demo", worktree: null },
+        paths: ["collapsed/new.txt", "empty/child.txt"],
+        directories: ["empty"],
+        rootChanged: true,
+        gitStatusChanged: false,
+        truncated: false,
+        version: 1,
+      });
+    });
+
+    expect(screen.getByTestId("tree-json").textContent).toContain('"hasChildren":true');
+    expect(screen.getByTestId("tree-json").textContent).toContain("empty/child.txt");
+    expect(screen.getByTestId("expanded-json").textContent).toBe("empty");
+
+    await act(async () => {
+      await captured.state!.loadDirectoryChildren("empty");
+    });
+    expect(screen.getByTestId("tree-json").textContent).toContain('"children":[]');
+  });
+
+  it("Issue #81 T3: ignores stale scopes and clears selected files only when deletion is proven", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const { captured } = renderHarness({ withProject: true });
+
+    await act(async () => {
+      captured.state!.setFileTree([
+        {
+          name: "src",
+          path: "src",
+          type: "directory",
+          kind: "directory",
+          hasChildren: true,
+          childrenLoaded: true,
+          children: [
+            { name: "selected.ts", path: "src/selected.ts", type: "file", kind: "regular-file" },
+          ],
+        },
+      ]);
+      captured.state!.selectFile("src/selected.ts");
+    });
+
+    await act(async () => {
+      await captured.state!.invalidateFileTreeScope({
+        type: "file-tree:changed",
+        scope: { slug: "other", worktree: null },
+        paths: ["src/selected.ts"],
+        directories: ["src"],
+        rootChanged: true,
+        gitStatusChanged: false,
+        truncated: false,
+        version: 1,
+      });
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(screen.getByTestId("selected-json").textContent).toBe("src/selected.ts");
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    await act(async () => {
+      await captured.state!.invalidateFileTreeScope({
+        type: "file-tree:changed",
+        scope: { slug: "demo", worktree: null },
+        paths: ["src/selected.ts"],
+        directories: ["src"],
+        rootChanged: false,
+        gitStatusChanged: false,
+        truncated: false,
+        version: 2,
+      });
+    });
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/files?slug=demo&path=src", { cache: "no-store" });
+    expect(screen.getByTestId("selected-json").textContent).toBe("");
+  });
+
+  it("Issue #81 T3: exposes sync status, retry, and fallback state APIs", async () => {
+    const { captured } = renderHarness({ withProject: true });
+    const initialNonce = Number(screen.getByTestId("sync-retry-nonce").textContent);
+
+    await act(async () => {
+      captured.state!.updateFileTreeSyncState("degraded", {
+        code: "WATCHER_ERROR",
+        message: "Watcher failed",
+        retryable: true,
+        pollIntervalMs: 5000,
+      });
+      captured.state!.setFileTreeSyncFallbackActive(true);
+    });
+
+    expect(screen.getByTestId("sync-status").textContent).toBe("degraded");
+    expect(screen.getByTestId("sync-error").textContent).toBe("WATCHER_ERROR");
+    expect(screen.getByTestId("sync-fallback").textContent).toBe("true");
+
+    await act(async () => {
+      captured.state!.retryFileTreeSync();
+    });
+
+    expect(screen.getByTestId("sync-status").textContent).toBe("connecting");
+    expect(screen.getByTestId("sync-error").textContent).toBe("");
+    expect(screen.getByTestId("sync-fallback").textContent).toBe("true");
+    expect(Number(screen.getByTestId("sync-retry-nonce").textContent)).toBe(initialNonce + 1);
   });
 });
 

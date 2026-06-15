@@ -19,19 +19,23 @@ let mockLoading = false;
 let mockError: string | null = null;
 let mockActiveWorktree: string | null = null;
 let mockCollapsed = false;
+let mockFallbackActive = false;
+const mockUseWorktrees = vi.fn(() => ({
+  worktrees: mockWorktrees,
+  loading: mockLoading,
+  error: mockError,
+  refresh: mockRefresh,
+}));
 
 vi.mock("@/hooks/use-worktrees", () => ({
-  useWorktrees: () => ({
-    worktrees: mockWorktrees,
-    loading: mockLoading,
-    error: mockError,
-    refresh: mockRefresh,
-  }),
+  useWorktrees: (slug: string | undefined, options?: { pollingEnabled?: boolean }) =>
+    mockUseWorktrees(slug, options),
 }));
 
 vi.mock("@/lib/workspace-context", () => ({
   useWorkspace: () => ({
     activeWorktree: mockActiveWorktree,
+    fileTreeSyncFallbackActive: mockFallbackActive,
     worktreesSectionCollapsed: mockCollapsed,
     setActiveWorktree: mockSetActiveWorktree,
     toggleWorktreesSection: mockToggleWorktreesSection,
@@ -46,6 +50,7 @@ describe("WorktreeTree", () => {
     mockError = null;
     mockActiveWorktree = null;
     mockCollapsed = false;
+    mockFallbackActive = false;
   });
 
   it("T18: renders worktree list with names and branches", () => {
@@ -57,10 +62,20 @@ describe("WorktreeTree", () => {
     render(<WorktreeTree slug="demo" />);
 
     expect(screen.getByText("feat-login")).toBeInTheDocument();
+    expect(mockUseWorktrees).toHaveBeenCalledWith("demo", { pollingEnabled: false });
     expect(screen.getByText("fix-bug")).toBeInTheDocument();
     // Branch shown only when different from name
     expect(screen.getByText("fix/bug-123")).toBeInTheDocument();
     expect(screen.getByText("Worktrees")).toBeInTheDocument();
+  });
+
+  it("Issue #81 T6: enables worktree list polling only during degraded fallback", () => {
+    mockFallbackActive = true;
+    mockWorktrees = [{ name: "feat", branch: "feat" }];
+
+    render(<WorktreeTree slug="demo" />);
+
+    expect(mockUseWorktrees).toHaveBeenCalledWith("demo", { pollingEnabled: true });
   });
 
   it("T19: clicking worktree calls setActiveWorktree", async () => {
