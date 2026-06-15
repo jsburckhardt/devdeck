@@ -8,6 +8,7 @@ Implemented the revised server-push file explorer synchronization architecture:
 - direct server-only `chokidar` watcher dependency and shared watcher helper;
 - WorkspaceContext sync status/error/retry and scoped invalidation APIs;
 - client `useFileTreeSync` EventSource lifecycle hook;
+- accepted `file-tree:ready` events now silently refresh the active root plus all currently loaded directories through canonical `/api/files`;
 - accessible Explorer sync status/retry UI;
 - existing 5000 ms root file-tree and worktree-list polling retained only as degraded fallback.
 
@@ -42,8 +43,23 @@ Implemented the revised server-push file explorer synchronization architecture:
 - Updated `useFileTreeSync` to fetch the same-origin preflight URL with `{ cache: "no-store" }` before opening `EventSource`, abort in-flight preflights during cleanup/scope changes, and use preflight JSON/status to classify auth/origin/slug/worktree/parameter failures as non-retryable without relying on native `EventSource.onerror` details.
 - Extended route, hook, and integration coverage for preflight rejection before watcher allocation, non-retry hook behavior without mocked EventSource status, successful preflight opening exactly one EventSource, and in-flight preflight abort cleanup.
 
+## Corrective Fix: Ready Event Canonical Refresh
+
+- Added a scoped `onReady(scope)` path in `useFileTreeSync` and wired `WorkspaceLayout` to `WorkspaceContext.refreshFileTreeScope(...)`.
+- Added `refreshFileTreeScope(scope)` to WorkspaceContext. It validates active slug/worktree scope, silently refreshes the canonical root plus every currently loaded directory with `/api/files` no-store requests, preserves expansion/selection/tree state on transient failures, and never touches `fileTreeLoading`.
+- Kept accepted ready-event behavior non-disruptive: stale ready scopes are ignored, degraded fallback is stopped, sync status is marked `ready`, and ready-refresh failures do not close or degrade the stream.
+- Extended hook, context, layout, and EventSource-to-context integration tests for ready-triggered root/loaded-directory refreshes, stale-scope rejection, `setFileTreeLoading` non-mutation, and transient failure preservation.
+
 ## Test Results
 
+- Ready-refresh corrective targeted diagnostics passed:
+  - `npm run test -- src/hooks/use-file-tree-sync.test.ts src/lib/workspace-context.test.tsx src/components/workspace-layout.test.tsx src/lib/file-tree-sync-integration.test.tsx`
+  - Result: 4 files / 116 tests passed at `2026-06-15T11:10:48Z`.
+- Latest harness test:
+  - `./harness test --json` passed at `2026-06-15T11:11:14Z`.
+- Latest harness verify:
+  - `./harness verify --json` passed at `2026-06-15T11:15:51Z` with lint, format check, build, test, and smoke passing.
+  - Final evidence file: `.harness/evidence/verify-20260615T111500Z-48344.json`.
 - Corrective preflight targeted diagnostics passed:
   - `npm run test -- src/app/api/files/events/route.test.ts src/hooks/use-file-tree-sync.test.ts src/lib/file-tree-sync-integration.test.tsx`
   - Result: 3 files / 24 tests passed at `2026-06-15T10:48:34Z`.
