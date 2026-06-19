@@ -15,6 +15,7 @@ import {
 import { ErrorBoundary } from "@/components/error-boundary";
 import { FileTree } from "@/components/file-tree";
 import { TerminalPanel } from "@/components/terminal-panel";
+import { useFileTreeSync } from "@/hooks/use-file-tree-sync";
 import { useOpenProjects } from "@/lib/open-projects-context";
 
 const FileViewer = dynamic(() => import("@/components/file-viewer"), {
@@ -28,6 +29,8 @@ const FileViewer = dynamic(() => import("@/components/file-viewer"), {
 import { useWorkspace } from "@/lib/workspace-context";
 import { cn } from "@/lib/utils";
 import type { Project } from "@/lib/types";
+
+const ROOT_FILE_TREE_POLL_INTERVAL_MS = 5000;
 
 function PanelToggle({
   icon: Icon,
@@ -77,16 +80,56 @@ function ExplorerContent({
   error,
   nodes,
   onRetry,
+  syncStatus,
+  syncError,
+  onSyncRetry,
 }: {
   loading: boolean;
   error: string | null;
   nodes: import("@/lib/types").FileNode[];
   onRetry: () => void;
+  syncStatus: import("@/lib/types").FileTreeSyncStatus;
+  syncError: import("@/lib/types").FileTreeSyncError | null;
+  onSyncRetry: () => void;
 }) {
+  const syncText =
+    syncStatus === "connecting"
+      ? "File sync connecting…"
+      : syncStatus === "ready"
+        ? "File sync ready"
+        : syncStatus === "syncing"
+          ? "File sync applying changes…"
+          : syncStatus === "degraded"
+            ? (syncError?.message ?? "File sync degraded — polling every 5 seconds.")
+            : syncStatus === "unauthorized"
+              ? "File sync unauthorized — reopen DevDeck with a valid token."
+              : (syncError?.message ?? "File sync error.");
+  const canRetry = Boolean(syncError?.retryable);
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex h-8 shrink-0 items-center border-b border-border bg-card/50 px-3">
+      <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border bg-card/50 px-3">
         <span className="font-mono text-xs font-medium text-muted-foreground">Explorer</span>
+        <div className="ml-auto flex min-w-0 items-center gap-2">
+          <span
+            className="truncate text-[10px] text-muted-foreground"
+            role="status"
+            aria-live="polite"
+            title={syncText}
+          >
+            {syncText}
+          </span>
+          {canRetry && (
+            <button
+              type="button"
+              onClick={onSyncRetry}
+              className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              aria-label="Retry file tree sync"
+            >
+              Retry Sync
+            </button>
+          )}
+        </div>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
         <ErrorBoundary>
@@ -135,6 +178,15 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     fileTreeError,
     setFileTreeLoading,
     refreshFileTree,
+    fileTreeSyncStatus,
+    fileTreeSyncError,
+    fileTreeSyncFallbackActive,
+    fileTreeSyncRetryNonce,
+    retryFileTreeSync,
+    refreshFileTreeScope,
+    invalidateFileTreeScope,
+    updateFileTreeSyncState,
+    setFileTreeSyncFallbackActive,
     showExplorer,
     showFileViewer,
     showTerminal,
@@ -151,6 +203,16 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
   useEffect(() => {
     setProject(project);
   }, [project, setProject]);
+
+  useFileTreeSync({
+    slug: project.slug,
+    worktree: activeWorktree,
+    retryNonce: fileTreeSyncRetryNonce,
+    onStatusChange: updateFileTreeSyncState,
+    onFallbackChange: setFileTreeSyncFallbackActive,
+    onReady: refreshFileTreeScope,
+    onChanged: invalidateFileTreeScope,
+  });
 
   const loadCountRef = useRef(0);
 
@@ -188,6 +250,42 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
       cancelled = true;
     };
   }, [activeWorktree, project.slug, loadRootFileTree]);
+
+  useEffect(() => {
+    if (!fileTreeSyncFallbackActive) return;
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+
+    let intervalId: number | undefined;
+    const refresh = () => {
+      void refreshFileTree(project.slug);
+    };
+    const stopPolling = () => {
+      if (intervalId === undefined) return;
+      window.clearInterval(intervalId);
+      intervalId = undefined;
+    };
+    const startPolling = () => {
+      if (document.visibilityState === "hidden" || intervalId !== undefined) return;
+      intervalId = window.setInterval(refresh, ROOT_FILE_TREE_POLL_INTERVAL_MS);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        stopPolling();
+        return;
+      }
+
+      refresh();
+      startPolling();
+    };
+
+    startPolling();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [activeWorktree, fileTreeSyncFallbackActive, project.slug, refreshFileTree]);
 
   const handleRetry = useCallback(() => {
     void loadRootFileTree(project.slug);
@@ -331,6 +429,9 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
             error={fileTreeError}
             nodes={fileTree}
             onRetry={handleRetry}
+            syncStatus={fileTreeSyncStatus}
+            syncError={fileTreeSyncError}
+            onSyncRetry={retryFileTreeSync}
           />
         </Panel>
 

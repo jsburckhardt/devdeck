@@ -11,6 +11,7 @@ This file is the single registry of all architectural decisions and core-compone
 | ADR-0004 | Token-Based Authentication | Accepted (amended) | 2026-05-24 |
 | ADR-0005 | Copilot CLI Status Detection Strategy | Accepted (amended) | 2026-06-11 |
 | ADR-0006 | Config File-Driven Configuration System | Accepted | 2026-05-24 |
+| ADR-0007 | Filesystem Sync Transport Strategy - Server-Push SSE with Polling Fallback | Accepted | 2026-06-15 |
 
 ## Core-Components
 
@@ -19,10 +20,10 @@ This file is the single registry of all architectural decisions and core-compone
 | CORE-COMPONENT-0002 | Commit Standards | Adopted | 2026-05-05 |
 | CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2026-06-11 |
 | CORE-COMPONENT-0004 | Theming | Adopted (updated) | 2026-05-21 |
-| CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2025-07-16 |
+| CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2026-06-15 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
 | CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-06-11 |
-| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-06-11 |
+| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-06-15 |
 | CORE-COMPONENT-0009 | Engineering Harness | Adopted (updated) | 2026-06-11 |
 
 ## Decisions
@@ -228,3 +229,39 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 195 | Disclose browser speech processing and shell-history implications beside voice review | CORE-COMPONENT-0003 | 2026-06-11 |
 | 196 | Keep voice transcripts panel-local; prohibit OpenProjects or browser-storage persistence | CORE-COMPONENT-0003 | 2026-06-11 |
 | 197 | Supersede Decision #178: render visible microphone entry point with accessible unsupported state | CORE-COMPONENT-0003 | 2026-06-11 |
+| 198 | Use client-side polling for near-realtime file explorer synchronization (Superseded by #213) | CORE-COMPONENT-0008 | 2026-06-15 |
+| 199 | Poll active root file-tree state every five seconds (Superseded by #214) | CORE-COMPONENT-0008 | 2026-06-15 |
+| 200 | Limit polling to root file-tree refreshes; keep child directories lazy (Superseded by #215) | CORE-COMPONENT-0008 | 2026-06-15 |
+| 201 | Pause polling while documents are hidden (Superseded by #216) | CORE-COMPONENT-0008 | 2026-06-15 |
+| 202 | Refresh file-tree and worktree lists immediately when visible (Superseded by #217) | CORE-COMPONENT-0008 | 2026-06-15 |
+| 203 | Reuse refreshFileTree no-store, deduplication, stale guards, and silent refresh (Superseded by #218) | CORE-COMPONENT-0008 | 2026-06-15 |
+| 204 | Co-refresh active project worktree lists with no-store polling (Superseded by #219) | CORE-COMPONENT-0008 | 2026-06-15 |
+| 205 | Clean up polling timers and visibility listeners on lifecycle changes (Superseded by #220) | CORE-COMPONENT-0008 | 2026-06-15 |
+| 206 | Guard polling browser APIs for SSR and tests (Superseded by #221) | CORE-COMPONENT-0008 | 2026-06-15 |
+| 207 | Use SSE `/api/files/events` for file-tree invalidation transport | ADR-0007 | 2026-06-15 |
+| 208 | Refresh canonical file-tree state through existing `/api/files` responses | ADR-0007 | 2026-06-15 |
+| 209 | Adopt chokidar for server-side filesystem watcher normalization | ADR-0007 | 2026-06-15 |
+| 210 | Debounce file sync batches for 250 ms before broadcasting | ADR-0007 | 2026-06-15 |
+| 211 | Limit file sync event batches to 256 relative path hints | ADR-0007 | 2026-06-15 |
+| 212 | Require same-origin authenticated access for file sync event streams | ADR-0007 | 2026-06-15 |
+| 213 | Supersede Decision #198: use SSE as primary file explorer synchronization | CORE-COMPONENT-0008 | 2026-06-15 |
+| 214 | Supersede Decision #199: poll every five seconds only during degraded fallback | CORE-COMPONENT-0008 | 2026-06-15 |
+| 215 | Supersede Decision #200: invalidate loaded directories from server-push events | CORE-COMPONENT-0008 | 2026-06-15 |
+| 216 | Supersede Decision #201: pause degraded fallback polling while hidden | CORE-COMPONENT-0008 | 2026-06-15 |
+| 217 | Supersede Decision #202: refresh immediately after ready, retry, or visible fallback | CORE-COMPONENT-0008 | 2026-06-15 |
+| 218 | Supersede Decision #203: reuse `refreshFileTree` after every invalidation hint | CORE-COMPONENT-0008 | 2026-06-15 |
+| 219 | Supersede Decision #204: poll worktree lists only as degraded fallback | CORE-COMPONENT-0008 | 2026-06-15 |
+| 220 | Supersede Decision #205: clean up EventSource, timers, listeners, and watchers | CORE-COMPONENT-0008 | 2026-06-15 |
+| 221 | Supersede Decision #206: guard EventSource and polling browser APIs | CORE-COMPONENT-0008 | 2026-06-15 |
+| 222 | Require `file-tree:ready`, `file-tree:changed`, and `file-tree:degraded` events | CORE-COMPONENT-0008 | 2026-06-15 |
+| 223 | Expose file-tree sync status and retry through WorkspaceContext | CORE-COMPONENT-0008 | 2026-06-15 |
+| 224 | Ignore file-tree events for stale project or worktree scopes | CORE-COMPONENT-0008 | 2026-06-15 |
+| 225 | Refresh loaded directories affected by file-tree invalidation events | CORE-COMPONENT-0008 | 2026-06-15 |
+| 226 | Update collapsed directory `hasChildren` metadata after invalidation refreshes | CORE-COMPONENT-0008 | 2026-06-15 |
+| 227 | Require accessible live status for file-tree sync states | CORE-COMPONENT-0005 | 2026-06-15 |
+| 228 | Retry recoverable file sync failures before entering degraded polling | CORE-COMPONENT-0005 | 2026-06-15 |
+| 229 | Prohibit automatic retry for auth, origin, and invalid-parameter sync failures | CORE-COMPONENT-0005 | 2026-06-15 |
+| 230 | Expose manual retry for degraded file-tree sync connections | CORE-COMPONENT-0005 | 2026-06-15 |
+| 231 | Preserve visible explorer state during sync failures and fallback polling | CORE-COMPONENT-0005 | 2026-06-15 |
+| 232 | Preserve 5000 ms polling only as degraded fallback | ADR-0007 | 2026-06-15 |
+| 233 | Clear selected files deleted by canonical sync refreshes | CORE-COMPONENT-0008 | 2026-06-15 |

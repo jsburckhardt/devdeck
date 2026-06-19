@@ -50,6 +50,57 @@ export interface FileNode {
   truncatedReason?: "max-depth" | "entry-limit";
 }
 
+export interface FileTreeSyncScope {
+  slug: string;
+  worktree: string | null;
+}
+
+export type FileTreeSyncStatus =
+  | "connecting"
+  | "ready"
+  | "syncing"
+  | "degraded"
+  | "error"
+  | "unauthorized";
+
+export interface FileTreeSyncError {
+  code: string;
+  message: string;
+  retryable: boolean;
+  fatal?: boolean;
+  retryAfterMs?: number;
+  pollIntervalMs?: number;
+}
+
+export interface FileTreeReadyEvent {
+  type: "file-tree:ready";
+  scope: FileTreeSyncScope;
+  pollIntervalMs: number;
+}
+
+export interface FileTreeChangedEvent {
+  type: "file-tree:changed";
+  scope: FileTreeSyncScope;
+  paths: string[];
+  directories: string[];
+  rootChanged: boolean;
+  gitStatusChanged: boolean;
+  truncated: boolean;
+  version: number;
+}
+
+export interface FileTreeDegradedEvent {
+  type: "file-tree:degraded";
+  scope: FileTreeSyncScope;
+  code: string;
+  message: string;
+  retryAfterMs?: number;
+  pollIntervalMs: number;
+  fatal?: boolean;
+}
+
+export type FileTreeSyncEvent = FileTreeReadyEvent | FileTreeChangedEvent | FileTreeDegradedEvent;
+
 export interface FileContent {
   content: string;
   language: string;
