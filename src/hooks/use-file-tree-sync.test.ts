@@ -189,6 +189,11 @@ describe("useFileTreeSync", () => {
     });
 
     expect(onReady).toHaveBeenCalledWith(scope);
+    await act(async () => {
+      MockEventSource.instances[0].emit("file-tree:ready", readyEvent);
+      await Promise.resolve();
+    });
+    expect(onReady).toHaveBeenCalledTimes(1);
     expect(onStatusChange).toHaveBeenLastCalledWith("ready", null);
     expect(onFallbackChange).toHaveBeenLastCalledWith(false);
 

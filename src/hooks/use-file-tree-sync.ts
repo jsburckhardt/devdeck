@@ -331,6 +331,7 @@ export function useFileTreeSync({
       }
       const nextSource = createEventSource(url);
       source = nextSource;
+      let readyRefreshDispatched = false;
 
       const heartbeatTimeout = () => {
         handleRecoverableFailure(
@@ -355,7 +356,8 @@ export function useFileTreeSync({
         resetHeartbeatTimer(heartbeatTimeout);
         onFallbackChange(false);
         onStatusChange("ready", null);
-        if (onReady) {
+        if (onReady && !readyRefreshDispatched) {
+          readyRefreshDispatched = true;
           void Promise.resolve()
             .then(() => onReady(payload.scope))
             .catch(() => {

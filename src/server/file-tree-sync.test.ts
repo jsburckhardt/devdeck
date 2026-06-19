@@ -265,4 +265,25 @@ describe("file-tree sync watcher helper", () => {
     expect(watchers[0].close).toHaveBeenCalledTimes(1);
     expect(getFileTreeSyncRegistrySnapshotForTests()).toEqual([]);
   });
+
+  it("removes abort listeners when subscribers manually unsubscribe before abort", async () => {
+    const controller = new AbortController();
+    const addAbortListener = vi.spyOn(controller.signal, "addEventListener");
+    const removeAbortListener = vi.spyOn(controller.signal, "removeEventListener");
+
+    const subscription = await subscribeFileTreeChanges({
+      slug: "demo",
+      onChange: () => undefined,
+      signal: controller.signal,
+    });
+
+    expect(subscription.ok).toBe(true);
+    expect(addAbortListener).toHaveBeenCalledWith("abort", expect.any(Function), { once: true });
+
+    if (subscription.ok) subscription.unsubscribe();
+
+    expect(removeAbortListener).toHaveBeenCalledWith("abort", expect.any(Function));
+    controller.abort();
+    expect(watchers[0].close).toHaveBeenCalledTimes(1);
+  });
 });

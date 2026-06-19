@@ -371,21 +371,23 @@ function addSubscriber(
   };
   entry.subscribers.set(id, subscriber);
 
+  const abortSignal = options.signal;
   let unsubscribed = false;
   const unsubscribe = () => {
     if (unsubscribed) return;
     unsubscribed = true;
+    abortSignal?.removeEventListener("abort", unsubscribe);
     entry.subscribers.delete(id);
     if (entry.subscribers.size === 0) {
       closeEntry(entry);
     }
   };
 
-  if (options.signal) {
-    if (options.signal.aborted) {
+  if (abortSignal) {
+    if (abortSignal.aborted) {
       unsubscribe();
     } else {
-      options.signal.addEventListener("abort", unsubscribe, { once: true });
+      abortSignal.addEventListener("abort", unsubscribe, { once: true });
     }
   }
 
