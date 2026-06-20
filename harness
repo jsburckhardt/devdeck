@@ -574,6 +574,8 @@ SMOKE_REPO_REALPATH=""
 SMOKE_REPO_ID=""
 SMOKE_LOCK_BUSY_REASON=""
 SMOKE_SELECTED_PORT=""
+SMOKE_PORT_MODE="auto"
+SMOKE_HTTP_STATUS=""
 
 _smoke_usage() {
   cat <<'EOF'
@@ -961,6 +963,17 @@ _smoke_metadata() {
     "$(_json_escape "$reason")"
 }
 
+_smoke_verify_metadata() {
+  local selected_json="null"
+  local http_status_json="null"
+  if [[ -n "$SMOKE_SELECTED_PORT" ]]; then selected_json="$SMOKE_SELECTED_PORT"; fi
+  if [[ -n "$SMOKE_HTTP_STATUS" ]]; then http_status_json="$SMOKE_HTTP_STATUS"; fi
+  printf '{"portMode":"%s","selectedPort":%s,"httpStatus":%s,"timeoutSeconds":60,"pollIntervalMs":1000}' \
+    "$(_json_escape "$SMOKE_PORT_MODE")" \
+    "$selected_json" \
+    "$http_status_json"
+}
+
 _smoke_capability_unknown() {
   local missing="$1" port_mode="$2" selected_port="$3" start_time="$4" candidate_attempts="${5:-0}" readiness_attempts="${6:-0}"
   local end_time duration_ms
@@ -974,6 +987,9 @@ _smoke_capability_unknown() {
   SMOKE_EXIT_CODE=3
   SMOKE_MESSAGE="Missing required smoke capability: $missing"
   SMOKE_DURATION_MS="$duration_ms"
+  SMOKE_PORT_MODE="$port_mode"
+  SMOKE_SELECTED_PORT="$selected_port"
+  SMOKE_HTTP_STATUS=""
   SMOKE_METADATA_JSON="$(_smoke_metadata "$port_mode" "$selected_port" "$candidate_attempts" "$readiness_attempts" "" "$duration_ms" "missing_capability")"
   return 3
 }
@@ -1123,6 +1139,8 @@ _smoke_run() {
   SMOKE_CHILD_PID=""
   SMOKE_PROCESS_GROUP_ID=""
   SMOKE_SELECTED_PORT=""
+  SMOKE_PORT_MODE="$port_mode"
+  SMOKE_HTTP_STATUS=""
   SMOKE_LOCK_DIR=""
   SMOKE_METADATA_FILE=""
   SMOKE_LOCK_OWNED=false
@@ -1234,6 +1252,9 @@ _smoke_run() {
     *) SMOKE_MESSAGE="Smoke unknown: $reason" ;;
   esac
 
+  SMOKE_PORT_MODE="$port_mode"
+  SMOKE_SELECTED_PORT="$selected_port"
+  SMOKE_HTTP_STATUS="$accepted_status"
   SMOKE_METADATA_JSON="$(_smoke_metadata "$port_mode" "$selected_port" "$candidate_attempts" "$readiness_attempts" "$accepted_status" "$duration_ms" "$reason")"
 
   _smoke_cleanup
@@ -1307,7 +1328,7 @@ cmd_smoke() {
   local command_label="npm run start -- --hostname 127.0.0.1 --port <selectedPort>"
   local steps_json="{\"name\":\"smoke\",\"verdict\":\"$SMOKE_VERDICT\",\"exitCode\":$SMOKE_EXIT_CODE,\"durationMs\":$SMOKE_DURATION_MS,\"metadata\":$SMOKE_METADATA_JSON}"
   if $JSON_MODE; then
-    _json_result_steps_meta "smoke" "$SMOKE_VERDICT" "$steps_json" "" "$SMOKE_MESSAGE" "$SMOKE_METADATA_JSON"
+    _json_result_steps_meta "smoke" "$SMOKE_VERDICT" "$steps_json" "" "$SMOKE_MESSAGE" "$SMOKE_METADATA_JSON" "$command_label"
   else
     echo ""
     echo "Verb: $(_bold "smoke") — Built-app loopback smoke"
@@ -1415,14 +1436,16 @@ cmd_verify() {
   set +e
   _smoke_run "auto" ""
   set -e
+  local verify_smoke_metadata
+  verify_smoke_metadata="$(_smoke_verify_metadata)"
 
   if ! $JSON_MODE; then
     printf "%s (%dms)\n" "$(_verdict_label "$SMOKE_VERDICT")" "$SMOKE_DURATION_MS"
   fi
 
   if [[ -n "$steps_json" ]]; then steps_json+=","; fi
-  steps_json+="{\"name\":\"smoke\",\"verdict\":\"$SMOKE_VERDICT\",\"exitCode\":$SMOKE_EXIT_CODE,\"durationMs\":$SMOKE_DURATION_MS,\"metadata\":$SMOKE_METADATA_JSON}"
-  step_results+=("{\"name\":\"smoke\",\"verdict\":\"$SMOKE_VERDICT\",\"exitCode\":$SMOKE_EXIT_CODE,\"durationMs\":$SMOKE_DURATION_MS,\"description\":\"Start the built app on loopback and probe HTTP readiness\",\"metadata\":$SMOKE_METADATA_JSON}")
+  steps_json+="{\"name\":\"smoke\",\"verdict\":\"$SMOKE_VERDICT\",\"exitCode\":$SMOKE_EXIT_CODE,\"durationMs\":$SMOKE_DURATION_MS,\"metadata\":$verify_smoke_metadata}"
+  step_results+=("{\"name\":\"smoke\",\"verdict\":\"$SMOKE_VERDICT\",\"exitCode\":$SMOKE_EXIT_CODE,\"durationMs\":$SMOKE_DURATION_MS,\"description\":\"Start the built app and verify it responds to HTTP\",\"metadata\":$verify_smoke_metadata}")
   _aggregate_verdict "$SMOKE_VERDICT"
 
   # Write evidence

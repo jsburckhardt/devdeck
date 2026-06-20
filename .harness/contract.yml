@@ -108,6 +108,21 @@ verbs:
       shared_implementation: true
       sequence_position: after test
       continue_on_failure: true
+      evidence_metadata:
+        allowed: [portMode, selectedPort, httpStatus, timeoutSeconds, pollIntervalMs]
+        excluded_from_verify_evidence:
+          [
+            bindHost,
+            probeHost,
+            autoRange,
+            maxCandidateAttempts,
+            candidateAttempts,
+            readinessAttempts,
+            acceptedStatus,
+            durationMs,
+            cleanup,
+            reason,
+          ]
 
   - name: smoke
     command: "npm run start -- --hostname 127.0.0.1 --port <selectedPort>"

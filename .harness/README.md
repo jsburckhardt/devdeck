@@ -75,7 +75,7 @@ JSON schema:
 - Evidence is written to `.harness/evidence/verify-{timestamp}-{PID}.json`
 - Evidence contains only: command name, exit code, duration, verdict, timestamp, summary
 - Evidence **never** includes secrets, tokens, env vars, or raw logs
-- Verify reuses the same smoke implementation as `./harness smoke` and embeds sanitized smoke metadata in evidence.
+- Verify reuses the same smoke implementation as `./harness smoke` and embeds only the stable smoke evidence metadata: `portMode`, `selectedPort`, `httpStatus`, `timeoutSeconds`, and `pollIntervalMs`.
 
 ## Targeted Tests
 
@@ -129,10 +129,13 @@ Smoke does not run `build`; use `./harness build` first or `./harness verify` fo
 
 Harness JSON and evidence exclude raw stdout/stderr, response bodies, redirect
 locations, tokens, cookies, query strings, environment variables, credential URLs,
-and external absolute paths. Test target metadata converts repo-absolute paths to
-repo-relative paths, redacts outside-repo absolute paths, strips query/control
-characters, caps labels at 200 characters, sets top-level `truncated: true`
-when any label was capped, and includes `targeted`/`targetCount` summary fields.
+and external absolute paths. Standalone smoke JSON may include richer sanitized
+lifecycle metadata, but verify smoke evidence is intentionally limited to
+`portMode`, `selectedPort`, `httpStatus`, `timeoutSeconds`, and `pollIntervalMs`.
+Test target metadata converts repo-absolute paths to repo-relative paths,
+redacts outside-repo absolute paths, strips query/control characters, caps labels
+at 200 characters, sets top-level `truncated: true` when any label was capped,
+and includes `targeted`/`targetCount` summary fields.
 
 ## Friction
 

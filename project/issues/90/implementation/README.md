@@ -204,6 +204,18 @@
 
 - Extra non-conflicting discovery fields such as smoke usage, smoke auto range, and targeted-test examples were preserved.
 
+## PR Review Complement: Smoke JSON command and verify evidence metadata
+
+- **Status:** Complete
+- **Files Changed:** `harness`, `src/harness/harness-cli.test.ts`, `.harness/README.md`, `.harness/contract.yml`, `project/issues/90/implementation/README.md`
+
+### Changes Summary
+
+- Populated `./harness smoke --json` with the documented command summary `npm run start -- --hostname 127.0.0.1 --port <selectedPort>`.
+- Narrowed `./harness verify --json` and verify evidence smoke-step metadata to the stable contract: `portMode`, `selectedPort`, `httpStatus`, `timeoutSeconds`, and `pollIntervalMs`.
+- Kept richer smoke lifecycle metadata on standalone `./harness smoke --json`.
+- Updated tests and documentation for the review feedback.
+
 ## Task T3/T7 Follow-up: Add race-safe smoke runtime ownership metadata
 
 - **Status:** Complete

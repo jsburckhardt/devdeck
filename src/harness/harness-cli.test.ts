@@ -582,6 +582,7 @@ describe("harness smoke", () => {
       expect(result.status).toBe(0);
       const json = parseJson(result);
       expect(json.verdict).toBe("pass");
+      expect(json.command).toBe("npm run start -- --hostname 127.0.0.1 --port <selectedPort>");
       expect(json.metadata.portMode).toBe("auto");
       expect(json.metadata.selectedPort).toBe(startPort + 1);
       expect(json.metadata.candidateAttempts).toBe(2);
@@ -876,18 +877,29 @@ describe("harness verify shared smoke evidence", () => {
     const evidencePath = path.join(repoRoot, json.evidence);
     const evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
     const smokeStep = evidence.steps.find((step: { name: string }) => step.name === "smoke");
-    expect(smokeStep.metadata.bindHost).toBe("127.0.0.1");
+    expect(smokeStep.metadata).toEqual({
+      portMode: "auto",
+      selectedPort: startPort,
+      httpStatus: 200,
+      timeoutSeconds: 60,
+      pollIntervalMs: 1000,
+    });
+    const jsonSmokeStep = json.steps.find((step: { name: string }) => step.name === "smoke");
+    expect(jsonSmokeStep.metadata).toEqual(smokeStep.metadata);
+    expect(smokeStep.metadata.bindHost).toBeUndefined();
+    expect(smokeStep.metadata.reason).toBeUndefined();
+    expect(smokeStep.metadata.readinessAttempts).toBeUndefined();
     expect(JSON.stringify(evidence)).not.toContain("stdout");
     expect(JSON.stringify(evidence)).not.toContain("stderr");
     expect(JSON.stringify(evidence)).not.toContain("token=secret");
   });
 
   it.each([
-    ["fail", "http4xx", 1, "fail", "http_4xx"],
-    ["unknown", "pass", 3, "unknown", "missing_capability"],
+    ["fail", "http4xx", 1, "fail", 401],
+    ["unknown", "pass", 3, "unknown", null],
   ])(
     "aggregates smoke %s verdicts from the shared smoke implementation",
-    async (_name, startMode, expectedStatus, expectedVerdict, expectedReason) => {
+    async (_name, startMode, expectedStatus, expectedVerdict, expectedHttpStatus) => {
       const recordPath = path.join(testDir, "npm-record.jsonl");
       const fakeNpm = createFakeNpm();
       const startPort = await findConsecutivePorts(1);
@@ -906,7 +918,13 @@ describe("harness verify shared smoke evidence", () => {
       const json = parseJson(result);
       expect(json.verdict).toBe(expectedVerdict);
       const smokeStep = json.steps.find((step: { name: string }) => step.name === "smoke");
-      expect(smokeStep.metadata.reason).toBe(expectedReason);
+      expect(smokeStep.metadata).toMatchObject({
+        portMode: "auto",
+        httpStatus: expectedHttpStatus,
+        timeoutSeconds: 60,
+        pollIntervalMs: 1000,
+      });
+      expect(smokeStep.metadata.reason).toBeUndefined();
     },
   );
 
@@ -928,7 +946,14 @@ describe("harness verify shared smoke evidence", () => {
       const json = parseJson(result);
       expect(json.verdict).toBe("degraded");
       const smokeStep = json.steps.find((step: { name: string }) => step.name === "smoke");
-      expect(smokeStep.metadata.reason).toBe("auto_port_exhausted");
+      expect(smokeStep.metadata).toMatchObject({
+        portMode: "auto",
+        selectedPort: startPort,
+        httpStatus: null,
+        timeoutSeconds: 60,
+        pollIntervalMs: 1000,
+      });
+      expect(smokeStep.metadata.reason).toBeUndefined();
     } finally {
       await closeServer(occupied);
     }
