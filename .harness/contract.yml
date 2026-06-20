@@ -54,10 +54,24 @@ verbs:
     source: package.json
 
   - name: test
-    command: "npm run test"
-    description: Run vitest test suite
+    command: "npm run test [-- <vitest args...>]"
+    description: Run vitest test suite, optionally forwarding targeted Vitest args after --
     json: true
     source: package.json
+    passthrough:
+      delimiter: "--"
+      no_args_command: "npm run test"
+      targeted_command: "npm run test -- <vitest args...>"
+      json_command:
+        full_suite: "npm run test"
+        targeted_summary: "npm run test -- <N target(s)>"
+      harness_json_scope: "recognized before passthrough delimiter only"
+      safety: "arguments forwarded through shell arrays; no eval"
+      metadata:
+        targeted: "false for full-suite runs; true when Vitest args are forwarded"
+        targets: "array of sanitized string labels only; [] for full-suite runs"
+        targetCount: "count of forwarded Vitest args; 0 for full-suite runs"
+        truncated: "true when any sanitized label was capped; false otherwise"
 
   - name: build
     command: "npm run build"
@@ -87,9 +101,106 @@ verbs:
       - name: test
         command: "npm run test"
       - name: smoke
-        command: "npx next start --port 9999 (poll then kill)"
+        command: "shared smoke implementation (auto loopback port)"
     evidence_dir: .harness/evidence/
     step_timeout_seconds: 300
+    smoke:
+      shared_implementation: true
+      sequence_position: after test
+      continue_on_failure: true
+      evidence_metadata:
+        allowed: [portMode, selectedPort, httpStatus, timeoutSeconds, pollIntervalMs]
+        excluded_from_verify_evidence:
+          [
+            bindHost,
+            probeHost,
+            autoRange,
+            maxCandidateAttempts,
+            candidateAttempts,
+            readinessAttempts,
+            acceptedStatus,
+            durationMs,
+            cleanup,
+            reason,
+          ]
+
+  - name: smoke
+    command: "npm run start -- --hostname 127.0.0.1 --port <selectedPort>"
+    description: Start the existing production build on loopback and probe HTTP readiness
+    json: true
+    source: package.json start script
+    usage: "./harness smoke [--port auto|PORT] [--json]"
+    build_behavior: "does not run build; missing production build is fail"
+    bind_host: "127.0.0.1"
+    probe:
+      url: "http://127.0.0.1:<port>/"
+      follow_redirects: false
+      interval_seconds: 1
+      max_attempts: 60
+      accepted_statuses: [200, 301, 302, 303, 307, 308]
+    port_modes:
+      default: auto
+      auto:
+        range: "41000-41999"
+        max_candidates: 50
+        exhausted_verdict: degraded
+      fixed:
+        accepted_values: "1-65535"
+        conflict_verdict: degraded
+    verdict_mapping:
+      pass: "accepted HTTP status"
+      fail: "missing build, start failure, readiness timeout, or HTTP 4xx/5xx"
+      degraded: "fixed-port conflict or bounded auto-port exhaustion/race"
+      unknown: "missing npm/start command or probe capability"
+    cleanup:
+      traps: [EXIT, INT, TERM]
+      ownership: "kills only harness-owned child/process group"
+      forbidden: "port-based killing"
+    runtime_metadata:
+      directory: .harness/run/
+      lock_strategy: "atomic checkout/worktree-scoped smoke-<repo-hash>-<port>.lock directories"
+      owner_file: owner.json
+      scope: "repo realpath/safe identity plus selected port"
+      records:
+        [
+          selected port,
+          parent harness pid,
+          child pid,
+          process group id,
+          safe repo identity,
+          sanitized command summary,
+          timestamp,
+        ]
+      stale_handling:
+        process_gone: "remove stale metadata safely"
+        proven_owned_live_process: "terminate only when repo/worktree identity and command summary match"
+        unproven_live_process: "do not kill; treat candidate as unavailable"
+      auto_port_race_safety: "lock candidate before post-lock availability check; release and retry on races/EADDRINUSE"
+    metadata_policy:
+      allowed:
+        [
+          port mode,
+          selected port,
+          bind/probe host,
+          candidate attempts,
+          readiness attempts,
+          accepted status,
+          duration,
+          cleanup outcome,
+          bounded reason code,
+        ]
+      forbidden:
+        [
+          raw stdout/stderr,
+          response bodies,
+          redirect locations,
+          tokens,
+          cookies,
+          query strings,
+          environment variables,
+          credential URLs,
+          external absolute paths,
+        ]
 
   - name: status
     command: null
@@ -179,8 +290,36 @@ evidence:
   naming: "verify-{ISO-timestamp}-{PID}.json"
   retention: local-only (gitignored)
   content_policy:
-    allowed: [command name, exit code, duration, verdict, timestamp, sanitized summary]
-    forbidden: [raw stdout/stderr, secrets, tokens, env vars, absolute home paths, credential URLs]
+    allowed:
+      [
+        command name,
+        exit code,
+        duration,
+        verdict,
+        timestamp,
+        sanitized summary,
+        sanitized smoke/test metadata,
+      ]
+    forbidden:
+      [
+        raw stdout/stderr,
+        secrets,
+        tokens,
+        env vars,
+        query strings,
+        response bodies,
+        redirect locations,
+        absolute home paths,
+        credential URLs,
+        external absolute paths,
+      ]
+
+runtime:
+  directory: .harness/run/
+  retention: local-only (gitignored)
+  content_policy:
+    allowed: [secret-free smoke ownership metadata, runtime scratch data, and test fixture metadata]
+    forbidden: [secrets, tokens, raw logs, credential URLs]
 
 friction:
   path: .harness/friction.jsonl

@@ -10,7 +10,10 @@ HARNESS_META_DIR="$HARNESS_DIR/.harness"
 CONTRACT_PATH="$HARNESS_META_DIR/contract.yml"
 FRICTION_PATH="$HARNESS_META_DIR/friction.jsonl"
 EVIDENCE_DIR="$HARNESS_META_DIR/evidence"
+RUN_DIR="$HARNESS_META_DIR/run"
 VERSION="1.0.0"
+NPM_BIN="${HARNESS_NPM_BIN:-npm}"
+CURL_BIN="${HARNESS_CURL_BIN:-curl}"
 
 # ── Color support ──────────────────────────────────────────────
 USE_COLOR=true
@@ -84,22 +87,50 @@ _json_result_steps() {
     "$ts"
 }
 
+_json_result_meta() {
+  local verb="$1" verdict="$2" command="${3:-}" message="${4:-}" evidence="${5:-}" metadata_json="${6:-null}"
+  local ts
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"verb":"%s","verdict":"%s","command":%s,"steps":[],"evidence":%s,"message":"%s","timestamp":"%s","metadata":%s}\n' \
+    "$(_json_escape "$verb")" \
+    "$(_json_escape "$verdict")" \
+    "$(if [[ -n "$command" ]]; then printf '"%s"' "$(_json_escape "$command")"; else printf 'null'; fi)" \
+    "$(if [[ -n "$evidence" ]]; then printf '"%s"' "$(_json_escape "$evidence")"; else printf 'null'; fi)" \
+    "$(_json_escape "$message")" \
+    "$ts" \
+    "$metadata_json"
+}
+
+_json_result_steps_meta() {
+  local verb="$1" verdict="$2" steps_json="$3" evidence="${4:-}" message="${5:-}" metadata_json="${6:-null}" command="${7:-}"
+  local ts
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"verb":"%s","verdict":"%s","command":%s,"steps":[%s],"evidence":%s,"message":"%s","timestamp":"%s","metadata":%s}\n' \
+    "$(_json_escape "$verb")" \
+    "$(_json_escape "$verdict")" \
+    "$(if [[ -n "$command" ]]; then printf '"%s"' "$(_json_escape "$command")"; else printf 'null'; fi)" \
+    "$steps_json" \
+    "$(if [[ -n "$evidence" ]]; then printf '"%s"' "$(_json_escape "$evidence")"; else printf 'null'; fi)" \
+    "$(_json_escape "$message")" \
+    "$ts" \
+    "$metadata_json"
+}
+
 # ── Globals ────────────────────────────────────────────────────
 JSON_MODE=false
 STEP_TIMEOUT=300  # 5 minutes
 
-# ── Parse global flags ─────────────────────────────────────────
-ARGS=()
-for arg in "$@"; do
-  case "$arg" in
-    --json) JSON_MODE=true ;;
-    *)      ARGS+=("$arg") ;;
-  esac
-done
-set -- "${ARGS[@]+"${ARGS[@]}"}"
-
 # ── Ensure .harness dir exists ─────────────────────────────────
 mkdir -p "$HARNESS_META_DIR" "$EVIDENCE_DIR"
+
+_parse_json_only_args() {
+  while [[ $# -gt 0 ]]; do
+    if [[ "$1" == "--json" ]]; then
+      JSON_MODE=true
+    fi
+    shift
+  done
+}
 
 # ── Verb: help ─────────────────────────────────────────────────
 cmd_help() {
@@ -113,8 +144,9 @@ $(_bold "Verbs:")
   orient          Describe detected project surfaces and command mapping
   doctor          Check local prerequisites and project health
   lint            Run ESLint on the codebase
-  test            Run vitest test suite
+  test            Run vitest test suite; pass targets after --
   build           Build the Next.js application
+  smoke           Start the built app and probe loopback HTTP readiness
   boot            Start the development server
   verify          Run full verification sequence and write evidence
   status          Report harness configuration and recent evidence
@@ -124,6 +156,13 @@ $(_bold "Verbs:")
 
 $(_bold "Options:")
   --json          Output machine-readable JSON (supported by most verbs)
+
+$(_bold "Examples:")
+  ./harness test -- src/server/start-dev.test.ts
+  ./harness test -- --json src/server/start-dev.test.ts
+  ./harness smoke
+  ./harness smoke --port auto
+  ./harness smoke --port 41042 --json
 
 $(_bold "Verdicts:")
   pass (exit 0)       All checks passed
@@ -137,13 +176,15 @@ EOF
 
 # ── Verb: orient ───────────────────────────────────────────────
 cmd_orient() {
+  _parse_json_only_args "$@"
+
   local verdict="pass"
   local msg="Detected project surfaces for DevDeck"
 
   if $JSON_MODE; then
     local surfaces
     surfaces=$(cat <<'ORIENT_JSON'
-{"verb":"orient","verdict":"pass","command":null,"steps":[],"evidence":null,"message":"Detected project surfaces for DevDeck","timestamp":"__TS__","surfaces":{"package_json":{"detected":true,"scripts":["dev","build","analyze","start","terminal","dev:all","lint","format","format:check","test","test:watch","test:coverage"]},"justfile":{"detected":true,"recipes":["dev","dev-next","dev-terminal","build","start","test","test-watch","test-coverage","lint","format","format-check","check","install","clean","reinstall","info"]},"harness_contract":{"detected":true,"verify_steps":["lint","format_check","build","test","smoke"]},"devcontainer":{"detected":true},"ci_workflows":{"detected":true,"files":["ci.yml"]}}}
+{"verb":"orient","verdict":"pass","command":null,"steps":[],"evidence":null,"message":"Detected project surfaces for DevDeck","timestamp":"__TS__","commands":{"lint":{"command":"npm run lint"},"test":{"command":"npm run test [-- <targets>]","supportsTargets":true,"passthrough":"./harness test -- <vitest args...>","json":"./harness test --json -- <vitest args...>"},"build":{"command":"npm run build"},"smoke":{"command":"npm run start -- --hostname 127.0.0.1 --port <selectedPort>","usage":"./harness smoke [--port auto|PORT] [--json]","portModeDefault":"auto","autoRange":"41000-41999"},"boot":{"command":"npx tsx src/server/start-dev.mts"},"verify":{"sequence":["lint","format_check","build","test","smoke"]}},"surfaces":{"package_json":{"detected":true,"scripts":["dev","build","analyze","start","terminal","dev:all","lint","format","format:check","test","test:watch","test:coverage"]},"justfile":{"detected":true,"recipes":["dev","dev-next","dev-terminal","build","start","test","test-watch","test-coverage","lint","format","format-check","check","install","clean","reinstall","info"]},"harness_contract":{"detected":true,"verbs":["help","orient","doctor","lint","test","build","boot","smoke","verify","status","clean","friction add","friction list"],"verify_steps":["lint","format_check","build","test","smoke"]},"devcontainer":{"detected":true},"ci_workflows":{"detected":true,"files":["ci.yml"]}}}
 ORIENT_JSON
 )
     local ts
@@ -172,7 +213,9 @@ ORIENT_JSON
   echo ""
   printf "  %-20s %s\n" "lint"   "npm run lint"
   printf "  %-20s %s\n" "test"   "npm run test"
+  printf "  %-20s %s\n" "test -- <args>" "npm run test -- <args...>"
   printf "  %-20s %s\n" "build"  "npm run build"
+  printf "  %-20s %s\n" "smoke"  "npm run start -- --hostname 127.0.0.1 --port <auto|PORT>"
   printf "  %-20s %s\n" "boot"   "npx tsx src/server/start-dev.mts"
   printf "  %-20s %s\n" "clean"  "rm -rf .next node_modules"
   printf "  %-20s %s\n" "verify" "lint → format:check → build → test → smoke"
@@ -184,6 +227,8 @@ ORIENT_JSON
 
 # ── Verb: doctor ───────────────────────────────────────────────
 cmd_doctor() {
+  _parse_json_only_args "$@"
+
   local verdict="pass"
   local details=()
   local steps_json=""
@@ -267,12 +312,25 @@ cmd_doctor() {
 }
 
 # ── Generic command wrapper ────────────────────────────────────
+_command_display() {
+  local out="" part
+  for part in "$@"; do
+    if [[ -n "$out" ]]; then out+=" "; fi
+    out+="$part"
+  done
+  printf '%s' "$out"
+}
+
 _run_wrapped() {
-  local verb="$1" command="$2" description="$3"
+  local verb="$1" description="$2"
+  shift 2
+  local cmd=("$@")
+  local command
+  command="$(_command_display "${cmd[@]}")"
   local verdict="pass"
   local start_time end_time duration_ms exit_code=0
 
-  if [[ -z "$command" ]]; then
+  if [[ ${#cmd[@]} -eq 0 ]]; then
     if $JSON_MODE; then
       _json_result "$verb" "unknown" "" "No backing command detected for '$verb'"
     else
@@ -287,7 +345,7 @@ _run_wrapped() {
   start_time=$(date +%s%N 2>/dev/null || date +%s)
 
   if $JSON_MODE; then
-    if eval "$command" >/dev/null 2>&1; then
+    if (cd "$HARNESS_DIR" && "${cmd[@]}") >/dev/null 2>&1; then
       exit_code=0
       verdict="pass"
     else
@@ -299,7 +357,7 @@ _run_wrapped() {
     echo "Verb: $(_bold "$verb") — $description"
     echo "Command: $(_cyan "$command")"
     echo ""
-    if eval "$command"; then
+    if (cd "$HARNESS_DIR" && "${cmd[@]}"); then
       exit_code=0
       verdict="pass"
     else
@@ -329,21 +387,163 @@ _run_wrapped() {
 
 # ── Verb: lint ─────────────────────────────────────────────────
 cmd_lint() {
-  _run_wrapped "lint" "npm run lint" "Run ESLint on the codebase"
+  _parse_json_only_args "$@"
+  _run_wrapped "lint" "Run ESLint on the codebase" "$NPM_BIN" run lint
+}
+
+# ── Sanitized metadata helpers ─────────────────────────────────
+_sanitize_label() {
+  local s="$1"
+  SANITIZED_TRUNCATED=false
+
+  # Remove control characters before any JSON/evidence emission.
+  s="$(printf '%s' "$s" | LC_ALL=C tr -d '[:cntrl:]')" || s=""
+
+  # Redact credential-bearing URLs rather than trying to preserve host/path.
+  if [[ "$s" =~ ^[A-Za-z][A-Za-z0-9+.-]*://[^/[:space:]]+@ ]]; then
+    s="[redacted-url]"
+  else
+    # Drop query strings and fragments so tokens cannot appear in metadata.
+    s="${s%%\?*}"
+    s="${s%%#*}"
+  fi
+
+  # Avoid echoing sensitive environment variable names or values in metadata labels.
+  if [[ "$s" == *DEVDECK_TOKEN* || "$s" == *DEVDECK_SECRET* || "$s" == *AUTH_TOKEN* || "$s" == *ACCESS_TOKEN* || "$s" == *PASSWORD* ]]; then
+    s="[redacted-env]"
+  fi
+
+  # Repo-absolute paths become repo-relative. Other absolute paths are redacted.
+  if [[ "$s" == "$HARNESS_DIR" ]]; then
+    s="."
+  elif [[ "$s" == "$HARNESS_DIR/"* ]]; then
+    s="${s#$HARNESS_DIR/}"
+  elif [[ "$s" == /* ]]; then
+    s="[redacted-absolute-path]"
+  fi
+
+  if [[ ${#s} -gt 200 ]]; then
+    s="${s:0:200}"
+    SANITIZED_TRUNCATED=true
+  fi
+
+  SANITIZED_LABEL="$s"
+}
+
+_targets_metadata_json() {
+  local count="$#"
+  local targeted=false truncated=false
+  local items="" raw
+  if [[ "$count" -gt 0 ]]; then
+    targeted=true
+  fi
+  for raw in "$@"; do
+    _sanitize_label "$raw"
+    if [[ "$SANITIZED_TRUNCATED" == "true" ]]; then
+      truncated=true
+    fi
+    if [[ -n "$items" ]]; then items+=","; fi
+    items+="\"$(_json_escape "$SANITIZED_LABEL")\""
+  done
+  printf '{"targeted":%s,"targets":[%s],"targetCount":%d,"truncated":%s}' "$targeted" "$items" "$count" "$truncated"
 }
 
 # ── Verb: test ─────────────────────────────────────────────────
 cmd_test() {
-  _run_wrapped "test" "npm run test" "Run vitest test suite"
+  local passthrough=()
+  local saw_delimiter=false
+
+  while [[ $# -gt 0 ]]; do
+    if $saw_delimiter; then
+      passthrough+=("$1")
+      shift
+      continue
+    fi
+
+    case "$1" in
+      --json)
+        JSON_MODE=true
+        ;;
+      --)
+        saw_delimiter=true
+        ;;
+      *)
+        # Backward-compatible shorthand: non-harness args before the delimiter
+        # are still forwarded, while harness --json remains delimiter-aware.
+        passthrough+=("$1")
+        ;;
+    esac
+    shift
+  done
+
+  local cmd=("$NPM_BIN" run test)
+  local command_label="npm run test"
+  if [[ ${#passthrough[@]} -gt 0 ]]; then
+    cmd+=(-- "${passthrough[@]}")
+    command_label="npm run test -- <${#passthrough[@]} target(s)>"
+  fi
+
+  local verdict="pass" exit_code=0
+  local start_time end_time duration_ms
+  local metadata_json
+  metadata_json="$(_targets_metadata_json "${passthrough[@]}")"
+
+  start_time=$(date +%s%N 2>/dev/null || date +%s)
+
+  if $JSON_MODE; then
+    if (cd "$HARNESS_DIR" && "${cmd[@]}") >/dev/null 2>&1; then
+      exit_code=0
+      verdict="pass"
+    else
+      exit_code=$?
+      verdict="fail"
+    fi
+  else
+    echo ""
+    echo "Verb: $(_bold "test") — Run vitest test suite"
+    echo "Command: $(_cyan "$command_label")"
+    if [[ ${#passthrough[@]} -gt 0 ]]; then
+      echo "Targets: ${#passthrough[@]} sanitized target(s)"
+    fi
+    echo ""
+    if (cd "$HARNESS_DIR" && "${cmd[@]}"); then
+      exit_code=0
+      verdict="pass"
+    else
+      exit_code=$?
+      verdict="fail"
+    fi
+  fi
+
+  end_time=$(date +%s%N 2>/dev/null || date +%s)
+  if [[ ${#start_time} -gt 10 ]]; then
+    duration_ms=$(( (end_time - start_time) / 1000000 ))
+  else
+    duration_ms=$(( (end_time - start_time) * 1000 ))
+  fi
+
+  if $JSON_MODE; then
+    local steps_json
+    steps_json="{\"name\":\"test\",\"verdict\":\"$verdict\",\"exitCode\":$exit_code,\"durationMs\":$duration_ms,\"metadata\":$metadata_json}"
+    _json_result_steps_meta "test" "$verdict" "$steps_json" "" "$(if [[ "$verdict" == "pass" ]]; then echo "test completed successfully"; else echo "test failed with exit code $exit_code"; fi)" "$metadata_json" "$command_label"
+  else
+    echo ""
+    echo "Verdict: $(_verdict_label "$verdict") $(if [[ "$verdict" == "fail" ]]; then echo "(exit code $exit_code)"; fi)"
+  fi
+
+  _verdict_exit "$verdict"
 }
 
 # ── Verb: build ────────────────────────────────────────────────
 cmd_build() {
-  _run_wrapped "build" "npm run build" "Build the Next.js application"
+  _parse_json_only_args "$@"
+  _run_wrapped "build" "Build the Next.js application" "$NPM_BIN" run build
 }
 
 # ── Verb: boot ─────────────────────────────────────────────────
 cmd_boot() {
+  _parse_json_only_args "$@"
+
   if [[ ! -f "$HARNESS_DIR/src/server/start-dev.mts" ]]; then
     if $JSON_MODE; then
       _json_result "boot" "unknown" "npx tsx src/server/start-dev.mts" "Boot command path src/server/start-dev.mts does not exist"
@@ -355,18 +555,826 @@ cmd_boot() {
     fi
     return 3
   fi
-  _run_wrapped "boot" "npx tsx src/server/start-dev.mts" "Start the development server"
+  _run_wrapped "boot" "Start the development server" npx tsx src/server/start-dev.mts
+}
+
+# ── Shared smoke implementation ────────────────────────────────
+SMOKE_CHILD_PID=""
+SMOKE_CLEANUP_RESULT="not_started"
+SMOKE_VERDICT="unknown"
+SMOKE_EXIT_CODE=3
+SMOKE_METADATA_JSON="{}"
+SMOKE_MESSAGE=""
+SMOKE_DURATION_MS=0
+SMOKE_PROCESS_GROUP_ID=""
+SMOKE_LOCK_DIR=""
+SMOKE_LOCK_OWNED=false
+SMOKE_METADATA_FILE=""
+SMOKE_REPO_REALPATH=""
+SMOKE_REPO_ID=""
+SMOKE_LOCK_BUSY_REASON=""
+SMOKE_SELECTED_PORT=""
+SMOKE_PORT_MODE="auto"
+SMOKE_HTTP_STATUS=""
+
+_smoke_usage() {
+  cat <<'EOF'
+Usage: ./harness smoke [--port auto|PORT] [--json]
+
+Options:
+  --port auto       Select an available loopback port from 41000-41999 (default)
+  --port PORT       Use a fixed TCP port (1-65535)
+  --json            Output machine-readable JSON
+EOF
+}
+
+_smoke_fail_usage() {
+  local reason="$1"
+  local usage="Usage: ./harness smoke [--port auto|PORT] [--json]"
+  if $JSON_MODE; then
+    _json_result_meta "smoke" "fail" "" "$reason. $usage" "" '{"reason":"invalid_usage"}'
+  else
+    echo ""
+    _smoke_usage
+    echo ""
+    echo "Verdict: $(_verdict_label "fail") — $reason"
+  fi
+  return 1
+}
+
+_valid_tcp_port() {
+  local port="$1"
+  [[ "$port" =~ ^[0-9]+$ ]] || return 1
+  (( port >= 1 && port <= 65535 ))
+}
+
+_bounded_int() {
+  local value="$1" default="$2" max="$3"
+  if [[ "$value" =~ ^[0-9]+$ ]] && (( value > 0 )); then
+    if (( value > max )); then
+      printf '%s' "$max"
+    else
+      printf '%s' "$value"
+    fi
+  else
+    printf '%s' "$default"
+  fi
+}
+
+_smoke_port_listening() {
+  local port="$1"
+  node -e '
+const net = require("node:net");
+const port = Number(process.argv[1]);
+const socket = net.createConnection({ host: "127.0.0.1", port });
+let done = false;
+const finish = (code) => {
+  if (done) return;
+  done = true;
+  socket.destroy();
+  process.exit(code);
+};
+socket.setTimeout(250);
+socket.once("connect", () => finish(0));
+socket.once("timeout", () => finish(1));
+socket.once("error", () => finish(1));
+' "$port" >/dev/null 2>&1
+}
+
+_smoke_child_running() {
+  local pid="$1"
+  local state=""
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+  state="$(ps -p "$pid" -o stat= 2>/dev/null || true)"
+  [[ -n "$state" && "$state" != *Z* ]]
+}
+
+_smoke_process_group_running() {
+  local pgid="$1"
+  local row_pgid state
+  [[ "$pgid" =~ ^[0-9]+$ ]] || return 1
+  while read -r row_pgid state; do
+    row_pgid="${row_pgid//[[:space:]]/}"
+    state="${state//[[:space:]]/}"
+    if [[ "$row_pgid" == "$pgid" && -n "$state" && "$state" != *Z* ]]; then
+      return 0
+    fi
+  done < <(ps -eo pgid=,stat= 2>/dev/null || true)
+  return 1
+}
+
+_smoke_safe_process_group() {
+  local pgid="$1"
+  local current_pgid=""
+  [[ "$pgid" =~ ^[0-9]+$ ]] || return 1
+  (( pgid > 1 )) || return 1
+  current_pgid="$(ps -o pgid= -p "$$" 2>/dev/null | tr -d '[:space:]' || true)"
+  [[ -n "$current_pgid" && "$pgid" == "$current_pgid" ]] && return 1
+  return 0
+}
+
+_smoke_runtime_init() {
+  if [[ -z "$SMOKE_REPO_REALPATH" ]]; then
+    if [[ -n "${HARNESS_SMOKE_REPO_REALPATH:-}" ]]; then
+      SMOKE_REPO_REALPATH="$(printf '%s' "$HARNESS_SMOKE_REPO_REALPATH" | LC_ALL=C tr -d '[:cntrl:]')"
+      [[ -n "$SMOKE_REPO_REALPATH" ]] || SMOKE_REPO_REALPATH="$(cd "$HARNESS_DIR" && pwd -P)"
+    else
+      SMOKE_REPO_REALPATH="$(cd "$HARNESS_DIR" && pwd -P)"
+    fi
+    SMOKE_REPO_ID="$(node -e 'const crypto = require("node:crypto"); process.stdout.write(crypto.createHash("sha256").update(process.argv[1]).digest("hex").slice(0, 16));' "$SMOKE_REPO_REALPATH")"
+  fi
+  mkdir -p "$RUN_DIR"
+}
+
+_smoke_command_summary() {
+  local port="$1"
+  printf 'npm run start -- --hostname 127.0.0.1 --port %s' "$port"
+}
+
+_smoke_lock_dir_for() {
+  local port="$1"
+  printf '%s/smoke-%s-%s.lock' "$RUN_DIR" "$SMOKE_REPO_ID" "$port"
+}
+
+_smoke_json_pid_or_null() {
+  local pid="$1"
+  if [[ "$pid" =~ ^[0-9]+$ ]]; then
+    printf '%s' "$pid"
+  else
+    printf 'null'
+  fi
+}
+
+_smoke_write_owner_metadata() {
+  local port="$1" status="$2"
+  local metadata_file="$SMOKE_METADATA_FILE"
+  local tmp_file timestamp command_summary
+  [[ -n "$metadata_file" ]] || return 1
+  timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  command_summary="$(_smoke_command_summary "$port")"
+  tmp_file="$metadata_file.$$"
+  if ! printf '{"version":1,"kind":"devdeck-harness-smoke","repoIdentity":"%s","repoRealpath":"%s","port":%s,"parentPid":%s,"childPid":%s,"processGroupId":%s,"commandSummary":"%s","timestamp":"%s","status":"%s"}\n' \
+    "$(_json_escape "$SMOKE_REPO_ID")" \
+    "$(_json_escape "$SMOKE_REPO_REALPATH")" \
+    "$port" \
+    "$(_smoke_json_pid_or_null "$$")" \
+    "$(_smoke_json_pid_or_null "$SMOKE_CHILD_PID")" \
+    "$(_smoke_json_pid_or_null "$SMOKE_PROCESS_GROUP_ID")" \
+    "$(_json_escape "$command_summary")" \
+    "$(_json_escape "$timestamp")" \
+    "$(_json_escape "$status")" > "$tmp_file"; then
+    rm -f -- "$tmp_file"
+    return 1
+  fi
+  mv -f -- "$tmp_file" "$metadata_file"
+}
+
+_smoke_safe_remove_lock() {
+  local lock_dir="$1"
+  case "$lock_dir" in
+    "$RUN_DIR"/smoke-"$SMOKE_REPO_ID"-*.lock)
+      rm -rf -- "$lock_dir"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+_smoke_lock_metadata_summary() {
+  local metadata_file="$1" port="$2" expected_command="$3"
+  node -e '
+const fs = require("node:fs");
+const [file, repoId, repoRealpath, port, expectedCommand] = process.argv.slice(1);
+let metadata;
+try {
+  metadata = JSON.parse(fs.readFileSync(file, "utf8"));
+} catch {
+  process.exit(1);
+}
+const clean = (value) => value === undefined || value === null ? "" : String(value).replace(/[\r\n=]/g, "");
+const pid = (value) => /^[0-9]+$/.test(clean(value)) ? clean(value) : "";
+const repoMatch = clean(metadata.repoIdentity) === repoId && clean(metadata.repoRealpath) === repoRealpath ? "1" : "0";
+const portMatch = Number(metadata.port) === Number(port) ? "1" : "0";
+const commandMatch = clean(metadata.commandSummary) === expectedCommand ? "1" : "0";
+process.stdout.write([
+  `repoMatch=${repoMatch}`,
+  `portMatch=${portMatch}`,
+  `commandMatch=${commandMatch}`,
+  `parentPid=${pid(metadata.parentPid)}`,
+  `childPid=${pid(metadata.childPid)}`,
+  `processGroupId=${pid(metadata.processGroupId)}`,
+].join("\n"));
+' "$metadata_file" "$SMOKE_REPO_ID" "$SMOKE_REPO_REALPATH" "$port" "$expected_command"
+}
+
+_smoke_terminate_stale_owned_process() {
+  local child_pid="$1" process_group_id="$2"
+  local waited=0
+
+  if _smoke_safe_process_group "$process_group_id" && _smoke_process_group_running "$process_group_id"; then
+    kill -TERM "-$process_group_id" 2>/dev/null || true
+    while _smoke_process_group_running "$process_group_id"; do
+      if (( waited >= 20 )); then
+        kill -KILL "-$process_group_id" 2>/dev/null || true
+        break
+      fi
+      sleep 0.1
+      waited=$((waited + 1))
+    done
+    return 0
+  fi
+
+  if [[ "$child_pid" =~ ^[0-9]+$ ]] && _smoke_child_running "$child_pid"; then
+    kill -TERM "$child_pid" 2>/dev/null || true
+    while _smoke_child_running "$child_pid"; do
+      if (( waited >= 20 )); then
+        kill -KILL "$child_pid" 2>/dev/null || true
+        break
+      fi
+      sleep 0.1
+      waited=$((waited + 1))
+    done
+  fi
+}
+
+_smoke_reclaim_existing_lock() {
+  local lock_dir="$1" port="$2"
+  local metadata_file="$lock_dir/owner.json"
+  local expected_command summary
+  local repo_match=0 port_match=0 command_match=0 parent_pid="" child_pid="" process_group_id=""
+  local key value
+
+  [[ -d "$lock_dir" ]] || return 0
+
+  if [[ ! -f "$metadata_file" ]]; then
+    sleep 0.05
+  fi
+  if [[ ! -f "$metadata_file" ]]; then
+    SMOKE_LOCK_BUSY_REASON="lock_without_metadata"
+    return 1
+  fi
+
+  expected_command="$(_smoke_command_summary "$port")"
+  if ! summary="$(_smoke_lock_metadata_summary "$metadata_file" "$port" "$expected_command" 2>/dev/null)"; then
+    SMOKE_LOCK_BUSY_REASON="unreadable_lock_metadata"
+    return 1
+  fi
+
+  while IFS='=' read -r key value; do
+    case "$key" in
+      repoMatch) repo_match="$value" ;;
+      portMatch) port_match="$value" ;;
+      commandMatch) command_match="$value" ;;
+      parentPid) parent_pid="$value" ;;
+      childPid) child_pid="$value" ;;
+      processGroupId) process_group_id="$value" ;;
+    esac
+  done <<< "$summary"
+
+  if [[ -n "$parent_pid" ]] && _smoke_child_running "$parent_pid"; then
+    SMOKE_LOCK_BUSY_REASON="active_parent"
+    return 1
+  fi
+
+  local child_alive=false group_alive=false
+  if [[ -n "$child_pid" ]] && _smoke_child_running "$child_pid"; then
+    child_alive=true
+  fi
+  if [[ -n "$process_group_id" ]] && _smoke_process_group_running "$process_group_id"; then
+    group_alive=true
+  fi
+
+  if $child_alive || $group_alive; then
+    if [[ "$repo_match" == "1" && "$port_match" == "1" && "$command_match" == "1" ]]; then
+      _smoke_terminate_stale_owned_process "$child_pid" "$process_group_id"
+      _smoke_safe_remove_lock "$lock_dir"
+      return 0
+    fi
+    SMOKE_LOCK_BUSY_REASON="unproven_live_owner"
+    return 1
+  fi
+
+  _smoke_safe_remove_lock "$lock_dir"
+  return 0
+}
+
+_smoke_acquire_lock() {
+  local port="$1"
+  local lock_dir attempt
+  _smoke_runtime_init || return 1
+  lock_dir="$(_smoke_lock_dir_for "$port")"
+  SMOKE_LOCK_BUSY_REASON=""
+
+  for attempt in 1 2 3; do
+    if mkdir "$lock_dir" 2>/dev/null; then
+      SMOKE_LOCK_DIR="$lock_dir"
+      SMOKE_METADATA_FILE="$lock_dir/owner.json"
+      SMOKE_LOCK_OWNED=true
+      SMOKE_PROCESS_GROUP_ID=""
+      if _smoke_write_owner_metadata "$port" "reserved"; then
+        return 0
+      fi
+      _smoke_safe_remove_lock "$lock_dir" || true
+      SMOKE_LOCK_DIR=""
+      SMOKE_METADATA_FILE=""
+      SMOKE_LOCK_OWNED=false
+      SMOKE_LOCK_BUSY_REASON="metadata_write_failed"
+      return 1
+    fi
+
+    if _smoke_reclaim_existing_lock "$lock_dir" "$port"; then
+      continue
+    fi
+    return 1
+  done
+
+  SMOKE_LOCK_BUSY_REASON="lock_acquire_failed"
+  return 1
+}
+
+_smoke_release_lock() {
+  if [[ "$SMOKE_LOCK_OWNED" == "true" && -n "$SMOKE_LOCK_DIR" ]]; then
+    _smoke_safe_remove_lock "$SMOKE_LOCK_DIR" || true
+  fi
+  SMOKE_LOCK_DIR=""
+  SMOKE_METADATA_FILE=""
+  SMOKE_LOCK_OWNED=false
+}
+
+_smoke_cleanup() {
+  local pid="${SMOKE_CHILD_PID:-}"
+  if [[ -z "$pid" ]]; then
+    _smoke_release_lock
+    return 0
+  fi
+
+  if _smoke_child_running "$pid"; then
+    SMOKE_CLEANUP_RESULT="terminated"
+    _smoke_write_owner_metadata "${SMOKE_SELECTED_PORT:-0}" "cleaning" 2>/dev/null || true
+    if _smoke_safe_process_group "${SMOKE_PROCESS_GROUP_ID:-}" && _smoke_process_group_running "$SMOKE_PROCESS_GROUP_ID"; then
+      kill -TERM "-$SMOKE_PROCESS_GROUP_ID" 2>/dev/null || true
+    else
+      kill -TERM "$pid" 2>/dev/null || true
+    fi
+    local waited=0
+    while _smoke_child_running "$pid"; do
+      if (( waited >= 20 )); then
+        if _smoke_safe_process_group "${SMOKE_PROCESS_GROUP_ID:-}" && _smoke_process_group_running "$SMOKE_PROCESS_GROUP_ID"; then
+          kill -KILL "-$SMOKE_PROCESS_GROUP_ID" 2>/dev/null || true
+        else
+          kill -KILL "$pid" 2>/dev/null || true
+        fi
+        SMOKE_CLEANUP_RESULT="killed"
+        break
+      fi
+      sleep 0.1
+      waited=$((waited + 1))
+    done
+    wait "$pid" 2>/dev/null || true
+  else
+    SMOKE_CLEANUP_RESULT="already_exited"
+    wait "$pid" 2>/dev/null || true
+  fi
+  SMOKE_CHILD_PID=""
+  SMOKE_PROCESS_GROUP_ID=""
+  _smoke_release_lock
+}
+
+_smoke_signal_exit() {
+  _smoke_cleanup
+  exit 1
+}
+
+_smoke_metadata() {
+  local port_mode="$1" selected_port="$2" candidate_attempts="$3" readiness_attempts="$4" accepted_status="$5" duration_ms="$6" reason="$7"
+  local selected_json="null"
+  local accepted_json="null"
+  if [[ -n "$selected_port" ]]; then selected_json="$selected_port"; fi
+  if [[ -n "$accepted_status" ]]; then accepted_json="$accepted_status"; fi
+  printf '{"portMode":"%s","selectedPort":%s,"bindHost":"127.0.0.1","probeHost":"127.0.0.1","autoRange":"41000-41999","maxCandidateAttempts":50,"candidateAttempts":%d,"readinessAttempts":%d,"acceptedStatus":%s,"durationMs":%d,"cleanup":"%s","reason":"%s"}' \
+    "$(_json_escape "$port_mode")" \
+    "$selected_json" \
+    "$candidate_attempts" \
+    "$readiness_attempts" \
+    "$accepted_json" \
+    "$duration_ms" \
+    "$(_json_escape "$SMOKE_CLEANUP_RESULT")" \
+    "$(_json_escape "$reason")"
+}
+
+_smoke_verify_metadata() {
+  local selected_json="null"
+  local http_status_json="null"
+  if [[ -n "$SMOKE_SELECTED_PORT" ]]; then selected_json="$SMOKE_SELECTED_PORT"; fi
+  if [[ -n "$SMOKE_HTTP_STATUS" ]]; then http_status_json="$SMOKE_HTTP_STATUS"; fi
+  printf '{"portMode":"%s","selectedPort":%s,"httpStatus":%s,"timeoutSeconds":60,"pollIntervalMs":1000}' \
+    "$(_json_escape "$SMOKE_PORT_MODE")" \
+    "$selected_json" \
+    "$http_status_json"
+}
+
+_smoke_capability_unknown() {
+  local missing="$1" port_mode="$2" selected_port="$3" start_time="$4" candidate_attempts="${5:-0}" readiness_attempts="${6:-0}"
+  local end_time duration_ms
+  end_time=$(date +%s%N 2>/dev/null || date +%s)
+  if [[ ${#start_time} -gt 10 ]]; then
+    duration_ms=$(( (end_time - start_time) / 1000000 ))
+  else
+    duration_ms=$(( (end_time - start_time) * 1000 ))
+  fi
+  SMOKE_VERDICT="unknown"
+  SMOKE_EXIT_CODE=3
+  SMOKE_MESSAGE="Missing required smoke capability: $missing"
+  SMOKE_DURATION_MS="$duration_ms"
+  SMOKE_PORT_MODE="$port_mode"
+  SMOKE_SELECTED_PORT="$selected_port"
+  SMOKE_HTTP_STATUS=""
+  SMOKE_METADATA_JSON="$(_smoke_metadata "$port_mode" "$selected_port" "$candidate_attempts" "$readiness_attempts" "" "$duration_ms" "missing_capability")"
+  return 3
+}
+
+_smoke_run_candidate() {
+  local port="$1" port_mode="$2"
+  local readiness_limit="$3"
+  local readiness_attempts=0
+  local accepted_status=""
+  local reason="readiness_timeout"
+  local status=""
+
+  SMOKE_CHILD_PID=""
+  SMOKE_PROCESS_GROUP_ID=""
+  SMOKE_SELECTED_PORT="$port"
+  SMOKE_CLEANUP_RESULT="not_needed"
+  _smoke_release_lock
+
+  if [[ ! -f "$HARNESS_DIR/.next/BUILD_ID" && ! -d "$HARNESS_DIR/.next/server" ]]; then
+    SMOKE_CANDIDATE_VERDICT="fail"
+    SMOKE_CANDIDATE_EXIT=1
+    SMOKE_CANDIDATE_REASON="missing_build"
+    SMOKE_CANDIDATE_READINESS_ATTEMPTS=0
+    SMOKE_CANDIDATE_ACCEPTED_STATUS=""
+    return 1
+  fi
+
+  if ! _smoke_acquire_lock "$port"; then
+    SMOKE_CANDIDATE_VERDICT="degraded"
+    SMOKE_CANDIDATE_EXIT=2
+    SMOKE_CANDIDATE_REASON="port_in_use"
+    SMOKE_CANDIDATE_READINESS_ATTEMPTS=0
+    SMOKE_CANDIDATE_ACCEPTED_STATUS=""
+    return 2
+  fi
+
+  if _smoke_port_listening "$port"; then
+    _smoke_release_lock
+    SMOKE_CANDIDATE_VERDICT="degraded"
+    SMOKE_CANDIDATE_EXIT=2
+    SMOKE_CANDIDATE_REASON="port_in_use"
+    SMOKE_CANDIDATE_READINESS_ATTEMPTS=0
+    SMOKE_CANDIDATE_ACCEPTED_STATUS=""
+    return 2
+  fi
+
+  (
+    cd "$HARNESS_DIR"
+    exec setsid "$NPM_BIN" run start -- --hostname 127.0.0.1 --port "$port"
+  ) >/dev/null 2>&1 &
+  SMOKE_CHILD_PID=$!
+  SMOKE_PROCESS_GROUP_ID="$(ps -o pgid= -p "$SMOKE_CHILD_PID" 2>/dev/null | tr -d '[:space:]' || true)"
+  SMOKE_CLEANUP_RESULT="pending"
+  _smoke_write_owner_metadata "$port" "started" 2>/dev/null || true
+
+  while (( readiness_attempts < readiness_limit )); do
+    readiness_attempts=$((readiness_attempts + 1))
+
+    status="$("$CURL_BIN" --silent --show-error --output /dev/null --write-out "%{http_code}" --max-time 2 "http://127.0.0.1:$port/" 2>/dev/null || printf '000')"
+    status="${status: -3}"
+    case "$status" in
+      200|301|302|303|307|308)
+        accepted_status="$status"
+        reason="accepted_status"
+        _smoke_cleanup
+        SMOKE_CANDIDATE_VERDICT="pass"
+        SMOKE_CANDIDATE_EXIT=0
+        SMOKE_CANDIDATE_REASON="$reason"
+        SMOKE_CANDIDATE_READINESS_ATTEMPTS="$readiness_attempts"
+        SMOKE_CANDIDATE_ACCEPTED_STATUS="$accepted_status"
+        return 0
+        ;;
+      4??)
+        reason="http_4xx"
+        _smoke_cleanup
+        SMOKE_CANDIDATE_VERDICT="fail"
+        SMOKE_CANDIDATE_EXIT=1
+        SMOKE_CANDIDATE_REASON="$reason"
+        SMOKE_CANDIDATE_READINESS_ATTEMPTS="$readiness_attempts"
+        SMOKE_CANDIDATE_ACCEPTED_STATUS="$status"
+        return 1
+        ;;
+      5??)
+        reason="http_5xx"
+        _smoke_cleanup
+        SMOKE_CANDIDATE_VERDICT="fail"
+        SMOKE_CANDIDATE_EXIT=1
+        SMOKE_CANDIDATE_REASON="$reason"
+        SMOKE_CANDIDATE_READINESS_ATTEMPTS="$readiness_attempts"
+        SMOKE_CANDIDATE_ACCEPTED_STATUS="$status"
+        return 1
+        ;;
+    esac
+
+    if ! _smoke_child_running "$SMOKE_CHILD_PID"; then
+      wait "$SMOKE_CHILD_PID" 2>/dev/null || true
+      SMOKE_CHILD_PID=""
+      SMOKE_PROCESS_GROUP_ID=""
+      SMOKE_CLEANUP_RESULT="already_exited"
+      if _smoke_port_listening "$port"; then
+        _smoke_release_lock
+        SMOKE_CANDIDATE_VERDICT="degraded"
+        SMOKE_CANDIDATE_EXIT=2
+        SMOKE_CANDIDATE_REASON="port_in_use_race"
+        SMOKE_CANDIDATE_READINESS_ATTEMPTS="$readiness_attempts"
+        SMOKE_CANDIDATE_ACCEPTED_STATUS=""
+        return 2
+      fi
+      _smoke_release_lock
+      SMOKE_CANDIDATE_VERDICT="fail"
+      SMOKE_CANDIDATE_EXIT=1
+      SMOKE_CANDIDATE_REASON="start_failed"
+      SMOKE_CANDIDATE_READINESS_ATTEMPTS="$readiness_attempts"
+      SMOKE_CANDIDATE_ACCEPTED_STATUS=""
+      return 1
+    fi
+
+    if (( readiness_attempts < readiness_limit )); then
+      sleep 1
+    fi
+  done
+
+  _smoke_cleanup
+  SMOKE_CANDIDATE_VERDICT="fail"
+  SMOKE_CANDIDATE_EXIT=1
+  SMOKE_CANDIDATE_REASON="$reason"
+  SMOKE_CANDIDATE_READINESS_ATTEMPTS="$readiness_attempts"
+  SMOKE_CANDIDATE_ACCEPTED_STATUS=""
+  return 1
+}
+
+_smoke_run() {
+  local port_mode="$1" fixed_port="${2:-}"
+  local start_time end_time duration_ms
+  local candidate_attempts=0
+  local readiness_attempts=0
+  local accepted_status=""
+  local selected_port=""
+  local reason="unknown"
+
+  start_time=$(date +%s%N 2>/dev/null || date +%s)
+  SMOKE_VERDICT="unknown"
+  SMOKE_EXIT_CODE=3
+  SMOKE_MESSAGE=""
+  SMOKE_METADATA_JSON="{}"
+  SMOKE_DURATION_MS=0
+  SMOKE_CHILD_PID=""
+  SMOKE_PROCESS_GROUP_ID=""
+  SMOKE_SELECTED_PORT=""
+  SMOKE_PORT_MODE="$port_mode"
+  SMOKE_HTTP_STATUS=""
+  SMOKE_LOCK_DIR=""
+  SMOKE_METADATA_FILE=""
+  SMOKE_LOCK_OWNED=false
+  SMOKE_CLEANUP_RESULT="not_started"
+
+  trap _smoke_cleanup EXIT
+  trap _smoke_signal_exit INT TERM
+
+  if ! command -v "$NPM_BIN" >/dev/null 2>&1; then
+    _smoke_capability_unknown "npm" "$port_mode" "$selected_port" "$start_time"
+    trap - EXIT INT TERM
+    return 3
+  fi
+  if ! command -v "$CURL_BIN" >/dev/null 2>&1; then
+    _smoke_capability_unknown "curl" "$port_mode" "$selected_port" "$start_time"
+    trap - EXIT INT TERM
+    return 3
+  fi
+  if ! command -v node >/dev/null 2>&1; then
+    _smoke_capability_unknown "node" "$port_mode" "$selected_port" "$start_time"
+    trap - EXIT INT TERM
+    return 3
+  fi
+  if ! command -v setsid >/dev/null 2>&1; then
+    _smoke_capability_unknown "setsid" "$port_mode" "$selected_port" "$start_time"
+    trap - EXIT INT TERM
+    return 3
+  fi
+
+  local readiness_limit
+  readiness_limit="$(_bounded_int "${HARNESS_SMOKE_READINESS_ATTEMPTS:-60}" 60 60)"
+
+  if [[ "$port_mode" == "fixed" ]]; then
+    selected_port="$fixed_port"
+    candidate_attempts=1
+    local candidate_rc=0
+    if _smoke_run_candidate "$selected_port" "$port_mode" "$readiness_limit"; then
+      candidate_rc=0
+    else
+      candidate_rc=$?
+    fi
+    readiness_attempts="$SMOKE_CANDIDATE_READINESS_ATTEMPTS"
+    accepted_status="$SMOKE_CANDIDATE_ACCEPTED_STATUS"
+    reason="$SMOKE_CANDIDATE_REASON"
+    SMOKE_VERDICT="$SMOKE_CANDIDATE_VERDICT"
+    SMOKE_EXIT_CODE="$SMOKE_CANDIDATE_EXIT"
+    if [[ "$reason" == "port_in_use" || "$reason" == "port_in_use_race" ]]; then
+      SMOKE_VERDICT="degraded"
+      SMOKE_EXIT_CODE=2
+      reason="fixed_port_in_use"
+    fi
+    candidate_rc="$SMOKE_EXIT_CODE"
+  else
+    local auto_start max_attempts port
+    auto_start="$(_bounded_int "${HARNESS_SMOKE_AUTO_START:-41000}" 41000 41999)"
+    if (( auto_start < 41000 || auto_start > 41999 )); then auto_start=41000; fi
+    max_attempts="$(_bounded_int "${HARNESS_SMOKE_AUTO_MAX_ATTEMPTS:-50}" 50 50)"
+
+    port="$auto_start"
+    while (( candidate_attempts < max_attempts && port <= 41999 )); do
+      selected_port="$port"
+      candidate_attempts=$((candidate_attempts + 1))
+      local candidate_rc=0
+      if _smoke_run_candidate "$selected_port" "$port_mode" "$readiness_limit"; then
+        candidate_rc=0
+      else
+        candidate_rc=$?
+      fi
+      readiness_attempts=$((readiness_attempts + SMOKE_CANDIDATE_READINESS_ATTEMPTS))
+      accepted_status="$SMOKE_CANDIDATE_ACCEPTED_STATUS"
+      reason="$SMOKE_CANDIDATE_REASON"
+      if [[ "$SMOKE_CANDIDATE_VERDICT" == "pass" ]]; then
+        SMOKE_VERDICT="pass"
+        SMOKE_EXIT_CODE=0
+        break
+      elif [[ "$SMOKE_CANDIDATE_VERDICT" == "degraded" && ( "$reason" == "port_in_use" || "$reason" == "port_in_use_race" ) ]]; then
+        port=$((port + 1))
+        continue
+      else
+        SMOKE_VERDICT="$SMOKE_CANDIDATE_VERDICT"
+        SMOKE_EXIT_CODE="$SMOKE_CANDIDATE_EXIT"
+        break
+      fi
+    done
+
+    if [[ "$SMOKE_VERDICT" == "unknown" ]]; then
+      SMOKE_VERDICT="degraded"
+      SMOKE_EXIT_CODE=2
+      reason="auto_port_exhausted"
+    elif [[ "$SMOKE_VERDICT" != "pass" && "$reason" == "port_in_use" ]]; then
+      SMOKE_VERDICT="degraded"
+      SMOKE_EXIT_CODE=2
+      reason="auto_port_exhausted"
+    fi
+  fi
+
+  end_time=$(date +%s%N 2>/dev/null || date +%s)
+  if [[ ${#start_time} -gt 10 ]]; then
+    duration_ms=$(( (end_time - start_time) / 1000000 ))
+  else
+    duration_ms=$(( (end_time - start_time) * 1000 ))
+  fi
+  SMOKE_DURATION_MS="$duration_ms"
+
+  case "$SMOKE_VERDICT" in
+    pass) SMOKE_MESSAGE="Smoke passed on port $selected_port" ;;
+    degraded) SMOKE_MESSAGE="Smoke degraded: $reason" ;;
+    fail) SMOKE_MESSAGE="Smoke failed: $reason" ;;
+    *) SMOKE_MESSAGE="Smoke unknown: $reason" ;;
+  esac
+
+  SMOKE_PORT_MODE="$port_mode"
+  SMOKE_SELECTED_PORT="$selected_port"
+  SMOKE_HTTP_STATUS="$accepted_status"
+  SMOKE_METADATA_JSON="$(_smoke_metadata "$port_mode" "$selected_port" "$candidate_attempts" "$readiness_attempts" "$accepted_status" "$duration_ms" "$reason")"
+
+  _smoke_cleanup
+  trap - EXIT INT TERM
+  return "$SMOKE_EXIT_CODE"
+}
+
+# ── Verb: smoke ────────────────────────────────────────────────
+cmd_smoke() {
+  local port_mode="auto"
+  local port_value=""
+  local saw_port=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json)
+        JSON_MODE=true
+        ;;
+      --port)
+        if $saw_port; then
+          _smoke_fail_usage "Duplicate --port value"
+          return $?
+        fi
+        saw_port=true
+        shift
+        if [[ $# -eq 0 || -z "${1:-}" || "${1:-}" == --* ]]; then
+          _smoke_fail_usage "Missing --port value"
+          return $?
+        fi
+        port_value="$1"
+        ;;
+      --port=*)
+        if $saw_port; then
+          _smoke_fail_usage "Duplicate --port value"
+          return $?
+        fi
+        saw_port=true
+        port_value="${1#--port=}"
+        if [[ -z "$port_value" ]]; then
+          _smoke_fail_usage "Missing --port value"
+          return $?
+        fi
+        ;;
+      --*)
+        _smoke_fail_usage "Unknown smoke flag: $1"
+        return $?
+        ;;
+      *)
+        _smoke_fail_usage "Unknown smoke argument: $1"
+        return $?
+        ;;
+    esac
+    shift
+  done
+
+  if [[ -z "$port_value" || "$port_value" == "auto" ]]; then
+    port_mode="auto"
+    port_value=""
+  elif _valid_tcp_port "$port_value"; then
+    port_mode="fixed"
+  else
+    _smoke_fail_usage "Invalid --port value: $port_value"
+    return $?
+  fi
+
+  set +e
+  _smoke_run "$port_mode" "$port_value"
+  local smoke_rc=$?
+  set -e
+
+  local command_label="npm run start -- --hostname 127.0.0.1 --port <selectedPort>"
+  local steps_json="{\"name\":\"smoke\",\"verdict\":\"$SMOKE_VERDICT\",\"exitCode\":$SMOKE_EXIT_CODE,\"durationMs\":$SMOKE_DURATION_MS,\"metadata\":$SMOKE_METADATA_JSON}"
+  if $JSON_MODE; then
+    _json_result_steps_meta "smoke" "$SMOKE_VERDICT" "$steps_json" "" "$SMOKE_MESSAGE" "$SMOKE_METADATA_JSON" "$command_label"
+  else
+    echo ""
+    echo "Verb: $(_bold "smoke") — Built-app loopback smoke"
+    echo "Command: $(_cyan "$command_label")"
+    echo "Mode: $port_mode"
+    echo "Verdict: $(_verdict_label "$SMOKE_VERDICT") — $SMOKE_MESSAGE"
+  fi
+
+  return "$smoke_rc"
 }
 
 # ── Verb: verify ───────────────────────────────────────────────
 cmd_verify() {
+  _parse_json_only_args "$@"
+
   local overall_verdict="pass"
   local steps_json=""
   local step_results=()
-  local evidence_file="$EVIDENCE_DIR/verify-$(date -u +%Y%m%dT%H%M%SZ)-$$.json"
+  local evidence_name="verify-$(date -u +%Y%m%dT%H%M%SZ)-$$.json"
+  local evidence_file="$EVIDENCE_DIR/$evidence_name"
+  local evidence_ref=".harness/evidence/$evidence_name"
+
+  _aggregate_verdict() {
+    local step_verdict="$1"
+    local current_rank=0 step_rank=0
+    case "$overall_verdict" in
+      fail) current_rank=3 ;;
+      degraded) current_rank=2 ;;
+      unknown) current_rank=1 ;;
+      *) current_rank=0 ;;
+    esac
+    case "$step_verdict" in
+      fail) step_rank=3 ;;
+      degraded) step_rank=2 ;;
+      unknown) step_rank=1 ;;
+      *) step_rank=0 ;;
+    esac
+    if (( step_rank > current_rank )); then
+      overall_verdict="$step_verdict"
+    fi
+  }
 
   _run_verify_step() {
-    local name="$1" command="$2" description="$3"
+    local name="$1" description="$2"
+    shift 2
+    local cmd=("$@")
     local step_verdict="pass" exit_code=0
     local start_time end_time duration_ms
 
@@ -376,7 +1384,7 @@ cmd_verify() {
       printf "  %-15s " "$name"
     fi
 
-    if timeout "$STEP_TIMEOUT" bash -c "$command" >/dev/null 2>&1; then
+    if (cd "$HARNESS_DIR" && timeout "$STEP_TIMEOUT" "${cmd[@]}") >/dev/null 2>&1; then
       exit_code=0
       step_verdict="pass"
     else
@@ -407,11 +1415,7 @@ cmd_verify() {
 
     step_results+=("{\"name\":\"$(_json_escape "$name")\",\"verdict\":\"$step_verdict\",\"exitCode\":$exit_code,\"durationMs\":$duration_ms,\"description\":\"$(_json_escape "$description")\"}")
 
-    if [[ "$step_verdict" == "fail" && "$overall_verdict" != "fail" ]]; then
-      overall_verdict="fail"
-    elif [[ "$step_verdict" == "degraded" && "$overall_verdict" == "pass" ]]; then
-      overall_verdict="degraded"
-    fi
+    _aggregate_verdict "$step_verdict"
   }
 
   if ! $JSON_MODE; then
@@ -420,55 +1424,29 @@ cmd_verify() {
     echo ""
   fi
 
-  _run_verify_step "lint" "npm run lint" "Run ESLint on the codebase"
-  _run_verify_step "format_check" "npm run format:check" "Check code formatting with Prettier"
-  _run_verify_step "build" "npm run build" "Build the Next.js application"
-  _run_verify_step "test" "npm run test" "Run vitest test suite"
-
-  # Smoke step — needs special port handling
-  local smoke_step_verdict="pass"
-  local smoke_exit=0
-  local smoke_start smoke_end smoke_duration_ms
-  smoke_start=$(date +%s%N 2>/dev/null || date +%s)
+  _run_verify_step "lint" "Run ESLint on the codebase" "$NPM_BIN" run lint
+  _run_verify_step "format_check" "Check code formatting with Prettier" "$NPM_BIN" run format:check
+  _run_verify_step "build" "Build the Next.js application" "$NPM_BIN" run build
+  _run_verify_step "test" "Run vitest test suite" "$NPM_BIN" run test
 
   if ! $JSON_MODE; then
     printf "  %-15s " "smoke"
   fi
 
-  if ss -tln 2>/dev/null | grep -q ':9999 ' || lsof -i :9999 &>/dev/null; then
-    smoke_step_verdict="degraded"
-    smoke_exit=2
-    if [[ "$overall_verdict" == "pass" ]]; then overall_verdict="degraded"; fi
-    if ! $JSON_MODE; then
-      printf "%s (port 9999 in use)\n" "$(_verdict_label "degraded")"
-    fi
-  else
-    local smoke_cmd
-    smoke_cmd='npx next start --port 9999 & SERVER_PID=$!; for i in 1 2 3 4 5 6 7 8; do sleep 2; STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9999/ 2>/dev/null || echo "000"); if [ "$STATUS" != "000" ]; then break; fi; done; kill $SERVER_PID 2>/dev/null; wait $SERVER_PID 2>/dev/null; if [ "$STATUS" = "200" ] || [ "$STATUS" = "307" ] || [ "$STATUS" = "302" ]; then exit 0; else exit 1; fi'
-    if timeout "$STEP_TIMEOUT" bash -c "$smoke_cmd" >/dev/null 2>&1; then
-      smoke_exit=0
-      smoke_step_verdict="pass"
-    else
-      smoke_exit=$?
-      smoke_step_verdict="fail"
-      if [[ "$overall_verdict" != "fail" ]]; then overall_verdict="fail"; fi
-    fi
-  fi
+  set +e
+  _smoke_run "auto" ""
+  set -e
+  local verify_smoke_metadata
+  verify_smoke_metadata="$(_smoke_verify_metadata)"
 
-  smoke_end=$(date +%s%N 2>/dev/null || date +%s)
-  if [[ ${#smoke_start} -gt 10 ]]; then
-    smoke_duration_ms=$(( (smoke_end - smoke_start) / 1000000 ))
-  else
-    smoke_duration_ms=$(( (smoke_end - smoke_start) * 1000 ))
-  fi
-
-  if ! $JSON_MODE && [[ "$smoke_step_verdict" != "degraded" ]]; then
-    printf "%s (%dms)\n" "$(_verdict_label "$smoke_step_verdict")" "$smoke_duration_ms"
+  if ! $JSON_MODE; then
+    printf "%s (%dms)\n" "$(_verdict_label "$SMOKE_VERDICT")" "$SMOKE_DURATION_MS"
   fi
 
   if [[ -n "$steps_json" ]]; then steps_json+=","; fi
-  steps_json+="{\"name\":\"smoke\",\"verdict\":\"$smoke_step_verdict\",\"exitCode\":$smoke_exit,\"durationMs\":$smoke_duration_ms}"
-  step_results+=("{\"name\":\"smoke\",\"verdict\":\"$smoke_step_verdict\",\"exitCode\":$smoke_exit,\"durationMs\":$smoke_duration_ms,\"description\":\"Start the built app and verify it responds to HTTP\"}")
+  steps_json+="{\"name\":\"smoke\",\"verdict\":\"$SMOKE_VERDICT\",\"exitCode\":$SMOKE_EXIT_CODE,\"durationMs\":$SMOKE_DURATION_MS,\"metadata\":$verify_smoke_metadata}"
+  step_results+=("{\"name\":\"smoke\",\"verdict\":\"$SMOKE_VERDICT\",\"exitCode\":$SMOKE_EXIT_CODE,\"durationMs\":$SMOKE_DURATION_MS,\"description\":\"Start the built app and verify it responds to HTTP\",\"metadata\":$verify_smoke_metadata}")
+  _aggregate_verdict "$SMOKE_VERDICT"
 
   # Write evidence
   local ts
@@ -480,12 +1458,12 @@ cmd_verify() {
 
   if ! $JSON_MODE; then
     echo ""
-    echo "Evidence: $(_dim "$evidence_file")"
+    echo "Evidence: $(_dim "$evidence_ref")"
     echo "Verdict:  $(_verdict_label "$overall_verdict")"
   fi
 
   if $JSON_MODE; then
-    _json_result_steps "verify" "$overall_verdict" "$steps_json" "$evidence_file" "Verification $overall_verdict"
+    _json_result_steps "verify" "$overall_verdict" "$steps_json" "$evidence_ref" "Verification $overall_verdict"
   fi
 
   _verdict_exit "$overall_verdict"
@@ -493,6 +1471,8 @@ cmd_verify() {
 
 # ── Verb: status ───────────────────────────────────────────────
 cmd_status() {
+  _parse_json_only_args "$@"
+
   local verdict="pass"
   local msg=""
 
@@ -535,7 +1515,7 @@ cmd_status() {
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     printf '{"verb":"status","verdict":"%s","command":null,"steps":[],"evidence":%s,"message":"%s","timestamp":"%s","friction_count":%d,"contract_valid":%s}\n' \
       "$verdict" \
-      "$(if [[ -n "$latest_evidence" ]]; then printf '"%s"' "$(_json_escape "$latest_evidence")"; else printf 'null'; fi)" \
+      "$(if [[ -n "$latest_evidence" ]]; then printf '"%s"' "$(_json_escape ".harness/evidence/$(basename "$latest_evidence")")"; else printf 'null'; fi)" \
       "$(_json_escape "$msg")" \
       "$ts" \
       "$friction_count" \
@@ -563,6 +1543,17 @@ cmd_status() {
 
 # ── Verb: clean ────────────────────────────────────────────────
 cmd_clean() {
+  local clean_args=()
+  while [[ $# -gt 0 ]]; do
+    if [[ "$1" == "--json" ]]; then
+      JSON_MODE=true
+    else
+      clean_args+=("$1")
+    fi
+    shift
+  done
+  set -- "${clean_args[@]+"${clean_args[@]}"}"
+
   # Safety: refuse to run if cwd is not the repo root
   if [[ ! -f "$(pwd)/harness" ]]; then
     if $JSON_MODE; then
@@ -732,6 +1723,11 @@ cmd_friction() {
 
 # ── Main dispatch ──────────────────────────────────────────────
 VERB="${1:-}"
+if [[ "$VERB" == "--json" ]]; then
+  JSON_MODE=true
+  shift 1 2>/dev/null || true
+  VERB="${1:-}"
+fi
 shift 1 2>/dev/null || true
 
 case "$VERB" in
@@ -739,28 +1735,31 @@ case "$VERB" in
     cmd_help
     ;;
   orient)
-    cmd_orient
+    cmd_orient "$@"
     ;;
   doctor)
-    cmd_doctor
+    cmd_doctor "$@"
     ;;
   lint)
-    cmd_lint
+    cmd_lint "$@"
     ;;
   test)
-    cmd_test
+    cmd_test "$@"
     ;;
   build)
-    cmd_build
+    cmd_build "$@"
+    ;;
+  smoke)
+    cmd_smoke "$@"
     ;;
   boot)
-    cmd_boot
+    cmd_boot "$@"
     ;;
   verify)
-    cmd_verify
+    cmd_verify "$@"
     ;;
   status)
-    cmd_status
+    cmd_status "$@"
     ;;
   clean)
     cmd_clean "$@"

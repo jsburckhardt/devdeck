@@ -2,11 +2,12 @@ AGENTS.md                                                   — Agent definition
 CONTRIBUTING.md                                             — Human contribution guide
 LLM.txt                                                     — This file; repo map for AI agents
 README.md                                                   — Project overview
-harness                                                     — Engineering harness CLI (preferred operating surface for humans and agents)
+harness                                                     — Engineering harness CLI (preferred operating surface; supports verify, smoke, and targeted test passthrough)
 .harness/contract.yml                                       — Machine-readable harness command and verification contract
 .harness/README.md                                          — Harness usage documentation
 .harness/friction.jsonl                                     — Inference friction log (JSONL)
 .harness/evidence/                                          — Verification evidence directory (gitignored)
+.harness/run/                                               — Local harness smoke ownership locks and test scratch metadata (gitignored)
 justfile                                                    — Development task runner (just)
 vitest.config.ts                                            — Vitest test configuration
 package.json                                                — Node.js dependencies and scripts

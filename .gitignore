@@ -30,3 +30,4 @@ test-results/
 
 # harness
 .harness/evidence/
+.harness/run/
