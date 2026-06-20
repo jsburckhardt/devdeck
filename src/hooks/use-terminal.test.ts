@@ -37,6 +37,7 @@ const fakeTerminal = {
 vi.mock("@xterm/xterm", () => ({
   Terminal: function MockTerminal(opts: Record<string, unknown>) {
     terminalConstructorOptions = opts;
+    fakeTerminal.options = { ...opts };
     return fakeTerminal;
   },
 }));
@@ -105,7 +106,188 @@ class MockWS {
 }
 vi.stubGlobal("WebSocket", MockWS);
 
-import { useTerminal } from "./use-terminal";
+type MediaQueryListener = (event: { matches: boolean; media: string }) => void;
+
+interface MockMediaQueryList {
+  media: string;
+  matches: boolean;
+  onchange: MediaQueryListener | null;
+  addEventListener?: ReturnType<typeof vi.fn>;
+  removeEventListener?: ReturnType<typeof vi.fn>;
+  addListener: ReturnType<typeof vi.fn>;
+  removeListener: ReturnType<typeof vi.fn>;
+  modernListeners: Set<MediaQueryListener>;
+  legacyListeners: Set<MediaQueryListener>;
+  dispatchEvent: ReturnType<typeof vi.fn>;
+}
+
+interface ViewportMockOptions {
+  width?: number;
+  documentWidth?: number;
+  primaryCoarsePointer?: boolean;
+  anyCoarsePointer?: boolean;
+  maxTouchPoints?: number;
+  visualViewportWidth?: number;
+  legacyMediaQuery?: boolean;
+}
+
+const mediaQueryLists = new Map<string, MockMediaQueryList>();
+const visualViewportListeners = new Set<() => void>();
+let viewportMockState: Required<Omit<ViewportMockOptions, "legacyMediaQuery">> = {
+  width: 1440,
+  documentWidth: 1440,
+  primaryCoarsePointer: false,
+  anyCoarsePointer: false,
+  maxTouchPoints: 0,
+  visualViewportWidth: 1440,
+};
+let useLegacyMediaQuery = false;
+let mockVisualViewport: {
+  width: number;
+  addEventListener: ReturnType<typeof vi.fn>;
+  removeEventListener: ReturnType<typeof vi.fn>;
+} | null = null;
+
+function matchesQuery(query: string): boolean {
+  if (query === "(pointer: coarse)") {
+    return viewportMockState.primaryCoarsePointer;
+  }
+  if (query === "(any-pointer: coarse)") {
+    return viewportMockState.anyCoarsePointer;
+  }
+  return false;
+}
+
+function ensureMediaQueryList(query: string): MockMediaQueryList {
+  const existing = mediaQueryLists.get(query);
+  if (existing) {
+    existing.matches = matchesQuery(query);
+    return existing;
+  }
+
+  const modernListeners = new Set<MediaQueryListener>();
+  const legacyListeners = new Set<MediaQueryListener>();
+  const list: MockMediaQueryList = {
+    media: query,
+    matches: matchesQuery(query),
+    onchange: null,
+    addEventListener: useLegacyMediaQuery
+      ? undefined
+      : vi.fn((type: string, listener: MediaQueryListener) => {
+          if (type === "change") {
+            modernListeners.add(listener);
+          }
+        }),
+    removeEventListener: useLegacyMediaQuery
+      ? undefined
+      : vi.fn((type: string, listener: MediaQueryListener) => {
+          if (type === "change") {
+            modernListeners.delete(listener);
+          }
+        }),
+    addListener: vi.fn((listener: MediaQueryListener) => {
+      legacyListeners.add(listener);
+    }),
+    removeListener: vi.fn((listener: MediaQueryListener) => {
+      legacyListeners.delete(listener);
+    }),
+    modernListeners,
+    legacyListeners,
+    dispatchEvent: vi.fn(() => true),
+  };
+  mediaQueryLists.set(query, list);
+  return list;
+}
+
+function defineReadonlyBrowserNumber<T extends object>(target: T, key: keyof T, value: number) {
+  Object.defineProperty(target, key, {
+    configurable: true,
+    value,
+  });
+}
+
+function installViewportMocks(options: ViewportMockOptions = {}) {
+  useLegacyMediaQuery = options.legacyMediaQuery ?? false;
+  mediaQueryLists.clear();
+  visualViewportListeners.clear();
+  viewportMockState = {
+    width: options.width ?? 1440,
+    documentWidth: options.documentWidth ?? options.width ?? 1440,
+    primaryCoarsePointer: options.primaryCoarsePointer ?? false,
+    anyCoarsePointer: options.anyCoarsePointer ?? false,
+    maxTouchPoints: options.maxTouchPoints ?? 0,
+    visualViewportWidth: options.visualViewportWidth ?? options.width ?? 1440,
+  };
+
+  defineReadonlyBrowserNumber(window, "innerWidth", viewportMockState.width);
+  defineReadonlyBrowserNumber(
+    document.documentElement,
+    "clientWidth",
+    viewportMockState.documentWidth,
+  );
+  defineReadonlyBrowserNumber(navigator, "maxTouchPoints", viewportMockState.maxTouchPoints);
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: vi.fn((query: string) => ensureMediaQueryList(query)),
+  });
+
+  mockVisualViewport = {
+    width: viewportMockState.visualViewportWidth,
+    addEventListener: vi.fn((type: string, listener: () => void) => {
+      if (type === "resize") {
+        visualViewportListeners.add(listener);
+      }
+    }),
+    removeEventListener: vi.fn((type: string, listener: () => void) => {
+      if (type === "resize") {
+        visualViewportListeners.delete(listener);
+      }
+    }),
+  };
+  Object.defineProperty(window, "visualViewport", {
+    configurable: true,
+    value: mockVisualViewport,
+  });
+}
+
+function updateViewportMock(options: ViewportMockOptions) {
+  viewportMockState = {
+    width: options.width ?? viewportMockState.width,
+    documentWidth: options.documentWidth ?? options.width ?? viewportMockState.documentWidth,
+    primaryCoarsePointer: options.primaryCoarsePointer ?? viewportMockState.primaryCoarsePointer,
+    anyCoarsePointer: options.anyCoarsePointer ?? viewportMockState.anyCoarsePointer,
+    maxTouchPoints: options.maxTouchPoints ?? viewportMockState.maxTouchPoints,
+    visualViewportWidth:
+      options.visualViewportWidth ?? options.width ?? viewportMockState.visualViewportWidth,
+  };
+  defineReadonlyBrowserNumber(window, "innerWidth", viewportMockState.width);
+  defineReadonlyBrowserNumber(
+    document.documentElement,
+    "clientWidth",
+    viewportMockState.documentWidth,
+  );
+  defineReadonlyBrowserNumber(navigator, "maxTouchPoints", viewportMockState.maxTouchPoints);
+  if (mockVisualViewport) {
+    mockVisualViewport.width = viewportMockState.visualViewportWidth;
+  }
+  for (const [query, mediaQueryList] of mediaQueryLists) {
+    mediaQueryList.matches = matchesQuery(query);
+  }
+}
+
+function emitMediaQueryChange(query: string) {
+  const mediaQueryList = ensureMediaQueryList(query);
+  const event = { matches: mediaQueryList.matches, media: query };
+  mediaQueryList.onchange?.(event);
+  mediaQueryList.modernListeners.forEach((listener) => listener(event));
+  mediaQueryList.legacyListeners.forEach((listener) => listener(event));
+}
+
+function emitVisualViewportResize() {
+  visualViewportListeners.forEach((listener) => listener());
+}
+
+import { getTerminalFontSize, type TerminalFontSizeInput, useTerminal } from "./use-terminal";
 import { TERMINAL_THEMES } from "./use-terminal-theme";
 
 function getLatestWs(): MockWS {
@@ -133,6 +315,101 @@ function mockRect(width: number, height: number): DOMRect {
   } as DOMRect;
 }
 
+describe("getTerminalFontSize", () => {
+  it("Issue #94: applies the responsive font-size policy table and threshold edges", () => {
+    const noTouch = {
+      primaryCoarsePointer: false,
+      anyCoarsePointer: false,
+      maxTouchPoints: 0,
+    };
+
+    expect(getTerminalFontSize({ ...noTouch, layoutViewportWidth: 600 })).toBe(11);
+    expect(
+      getTerminalFontSize({
+        layoutViewportWidth: 600,
+        primaryCoarsePointer: true,
+        anyCoarsePointer: true,
+        maxTouchPoints: 5,
+      }),
+    ).toBe(11);
+    expect(getTerminalFontSize({ ...noTouch, layoutViewportWidth: 601 })).toBe(13);
+    expect(
+      getTerminalFontSize({
+        ...noTouch,
+        layoutViewportWidth: 1366,
+        primaryCoarsePointer: true,
+      }),
+    ).toBe(12);
+    expect(
+      getTerminalFontSize({
+        ...noTouch,
+        layoutViewportWidth: 1367,
+        primaryCoarsePointer: true,
+      }),
+    ).toBe(13);
+    expect(
+      getTerminalFontSize({
+        ...noTouch,
+        layoutViewportWidth: 1024,
+        anyCoarsePointer: true,
+      }),
+    ).toBe(12);
+    expect(
+      getTerminalFontSize({
+        ...noTouch,
+        layoutViewportWidth: 1025,
+        anyCoarsePointer: true,
+      }),
+    ).toBe(13);
+    expect(getTerminalFontSize({ ...noTouch, layoutViewportWidth: 1024, maxTouchPoints: 1 })).toBe(
+      12,
+    );
+    expect(getTerminalFontSize({ ...noTouch, layoutViewportWidth: 1025, maxTouchPoints: 1 })).toBe(
+      13,
+    );
+    expect(getTerminalFontSize({ ...noTouch, layoutViewportWidth: 1200 })).toBe(13);
+    expect(getTerminalFontSize({ ...noTouch, layoutViewportWidth: 1920 })).toBe(13);
+  });
+
+  it("Issue #94: is safe with missing browser APIs and uses layout viewport sources only", () => {
+    expect(getTerminalFontSize({ window: null, document: null, navigator: null })).toBe(13);
+    expect(
+      getTerminalFontSize({
+        window: { innerWidth: null },
+        document: { documentElement: { clientWidth: 600 } },
+        navigator: null,
+      }),
+    ).toBe(11);
+    expect(
+      getTerminalFontSize({
+        window: { innerWidth: 1024 },
+        navigator: null,
+      }),
+    ).toBe(13);
+    expect(
+      getTerminalFontSize({
+        window: { innerWidth: 1024 },
+        navigator: { maxTouchPoints: 1 },
+      }),
+    ).toBe(12);
+
+    expect(
+      getTerminalFontSize({
+        window: {
+          innerWidth: 1025,
+          matchMedia: (query: string) => ({
+            matches: query === "(any-pointer: coarse)",
+          }),
+          visualViewport: { width: 500 },
+        } as TerminalFontSizeInput["window"] & {
+          visualViewport: { width: number };
+        },
+        navigator: { maxTouchPoints: 0 },
+      }),
+    ).toBe(13);
+  });
+});
+
 function resizeMessages(ws: MockWS): Array<{ cols: number; rows: number }> {
   return ws.send.mock.calls.flatMap((call: unknown[]) => {
     if (typeof call[0] !== "string") {
@@ -156,9 +433,47 @@ function resizeMessages(ws: MockWS): Array<{ cols: number; rows: number }> {
   });
 }
 
+async function mountTerminalWithContainer({
+  width = 800,
+  height = 400,
+  options = { wsUrl: "ws://test:3100" },
+}: {
+  width?: number;
+  height?: number;
+  options?: Parameters<typeof useTerminal>[0];
+} = {}) {
+  const container = document.createElement("div");
+  const rectSpy = vi
+    .spyOn(container, "getBoundingClientRect")
+    .mockReturnValue(mockRect(width, height));
+  const hook = renderHook(() => useTerminal(options));
+
+  const firstWs = await waitForWs();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (hook.result.current.containerRef as any).current = container;
+
+  const countBeforeRetry = wsInstances.length;
+  await act(async () => {
+    hook.result.current.retry();
+  });
+
+  await waitFor(() => {
+    expect(wsInstances.length).toBeGreaterThan(countBeforeRetry);
+  });
+
+  return {
+    ...hook,
+    container,
+    firstWs,
+    rectSpy,
+    ws: getLatestWs(),
+  };
+}
+
 describe("useTerminal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    installViewportMocks();
     wsInstances = [];
     callOrder.length = 0;
     terminalConstructorOptions = {};
@@ -177,6 +492,9 @@ describe("useTerminal", () => {
     fakeTerminal.rows = 24;
     fakeTerminal.unicode.activeVersion = "6";
     fakeTerminal.options = {};
+    fakeFitAddon.fit.mockImplementation(() => {
+      callOrder.push("fit");
+    });
     fakeFitAddon.fit.mockClear();
     Object.keys(fakeTerminalHandlers).forEach((k) => delete fakeTerminalHandlers[k]);
     mockRODisconnect.mockClear();
@@ -637,6 +955,62 @@ describe("useTerminal", () => {
     expect(ws.close).toHaveBeenCalled();
   });
 
+  it("Issue #94: cleans up responsive listeners on context changes and unmount", async () => {
+    const removeWindowListenerSpy = vi.spyOn(window, "removeEventListener");
+    const { rerender, unmount } = renderHook(
+      ({ slug, worktree }) => useTerminal({ slug, worktree }),
+      { initialProps: { slug: "project-one", worktree: undefined as string | undefined } },
+    );
+
+    await waitForWs();
+    const pointerQuery = ensureMediaQueryList("(pointer: coarse)");
+    const anyPointerQuery = ensureMediaQueryList("(any-pointer: coarse)");
+    expect(pointerQuery.addEventListener).toBeDefined();
+    expect(anyPointerQuery.addEventListener).toBeDefined();
+    expect(pointerQuery.addEventListener!).toHaveBeenCalledTimes(1);
+    expect(anyPointerQuery.addEventListener!).toHaveBeenCalledTimes(1);
+    expect(mockVisualViewport?.addEventListener).toHaveBeenCalledWith(
+      "resize",
+      expect.any(Function),
+    );
+
+    rerender({ slug: "project-two", worktree: ".trees/feature" });
+    await waitFor(() => {
+      expect(wsInstances.length).toBeGreaterThan(1);
+    });
+
+    unmount();
+
+    expect(pointerQuery.addEventListener!).toHaveBeenCalledTimes(2);
+    expect(pointerQuery.removeEventListener!).toHaveBeenCalledTimes(2);
+    expect(anyPointerQuery.addEventListener!).toHaveBeenCalledTimes(2);
+    expect(anyPointerQuery.removeEventListener!).toHaveBeenCalledTimes(2);
+    expect(removeWindowListenerSpy).toHaveBeenCalledWith("resize", expect.any(Function));
+    expect(removeWindowListenerSpy).toHaveBeenCalledWith("orientationchange", expect.any(Function));
+    expect(mockVisualViewport?.removeEventListener).toHaveBeenCalledWith(
+      "resize",
+      expect.any(Function),
+    );
+  });
+
+  it("Issue #94: cleans up legacy media-query listeners", async () => {
+    installViewportMocks({ legacyMediaQuery: true });
+    const { unmount } = renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+
+    await waitForWs();
+    const pointerQuery = ensureMediaQueryList("(pointer: coarse)");
+    const anyPointerQuery = ensureMediaQueryList("(any-pointer: coarse)");
+
+    expect(pointerQuery.addEventListener).toBeUndefined();
+    expect(pointerQuery.addListener).toHaveBeenCalledTimes(1);
+    expect(anyPointerQuery.addListener).toHaveBeenCalledTimes(1);
+
+    unmount();
+
+    expect(pointerQuery.removeListener).toHaveBeenCalledTimes(1);
+    expect(anyPointerQuery.removeListener).toHaveBeenCalledTimes(1);
+  });
+
   it("T18: intentional close does not reconnect", async () => {
     vi.useFakeTimers();
     try {
@@ -744,7 +1118,48 @@ describe("useTerminal", () => {
       customGlyphs: true,
       screenReaderMode: true,
       allowProposedApi: true,
+      fontSize: 13,
     });
+  });
+
+  it("Issue #94: Terminal constructor receives the computed responsive font size before connect", async () => {
+    const cases = [
+      {
+        label: "phone",
+        viewport: { width: 600, primaryCoarsePointer: false, anyCoarsePointer: false },
+        expectedFontSize: 11,
+      },
+      {
+        label: "tablet primary coarse",
+        viewport: { width: 1024, primaryCoarsePointer: true, anyCoarsePointer: true },
+        expectedFontSize: 12,
+      },
+      {
+        label: "desktop",
+        viewport: { width: 1200, primaryCoarsePointer: false, anyCoarsePointer: false },
+        expectedFontSize: 13,
+      },
+    ];
+
+    for (const testCase of cases) {
+      installViewportMocks(testCase.viewport);
+      wsInstances = [];
+      terminalConstructorOptions = {};
+
+      const { unmount } = renderHook(() => useTerminal({ wsUrl: "ws://test:3100" }));
+      const ws = await waitForWs();
+
+      expect(terminalConstructorOptions).toMatchObject({
+        fontSize: testCase.expectedFontSize,
+        lineHeight: 1.0,
+        customGlyphs: true,
+        screenReaderMode: true,
+      });
+      expect(ws.url).toContain("cols=80");
+      expect(ws.url).toContain("rows=24");
+
+      unmount();
+    }
   });
 
   it("T25: WebSocket URL contains cols and rows query params", async () => {
@@ -817,6 +1232,110 @@ describe("useTerminal", () => {
 
     expect(fakeTerminal.options.theme).toBe(dracula);
     expect(wsInstances.length).toBe(countBefore);
+  });
+
+  it("Issue #94: runtime font-size tier changes update xterm, force fit, send resize, and do not reconnect", async () => {
+    installViewportMocks({
+      width: 1440,
+      primaryCoarsePointer: false,
+      anyCoarsePointer: false,
+      maxTouchPoints: 0,
+    });
+    const { ws } = await mountTerminalWithContainer();
+
+    await act(async () => {
+      ws.onopen?.();
+    });
+
+    const socketCount = wsInstances.length;
+    ws.send.mockClear();
+    fakeFitAddon.fit.mockImplementation(() => {
+      callOrder.push("fit");
+      if (fakeTerminal.options.fontSize === 12) {
+        fakeTerminal.cols = 100;
+        fakeTerminal.rows = 30;
+      } else if (fakeTerminal.options.fontSize === 11) {
+        fakeTerminal.cols = 110;
+        fakeTerminal.rows = 34;
+      }
+      fakeTerminalHandlers.resize?.({ cols: fakeTerminal.cols, rows: fakeTerminal.rows });
+    });
+    fakeFitAddon.fit.mockClear();
+
+    updateViewportMock({
+      width: 1024,
+      primaryCoarsePointer: true,
+      anyCoarsePointer: true,
+      maxTouchPoints: 5,
+    });
+    await act(async () => {
+      window.dispatchEvent(new Event("resize"));
+    });
+
+    expect(fakeTerminal.options.fontSize).toBe(12);
+    expect(fakeFitAddon.fit).toHaveBeenCalledTimes(1);
+    expect(resizeMessages(ws)).toEqual([{ cols: 100, rows: 30 }]);
+    expect(wsInstances.length).toBe(socketCount);
+
+    updateViewportMock({
+      width: 600,
+      primaryCoarsePointer: false,
+      anyCoarsePointer: false,
+      maxTouchPoints: 0,
+    });
+    await act(async () => {
+      window.dispatchEvent(new Event("orientationchange"));
+    });
+
+    expect(fakeTerminal.options.fontSize).toBe(11);
+    expect(fakeFitAddon.fit).toHaveBeenCalledTimes(2);
+    expect(resizeMessages(ws)).toEqual([
+      { cols: 100, rows: 30 },
+      { cols: 110, rows: 34 },
+    ]);
+    expect(wsInstances.length).toBe(socketCount);
+  });
+
+  it("Issue #94: same-tier media query changes do not refit or reconnect", async () => {
+    installViewportMocks({
+      width: 1440,
+      primaryCoarsePointer: false,
+      anyCoarsePointer: false,
+      maxTouchPoints: 0,
+    });
+    await mountTerminalWithContainer();
+    const socketCount = wsInstances.length;
+
+    fakeFitAddon.fit.mockClear();
+    updateViewportMock({ primaryCoarsePointer: true });
+    await act(async () => {
+      emitMediaQueryChange("(pointer: coarse)");
+    });
+
+    expect(fakeTerminal.options.fontSize).toBe(13);
+    expect(fakeFitAddon.fit).not.toHaveBeenCalled();
+    expect(wsInstances.length).toBe(socketCount);
+  });
+
+  it("Issue #94: visualViewport resize is refit-only and does not affect font-size tier", async () => {
+    const { rectSpy } = await mountTerminalWithContainer();
+    const ws = getLatestWs();
+    await act(async () => {
+      ws.onopen?.();
+    });
+    const socketCount = wsInstances.length;
+
+    fakeFitAddon.fit.mockClear();
+    rectSpy.mockReturnValue(mockRect(850, 400));
+    updateViewportMock({ visualViewportWidth: 500 });
+    await act(async () => {
+      emitVisualViewportResize();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+
+    expect(fakeTerminal.options.fontSize).toBe(13);
+    expect(fakeFitAddon.fit).toHaveBeenCalledTimes(1);
+    expect(wsInstances.length).toBe(socketCount);
   });
 
   it("T29: no theme provided falls back to default", async () => {
