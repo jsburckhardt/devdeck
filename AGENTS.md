@@ -58,7 +58,7 @@ See `.harness/contract.yml` for the machine-readable command contract and `.harn
 PIPELINE_STAGES: YAML<<
 - id: research
   name: Research
-  agent: research
+  agent: rpiv-research
   purpose: Explore the problem space, classify scope, produce a research brief
 - id: plan
   name: Plan
@@ -163,8 +163,8 @@ bootstrap:
     - must ask user to confirm or customize proposed verification commands
     - must not set up CI/CD pipelines or infrastructure
     - must not make feature-level decisions
-research:
-  file: .github/agents/research.agent.md
+rpiv-research:
+  file: .github/agents/rpiv-research.agent.md
   purpose: Explore the problem space, classify scope, and produce a research brief that hands off cleanly to the Plan stage.
   tools:
     - web search and documentation lookup
