@@ -19,7 +19,7 @@ Desired outcome: root entries render quickly and visibly include dotfiles, lockf
 
 ### Documentation and architecture reviewed
 
-- The RPIV and research guardrails require a Research artifact at `project/issues/<issue>/research/00-research.md`, exact scope classification, repository/doc inspection, and no architectural decisions during Research (`AGENTS.md:126-150`, `.github/agents/research.agent.md:23-38`).
+- The RPIV and research guardrails require a Research artifact at `project/issues/<issue>/research/00-research.md`, exact scope classification, repository/doc inspection, and no architectural decisions during Research (`AGENTS.md:126-150`, `.github/agents/rpiv-research.agent.md:23-38`).
 - DevDeck is a Next.js App Router + React + TypeScript app with API routes and a browser file explorer/editor (`docs/README.md:3-9`, `ADR-0002:21-33`).
 - Project roots must be resolved server-side through `resolveProjectPath(slug)` and filesystem paths must not be exposed to clients (`ADR-0003:57-70`).
 - API errors should be structured and user-facing errors should be clear (`CORE-COMPONENT-0005:21-37`). Tests must be co-located and run through the configured Node/TypeScript standards (`CORE-COMPONENT-0006:37-53`).

@@ -15,7 +15,7 @@ user-invocable: true
 disable-model-invocation: true
 target: vscode
 agents:
-  - research
+  - rpiv-research
   - planner
   - implementer
   - verifier
@@ -30,6 +30,7 @@ You MUST create the issue documentation folder structure under project/issues/<I
 You MUST execute pipeline stages in strict order: Research, Plan, Implement, Verify.
 You MUST NOT skip any pipeline stage.
 You MUST dispatch each stage to its corresponding agent as a subagent.
+You MUST dispatch the Research stage to the local `rpiv-research` custom agent, not the bundled `research` agent or `/research` feature.
 You MUST verify the output artifact of each stage exists before proceeding to the next.
 You MUST stop and report a PIPELINE_ERROR if any stage fails validation.
 You MUST NOT make architectural decisions; delegate them to the planner agent via the Plan stage.
@@ -47,7 +48,7 @@ AGENTS_MD_PATH: "AGENTS.md"
 DECISION_LOG_PATH: "project/architecture/ADR/DECISION-LOG.md"
 ISSUES_DIR: "project/issues"
 STAGE_AGENTS: YAML<<
-- agent: research
+- agent: rpiv-research
   output: project/issues/<ISSUE_NUMBER>/research/00-research.md
   purpose: Explore problem space, classify scope, produce research brief
   stage: research
@@ -157,7 +158,7 @@ RETRY_COUNT: 0
 RUN `init-pipeline`
 RUN `dispatch-research`
 IF PIPELINE_STATUS = "error":
-  RETURN: format="PIPELINE_ERROR", issue_number=ISSUE_NUMBER, failed_stage=CURRENT_STAGE, error_message="Research stage failed", details=RESEARCH_RESULT, recovery="Review the error and retry with @research"
+  RETURN: format="PIPELINE_ERROR", issue_number=ISSUE_NUMBER, failed_stage=CURRENT_STAGE, error_message="Research stage failed", details=RESEARCH_RESULT, recovery="Review the error and retry with @rpiv-research"
 RUN `dispatch-plan`
 IF PIPELINE_STATUS = "error":
   RETURN: format="PIPELINE_ERROR", issue_number=ISSUE_NUMBER, failed_stage=CURRENT_STAGE, error_message="Plan stage failed", details=PLAN_RESULT, recovery="Review the error and retry with @planner"
@@ -184,9 +185,9 @@ SET SCOPE_TYPE := <SCOPE> (from "Agent Inference" using ISSUE_JSON, DECISION_LOG
 SET PIPELINE_STATUS := "running" (from "Agent Inference")
 </process>
 
-<process id="dispatch-research" name="Dispatch the Research stage to the research agent">
+<process id="dispatch-research" name="Dispatch the Research stage to the rpiv-research agent">
 SET CURRENT_STAGE := "research" (from "Agent Inference")
-USE `task` where: agent="research", prompt=TASK_DESCRIPTION
+USE `task` where: agent="rpiv-research", prompt=TASK_DESCRIPTION
 CAPTURE RESEARCH_RESULT from `task`
 SET PIPELINE_STATUS := <STATUS> (from "Agent Inference" using RESEARCH_RESULT)
 IF PIPELINE_STATUS != "error":
