@@ -15,12 +15,12 @@
 - None created.
 - Updated global artifact: `project/architecture/core-components/CORE-COMPONENT-0009-engineering-harness.md`.
 - Updated decision records in `project/architecture/ADR/DECISION-LOG.md`:
-  - #234: expose first-class `./harness smoke`.
-  - #235: require safe smoke auto/fixed port handling.
-  - #236: require cleanup of only harness-owned smoke children.
-  - #237: reuse shared smoke inside `./harness verify`.
-  - #238: forward `./harness test -- <args>` to Vitest with safe arrays.
-  - #239: sanitize smoke/test JSON evidence.
+  - #240: expose first-class `./harness smoke`.
+  - #241: require safe smoke auto/fixed port handling.
+  - #242: require cleanup of only harness-owned smoke children.
+  - #243: reuse shared smoke inside `./harness verify`.
+  - #244: forward `./harness test -- <args>` to Vitest with safe arrays.
+  - #245: sanitize smoke/test JSON evidence.
 
 ## Implementation Tasks
 

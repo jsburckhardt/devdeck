@@ -6,7 +6,7 @@
 - **Complexity:** Medium
 - **Dependencies:** None
 - **Related ADRs:** ADR-0002
-- **Related Core-Components:** CORE-COMPONENT-0009; DECISION-LOG decisions #146, #150, #234, #238, #239
+- **Related Core-Components:** CORE-COMPONENT-0009; DECISION-LOG decisions #146, #150, #240, #244, #245
 
 ### Description
 Replace the current global flag sweep that removes `--json` anywhere in the command with delimiter-aware parsing. Harness-owned flags must be parsed before verb passthrough, while verb arguments after `--` remain available to the selected verb unchanged.
@@ -28,7 +28,7 @@ Replace the current global flag sweep that removes `--json` anywhere in the comm
 - **Complexity:** Medium
 - **Dependencies:** T1
 - **Related ADRs:** ADR-0002
-- **Related Core-Components:** CORE-COMPONENT-0009; DECISION-LOG decisions #146, #148, #150, #238, #239
+- **Related Core-Components:** CORE-COMPONENT-0009; DECISION-LOG decisions #146, #148, #150, #244, #245
 
 ### Description
 Make `./harness test` wrap the existing `npm run test` command while supporting targeted Vitest arguments after `--`. Remove unsafe `eval` execution from targeted paths and emit sanitized target metadata for JSON output.
@@ -51,7 +51,7 @@ Make `./harness test` wrap the existing `npm run test` command while supporting 
 - **Complexity:** High
 - **Dependencies:** T1
 - **Related ADRs:** ADR-0002, ADR-0004, ADR-0006
-- **Related Core-Components:** CORE-COMPONENT-0009; DECISION-LOG decisions #150, #151, #234, #235, #236, #239
+- **Related Core-Components:** CORE-COMPONENT-0009; DECISION-LOG decisions #150, #151, #240, #241, #242, #245
 
 ### Description
 Implement the reusable smoke helper behind `./harness smoke [--port auto|PORT] [--json]`. The helper must start only the built Next.js app, bind to loopback, probe root HTTP readiness, map verdicts explicitly, and clean up only processes started by the current invocation.
@@ -80,7 +80,7 @@ Implement the reusable smoke helper behind `./harness smoke [--port auto|PORT] [
 - **Complexity:** Medium
 - **Dependencies:** T3
 - **Related ADRs:** ADR-0004, ADR-0006
-- **Related Core-Components:** CORE-COMPONENT-0009; DECISION-LOG decisions #151, #234, #235, #236, #239
+- **Related Core-Components:** CORE-COMPONENT-0009; DECISION-LOG decisions #151, #240, #241, #242, #245
 
 ### Description
 Define and implement the safe metadata shape for standalone smoke JSON output and verify-embedded smoke evidence. Metadata should help agents diagnose verdicts without exposing raw logs, credentials, host secrets, or sensitive paths.
@@ -103,7 +103,7 @@ Define and implement the safe metadata shape for standalone smoke JSON output an
 - **Complexity:** High
 - **Dependencies:** T3, T4
 - **Related ADRs:** ADR-0002, ADR-0004, ADR-0006
-- **Related Core-Components:** CORE-COMPONENT-0006, CORE-COMPONENT-0009; DECISION-LOG decisions #147, #150, #151, #165, #166, #237, #239
+- **Related Core-Components:** CORE-COMPONENT-0006, CORE-COMPONENT-0009; DECISION-LOG decisions #147, #150, #151, #165, #166, #243, #245
 
 ### Description
 Remove `cmd_verify()`'s fixed-port inline smoke script and call the shared smoke helper for the smoke step. Preserve verify's role as the full repository verification contract and evidence source of truth.
@@ -128,7 +128,7 @@ Remove `cmd_verify()`'s fixed-port inline smoke script and call the shared smoke
 - **Complexity:** Medium
 - **Dependencies:** T1, T2, T3
 - **Related ADRs:** ADR-0002
-- **Related Core-Components:** CORE-COMPONENT-0009; DECISION-LOG decisions #146, #147, #152, #165, #166, #234, #238
+- **Related Core-Components:** CORE-COMPONENT-0009; DECISION-LOG decisions #146, #147, #152, #165, #166, #240, #244
 
 ### Description
 Update all agent- and human-facing harness discovery surfaces so the new smoke and targeted test workflows are discoverable without reading implementation code.
@@ -154,7 +154,7 @@ Update all agent- and human-facing harness discovery surfaces so the new smoke a
 - **Complexity:** High
 - **Dependencies:** T1, T2, T3, T4, T5, T6
 - **Related ADRs:** ADR-0002
-- **Related Core-Components:** CORE-COMPONENT-0006, CORE-COMPONENT-0009; DECISION-LOG decisions #150, #151, #234, #235, #236, #237, #238, #239
+- **Related Core-Components:** CORE-COMPONENT-0006, CORE-COMPONENT-0009; DECISION-LOG decisions #150, #151, #240, #241, #242, #243, #244, #245
 
 ### Description
 Add a maintainable automated test suite for the Bash harness under the existing Vitest configuration. Use controlled fake backing commands and repo-local isolated fixtures to keep tests deterministic and fast.
@@ -177,7 +177,7 @@ Add a maintainable automated test suite for the Bash harness under the existing 
 - **Complexity:** Medium
 - **Dependencies:** T7
 - **Related ADRs:** ADR-0002, ADR-0004, ADR-0006
-- **Related Core-Components:** CORE-COMPONENT-0006, CORE-COMPONENT-0009; DECISION-LOG decisions #147, #150, #151, #165, #166, #234, #235, #236, #237, #238, #239
+- **Related Core-Components:** CORE-COMPONENT-0006, CORE-COMPONENT-0009; DECISION-LOG decisions #147, #150, #151, #165, #166, #240, #241, #242, #243, #244, #245
 
 ### Description
 Validate the completed implementation end-to-end through the repo-local harness, inspect generated metadata for safety, and ensure the workspace is left clean.

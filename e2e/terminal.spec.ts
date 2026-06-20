@@ -63,6 +63,60 @@ async function expectTerminalLine(page: Page, expectedLine: string) {
     .toContain(expectedLine);
 }
 
+async function installCoarsePointerTabletEmulation(page: Page) {
+  await page.addInitScript(() => {
+    const originalMatchMedia = window.matchMedia.bind(window);
+    const createMediaQueryList = (query: string, matches: boolean): MediaQueryList =>
+      ({
+        matches,
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => true,
+      }) as MediaQueryList;
+
+    Object.defineProperty(navigator, "maxTouchPoints", {
+      configurable: true,
+      value: 5,
+    });
+    window.matchMedia = (query: string): MediaQueryList => {
+      if (query === "(pointer: coarse)" || query === "(any-pointer: coarse)") {
+        return createMediaQueryList(query, true);
+      }
+      return originalMatchMedia(query);
+    };
+  });
+}
+
+async function expectRenderedTerminalFontSize(page: Page, expectedFontSize: string) {
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(() => {
+          const host = document.querySelector('[data-testid="terminal-container"]');
+          const candidates = [
+            host?.querySelector(".xterm"),
+            host?.querySelector(".xterm-rows"),
+            host?.querySelector(".xterm-screen"),
+            host?.querySelector(".xterm-rows > div"),
+            host?.querySelector(".xterm-helper-textarea"),
+          ];
+          return [
+            ...new Set(
+              candidates
+                .filter((element): element is HTMLElement => element instanceof HTMLElement)
+                .map((element) => getComputedStyle(element).fontSize),
+            ),
+          ];
+        }),
+      { timeout: 5000 },
+    )
+    .toContain(expectedFontSize);
+}
+
 async function installMockSpeechRecognition(page: Page) {
   await page.addInitScript(() => {
     interface MockRecognitionResultEvent {
@@ -178,6 +232,25 @@ test("terminal keeps fitting without horizontal overflow after layout changes", 
   await expectNoTerminalHorizontalOverflow(page);
 
   await expect(page.locator('[data-testid="terminal-panel"]').getByText("Connected")).toBeVisible();
+});
+
+test.describe("touch tablet terminal font size", () => {
+  test.use({
+    viewport: { width: 1024, height: 768 },
+    hasTouch: true,
+    isMobile: true,
+  });
+
+  test("renders at 12px while connected and contained", async ({ page }) => {
+    await installCoarsePointerTabletEmulation(page);
+    await openFirstProjectTerminal(page);
+
+    await expectRenderedTerminalFontSize(page, "12px");
+    await expect(
+      page.locator('[data-testid="terminal-panel"]').getByText("Connected"),
+    ).toBeVisible();
+    await expectNoTerminalHorizontalOverflow(page);
+  });
 });
 
 test("mobile keyboard helper sends an arrow key without disconnecting", async ({ page }) => {

@@ -2,7 +2,7 @@
 
 ## Status
 
-Adopted (updated) - 2026-06-11
+Adopted (updated) - 2026-06-20
 
 ## Purpose
 
@@ -13,6 +13,7 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - Frontend: xterm.js terminal widget and WebSocket client
 - Backend: WebSocket server, PTY process lifecycle management
 - Communication protocol between frontend and backend
+- Responsive xterm.js font-size selection, refit behavior, and PTY resize propagation
 - Terminal input helper controls, including keyboard helpers and browser-only microphone review input, that inject raw input through `useTerminal.sendInput(data)`
 
 ## Definition
@@ -39,6 +40,19 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - The client MUST pass initial terminal dimensions as `cols` and `rows` query parameters on the WebSocket upgrade URL so the server can spawn the PTY at the correct size before any resize message arrives
 - The frontend MUST load `@xterm/addon-clipboard` (ClipboardAddon) to support OSC 52 clipboard escape sequences from programs like tmux and vim
 - The frontend MUST set `screenReaderMode: true` in the Terminal constructor options to enable accessibility input methods (IME, voice-to-text)
+- Responsive terminal density changes MUST preserve `lineHeight: 1.0`, `customGlyphs: true`, `screenReaderMode: true`, and ClipboardAddon behavior
+- `useTerminal` MUST compute xterm.js `fontSize` from layout viewport width and touch capability before constructing the Terminal instance
+- The responsive terminal font-size policy MUST be exactly:
+  1. `layoutViewportWidth <= 600` uses `11`
+  2. Primary coarse pointer (`(pointer: coarse)`) and `layoutViewportWidth <= 1366` uses `12`
+  3. Fallback touch detection (`(any-pointer: coarse)` or `navigator.maxTouchPoints > 0`) and `layoutViewportWidth <= 1024` uses `12`
+  4. All other contexts use `13`, including non-touch `layoutViewportWidth <= 1200` and large non-touch desktop layouts
+- Terminal font-size tiering MUST use layout viewport width (`window.innerWidth` or the document element layout width) and MUST NOT use `window.visualViewport.width` for tier decisions
+- Browser zoom or `visualViewport` resize events MAY trigger a terminal refit, but MUST NOT lower the terminal font-size tier by themselves
+- The initial computed terminal font size MUST be applied before the first fit and WebSocket connection so initial `cols`/`rows` query parameters reflect the selected tier
+- Runtime terminal font-size tier changes MUST update `term.options.fontSize`, force a fit even when the container dimensions are unchanged, and propagate resulting `onResize` events through the existing duplicate resize suppression path
+- Runtime terminal font-size tier changes MUST NOT reconnect the WebSocket solely because the font-size tier changed
+- Responsive terminal font-size listeners MUST be instance-local, SSR-safe, and cleaned up on unmount, project/worktree context changes, reconnects, and React Strict Mode remounts, including both modern and legacy media-query listener APIs
 - After the PTY is successfully spawned (and before flushing any pending input messages), the server MUST send a JSON text frame `{ type: "setup", mode: "tmux" | "shell" }` to the client to communicate the active session mode
 - When tmux attach exits with a non-zero code and the server falls back to a regular shell, the server MUST send `{ type: "setup", mode: "shell", fallback: true, reason: "tmux-attach-failed" }` before wiring the fallback PTY
 - The client MUST handle `setup` messages: update `terminalMode` state, and call `term.clear()` when `fallback: true` is received to erase any error output the failed tmux process may have written to the terminal buffer
@@ -92,6 +106,8 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - **WebSocket endpoint:** `/api/terminal?token=<bearer>&slug=<project-slug>&worktree=<relative-path>&cols=<N>&rows=<N>` — accepts WebSocket upgrade requests with valid token (via query param or cookie); `slug` is optional and selects per-project CWD and tmux session; `worktree` is optional and, when combined with `slug`, overrides CWD to the worktree directory in shell-only mode; `cols`/`rows` are optional initial dimensions (clamped server-side, defaults to 80×24)
 - **Token handshake:** On upgrade, server extracts `token` from query string or `devdeck_token` cookie, validates via `crypto.timingSafeEqual`, rejects with close code 4401 if invalid
 - **Frontend hook:** `useTerminal(options?: { slug?, worktree?, wsUrl?, theme? })` — manages xterm.js instance, WebSocket connection, token injection, addon lifecycle, and exposes `containerRef`, `terminalMode`, `isFallback`, `sendInput(data)`, and `focusTerminal()` state/actions; when `worktree` is provided, the WebSocket URL includes it as a query parameter
+- **Responsive terminal font-size helper:** `getTerminalFontSize(input?)` returns `11 | 12 | 13` from layout viewport width, primary coarse pointer state, any-coarse pointer state, and `navigator.maxTouchPoints`; when browser APIs are unavailable, it returns the desktop fallback `13`
+- **Responsive font-size lifecycle:** `useTerminal` listens for layout viewport, orientation, media-query, and touch-capability changes; tier changes update xterm.js options and force-fit without reconnecting, while refit-only events may schedule the existing fit path
 - **Message format:** Raw binary data (ArrayBuffer) for terminal I/O; JSON for control messages (resize, ping)
 - **Setup message (server → client):** `{ type: "setup", mode: "tmux" | "shell", fallback?: true, reason?: string }` — sent as a JSON text frame immediately after PTY spawn and on any session mode transition (e.g., tmux fallback to shell)
 - **Status message (server → client):** `{ type: "status", copilotState: "idle" | "running" | "waiting" }` — sent as a JSON text frame whenever the server detects a Copilot CLI state change via PTY output pattern matching, broadcasts that change to same-project clients, or replays cached same-project state to a newly connected client
@@ -106,6 +122,9 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - Terminal input/output latency MUST be under 50ms on localhost
 - PTY processes MUST be killed when the client disconnects
 - The terminal MUST support resize (xterm.js addon-fit → resize message → node-pty.resize)
+- Terminal font-size tiers MUST render at 11px on phones, 12px on qualifying touch tablets, and 13px on desktop tiers
+- Initial and runtime terminal font-size selection MUST keep PTY dimensions accurate without reconnecting solely for font-size changes
+- Browser zoom MUST NOT shrink terminal text by influencing font-size tier selection
 - Connection loss MUST show a visible error state in the terminal UI
 - Voice input MUST degrade gracefully when browser speech recognition, microphone permission, secure context, or terminal connectivity is unavailable, without weakening keyboard or xterm input
 
@@ -115,12 +134,23 @@ Raw WebSocket with binary data provides the lowest latency for terminal I/O. xte
 
 Browser microphone input is intentionally constrained to a review-and-send helper because speech recognition can misrecognize shell commands. Keeping recognition browser-only avoids DevDeck audio custody, while requiring editable review plus explicit send actions prevents final transcripts from executing commands or entering shell history without user confirmation.
 
+Responsive terminal font size is owned by `useTerminal` because xterm.js cell metrics, initial WebSocket `cols`/`rows`, and runtime resize messages are all managed at the browser terminal/WebSocket boundary. Layout viewport width is used for tiering so browser zoom and pinch zoom do not make the terminal text smaller. Reusing xterm.js option updates plus forced fits preserves the existing authenticated WebSocket session while still sending accurate PTY resize messages.
+
 ## Usage Examples
 
 ```typescript
 // Frontend: useTerminal hook
 const { containerRef, status, isConnected, error, retry } = useTerminal({
   wsUrl: "ws://localhost:3100/api/terminal",
+});
+
+// Frontend: responsive font-size tiering before initial fit/connect
+const fontSize = getTerminalFontSize();
+const term = new Terminal({
+  fontSize,
+  lineHeight: 1.0,
+  customGlyphs: true,
+  screenReaderMode: true,
 });
 
 // Backend: WebSocket handler (with token validation and initial dimensions)
@@ -148,6 +178,9 @@ wss.on('connection', (ws, req) => {
 - The WebSocket server setup should be in `src/server/terminal-server.mts` (`.mts` extension required for ESM interop with `tsx` runner)
 - Config-file loading belongs in startup code, not in `src/server/terminal-server.mts`; the terminal server consumes resolved values through env vars to preserve standalone `.mts` compatibility.
 - The frontend hook should be in `src/hooks/use-terminal.ts`
+- The responsive terminal font-size helper should stay in `src/hooks/use-terminal.ts` or a small adjacent helper file; update `LLM.txt` if a new source file is added
+- Compute terminal font size from layout viewport width plus `(pointer: coarse)`, `(any-pointer: coarse)`, and `navigator.maxTouchPoints`; do not use `visualViewport.width` for tier selection
+- Runtime font-size tier changes should reuse the existing forced-fit, `term.onResize`, and duplicate resize-message suppression path
 - xterm.js addons (fit, web-links, unicode11, clipboard) should be loaded in the hook
 - PTY shell selection should default to the user's `$SHELL` or fall back to `/bin/bash`
 - **Binary framing note:** `node-pty`'s `onData` emits `string`; the server must call `ws.send(Buffer.from(data, 'utf8'))` to produce a binary WebSocket frame. The frontend must set `ws.binaryType = "arraybuffer"` and check `event.data instanceof ArrayBuffer` in `onmessage`.
@@ -169,6 +202,8 @@ wss.on('connection', (ws, req) => {
 - [x] Test coverage requirements: Terminal hook and WebSocket handler must have unit tests
 - [x] Automated checks: `use-voice-input.test.ts` covers speech availability, secure-context guard, optional permission checks, start/stop/cancel/clear, interim/final transcript state, error normalization, cleanup, and stale-callback guards
 - [x] Automated checks: `terminal-panel.test.tsx` covers microphone accessibility, live status/alert semantics, editable review, validation, exact `Send text` / `Send + Enter` dispatch strings, `sendInput(false)` retry behavior, focus restoration, disconnect/context cleanup, and terminal container stability
+- [x] Automated checks: `use-terminal.test.ts` must cover exact responsive font-size tiers, layout viewport usage, constructor options, runtime font-size tier changes without reconnect, forced fits, resize propagation, and listener cleanup
+- [x] Automated checks: Playwright terminal coverage must include a touch/tablet viewport asserting 12px rendered xterm font size, active connection, and no horizontal overflow
 - [x] Verification: `./harness verify` passes before implementation completion
 
 ## Related ADRs

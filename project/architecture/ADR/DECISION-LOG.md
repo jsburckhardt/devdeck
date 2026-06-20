@@ -18,7 +18,7 @@ This file is the single registry of all architectural decisions and core-compone
 | ID | Title | Status | Date |
 |----|-------|--------|------|
 | CORE-COMPONENT-0002 | Commit Standards | Adopted | 2026-05-05 |
-| CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2026-06-11 |
+| CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2026-06-20 |
 | CORE-COMPONENT-0004 | Theming | Adopted (updated) | 2026-05-21 |
 | CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2026-06-15 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
@@ -265,9 +265,15 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 231 | Preserve visible explorer state during sync failures and fallback polling | CORE-COMPONENT-0005 | 2026-06-15 |
 | 232 | Preserve 5000 ms polling only as degraded fallback | ADR-0007 | 2026-06-15 |
 | 233 | Clear selected files deleted by canonical sync refreshes | CORE-COMPONENT-0008 | 2026-06-15 |
-| 234 | Expose `./harness smoke` as a first-class built-app verification verb | CORE-COMPONENT-0009 | 2026-06-20 |
-| 235 | Require smoke to allocate auto ports and validate fixed ports safely | CORE-COMPONENT-0009 | 2026-06-20 |
-| 236 | Require smoke cleanup to terminate only harness-owned child processes | CORE-COMPONENT-0009 | 2026-06-20 |
-| 237 | Reuse shared smoke implementation inside `./harness verify` after build | CORE-COMPONENT-0009 | 2026-06-20 |
-| 238 | Forward `./harness test -- <args>` verbatim to Vitest with safe arrays | CORE-COMPONENT-0009 | 2026-06-20 |
-| 239 | Sanitize smoke and test JSON evidence; prohibit tokens and raw logs | CORE-COMPONENT-0009 | 2026-06-20 |
+| 234 | Require 11px xterm font when layout viewport width is 600px or narrower | CORE-COMPONENT-0003 | 2026-06-20 |
+| 235 | Require 12px xterm font for primary coarse pointers up to 1366px | CORE-COMPONENT-0003 | 2026-06-20 |
+| 236 | Require 12px xterm font for fallback touch detection up to 1024px | CORE-COMPONENT-0003 | 2026-06-20 |
+| 237 | Use layout viewport width, not visualViewport width, for terminal font tiers | CORE-COMPONENT-0003 | 2026-06-20 |
+| 238 | Refit xterm and propagate PTY resize after terminal font-size tier changes | CORE-COMPONENT-0003 | 2026-06-20 |
+| 239 | Prohibit WebSocket reconnects solely for terminal font-size tier changes | CORE-COMPONENT-0003 | 2026-06-20 |
+| 240 | Expose `./harness smoke` as a first-class built-app verification verb | CORE-COMPONENT-0009 | 2026-06-20 |
+| 241 | Require smoke to allocate auto ports and validate fixed ports safely | CORE-COMPONENT-0009 | 2026-06-20 |
+| 242 | Require smoke cleanup to terminate only harness-owned child processes | CORE-COMPONENT-0009 | 2026-06-20 |
+| 243 | Reuse shared smoke implementation inside `./harness verify` after build | CORE-COMPONENT-0009 | 2026-06-20 |
+| 244 | Forward `./harness test -- <args>` verbatim to Vitest with safe arrays | CORE-COMPONENT-0009 | 2026-06-20 |
+| 245 | Sanitize smoke and test JSON evidence; prohibit tokens and raw logs | CORE-COMPONENT-0009 | 2026-06-20 |

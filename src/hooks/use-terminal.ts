@@ -41,6 +41,41 @@ const WS_CLOSE_UNAUTHORIZED = 4401;
 
 const DEFAULT_THEME = TERMINAL_THEMES[0].colors;
 
+export type TerminalFontSize = 11 | 12 | 13;
+
+interface TerminalFontSizeMediaQueryResult {
+  matches: boolean;
+}
+
+interface TerminalFontSizeWindowSource {
+  innerWidth?: number | null;
+  matchMedia?: (query: string) => TerminalFontSizeMediaQueryResult;
+}
+
+interface TerminalFontSizeDocumentSource {
+  documentElement?: {
+    clientWidth?: number | null;
+  } | null;
+}
+
+interface TerminalFontSizeNavigatorSource {
+  maxTouchPoints?: number | null;
+}
+
+export interface TerminalFontSizeInput {
+  layoutViewportWidth?: number | null;
+  primaryCoarsePointer?: boolean | null;
+  anyCoarsePointer?: boolean | null;
+  maxTouchPoints?: number | null;
+  window?: TerminalFontSizeWindowSource | null;
+  document?: TerminalFontSizeDocumentSource | null;
+  navigator?: TerminalFontSizeNavigatorSource | null;
+}
+
+const PHONE_LAYOUT_VIEWPORT_MAX = 600;
+const PRIMARY_COARSE_LAYOUT_VIEWPORT_MAX = 1366;
+const FALLBACK_TOUCH_LAYOUT_VIEWPORT_MAX = 1024;
+
 interface ContainerSizeSnapshot {
   width: number;
   height: number;
@@ -49,6 +84,139 @@ interface ContainerSizeSnapshot {
 interface TerminalSizeSnapshot {
   cols: number;
   rows: number;
+}
+
+function hasOwnKey(object: object, key: PropertyKey): boolean {
+  return Object.prototype.hasOwnProperty.call(object, key);
+}
+
+function normalizeNumericInput(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function resolveWindowSource(input: TerminalFontSizeInput): TerminalFontSizeWindowSource | null {
+  if (hasOwnKey(input, "window")) {
+    return input.window ?? null;
+  }
+
+  return typeof window === "undefined" ? null : window;
+}
+
+function resolveDocumentSource(
+  input: TerminalFontSizeInput,
+): TerminalFontSizeDocumentSource | null {
+  if (hasOwnKey(input, "document")) {
+    return input.document ?? null;
+  }
+
+  return typeof document === "undefined" ? null : document;
+}
+
+function resolveNavigatorSource(
+  input: TerminalFontSizeInput,
+): TerminalFontSizeNavigatorSource | null {
+  if (hasOwnKey(input, "navigator")) {
+    return input.navigator ?? null;
+  }
+
+  return typeof navigator === "undefined" ? null : navigator;
+}
+
+function readLayoutViewportWidth(input: TerminalFontSizeInput): number | null {
+  if (hasOwnKey(input, "layoutViewportWidth")) {
+    return normalizeNumericInput(input.layoutViewportWidth);
+  }
+
+  const windowSource = resolveWindowSource(input);
+  const innerWidth = normalizeNumericInput(windowSource?.innerWidth);
+  if (innerWidth != null) {
+    return innerWidth;
+  }
+
+  const documentSource = resolveDocumentSource(input);
+  return normalizeNumericInput(documentSource?.documentElement?.clientWidth);
+}
+
+function readMediaQueryMatch(
+  input: TerminalFontSizeInput,
+  inputKey: "primaryCoarsePointer" | "anyCoarsePointer",
+  query: string,
+): boolean {
+  if (hasOwnKey(input, inputKey)) {
+    return input[inputKey] === true;
+  }
+
+  const windowSource = resolveWindowSource(input);
+  try {
+    return windowSource?.matchMedia?.(query).matches === true;
+  } catch {
+    return false;
+  }
+}
+
+function readMaxTouchPoints(input: TerminalFontSizeInput): number {
+  if (hasOwnKey(input, "maxTouchPoints")) {
+    return Math.max(0, normalizeNumericInput(input.maxTouchPoints) ?? 0);
+  }
+
+  return Math.max(0, normalizeNumericInput(resolveNavigatorSource(input)?.maxTouchPoints) ?? 0);
+}
+
+export function getTerminalFontSize(input: TerminalFontSizeInput = {}): TerminalFontSize {
+  const layoutViewportWidth = readLayoutViewportWidth(input);
+  if (layoutViewportWidth == null) {
+    return 13;
+  }
+
+  if (layoutViewportWidth <= PHONE_LAYOUT_VIEWPORT_MAX) {
+    return 11;
+  }
+
+  if (
+    readMediaQueryMatch(input, "primaryCoarsePointer", "(pointer: coarse)") &&
+    layoutViewportWidth <= PRIMARY_COARSE_LAYOUT_VIEWPORT_MAX
+  ) {
+    return 12;
+  }
+
+  const hasFallbackTouch =
+    readMediaQueryMatch(input, "anyCoarsePointer", "(any-pointer: coarse)") ||
+    readMaxTouchPoints(input) > 0;
+  if (hasFallbackTouch && layoutViewportWidth <= FALLBACK_TOUCH_LAYOUT_VIEWPORT_MAX) {
+    return 12;
+  }
+
+  return 13;
+}
+
+function addMediaQueryChangeListener(query: string, listener: () => void): () => void {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return () => {};
+  }
+
+  let mediaQueryList: MediaQueryList;
+  try {
+    mediaQueryList = window.matchMedia(query);
+  } catch {
+    return () => {};
+  }
+
+  const handleChange = () => listener();
+  if (typeof mediaQueryList.addEventListener === "function") {
+    mediaQueryList.addEventListener("change", handleChange);
+    return () => {
+      mediaQueryList.removeEventListener("change", handleChange);
+    };
+  }
+
+  if (typeof mediaQueryList.addListener === "function") {
+    mediaQueryList.addListener(handleChange);
+    return () => {
+      mediaQueryList.removeListener(handleChange);
+    };
+  }
+
+  return () => {};
 }
 
 function normalizeContainerSize(
@@ -103,6 +271,8 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
   const lastFitContainerSizeRef = useRef<ContainerSizeSnapshot | null>(null);
   const resizeDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSentTerminalSizeRef = useRef<TerminalSizeSnapshot | null>(null);
+  const lastTerminalFontSizeRef = useRef<TerminalFontSize | null>(null);
+  const responsiveFontSizeCleanupRef = useRef<(() => void) | null>(null);
 
   const setTerminalStatus = useCallback((nextStatus: TerminalStatus) => {
     statusRef.current = nextStatus;
@@ -197,6 +367,28 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
     [readContainerSize],
   );
 
+  const clearResponsiveFontSizeListeners = useCallback(() => {
+    responsiveFontSizeCleanupRef.current?.();
+    responsiveFontSizeCleanupRef.current = null;
+  }, []);
+
+  const applyTerminalFontSizeTier = useCallback(() => {
+    const term = termRef.current;
+    if (!term) {
+      return false;
+    }
+
+    const nextFontSize = getTerminalFontSize();
+    if (lastTerminalFontSizeRef.current === nextFontSize) {
+      return false;
+    }
+
+    term.options.fontSize = nextFontSize;
+    lastTerminalFontSizeRef.current = nextFontSize;
+    fitContainerToUsableSize({ force: true });
+    return true;
+  }, [fitContainerToUsableSize]);
+
   const scheduleFit = useCallback(() => {
     clearResizeDebounce();
     resizeDebounceTimerRef.current = setTimeout(() => {
@@ -204,6 +396,54 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
       fitContainerToUsableSize();
     }, 150);
   }, [clearResizeDebounce, fitContainerToUsableSize]);
+
+  const setupResponsiveFontSizeListeners = useCallback(() => {
+    clearResponsiveFontSizeListeners();
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const cleanupFns: Array<() => void> = [];
+    const handleLayoutViewportChange = () => {
+      if (!applyTerminalFontSizeTier()) {
+        scheduleFit();
+      }
+    };
+    const handlePointerCapabilityChange = () => {
+      applyTerminalFontSizeTier();
+    };
+    const handleVisualViewportResize = () => {
+      scheduleFit();
+    };
+
+    window.addEventListener("resize", handleLayoutViewportChange);
+    window.addEventListener("orientationchange", handleLayoutViewportChange);
+    cleanupFns.push(
+      () => window.removeEventListener("resize", handleLayoutViewportChange),
+      () => window.removeEventListener("orientationchange", handleLayoutViewportChange),
+      addMediaQueryChangeListener("(pointer: coarse)", handlePointerCapabilityChange),
+      addMediaQueryChangeListener("(any-pointer: coarse)", handlePointerCapabilityChange),
+    );
+
+    const visualViewport = window.visualViewport;
+    if (visualViewport && typeof visualViewport.addEventListener === "function") {
+      visualViewport.addEventListener("resize", handleVisualViewportResize);
+      cleanupFns.push(() => {
+        visualViewport.removeEventListener("resize", handleVisualViewportResize);
+      });
+    }
+
+    responsiveFontSizeCleanupRef.current = () => {
+      cleanupFns.splice(0).forEach((cleanup) => {
+        try {
+          cleanup();
+        } catch {
+          // Ignore cleanup errors during browser teardown.
+        }
+      });
+    };
+  }, [applyTerminalFontSizeTier, clearResponsiveFontSizeListeners, scheduleFit]);
 
   const sendResizeMessage = useCallback((cols: number, rows: number) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
@@ -230,7 +470,9 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
     setCopilotStatus("idle");
     lastFitContainerSizeRef.current = null;
     lastSentTerminalSizeRef.current = null;
+    lastTerminalFontSizeRef.current = null;
     disconnectResizeObserver();
+    clearResponsiveFontSizeListeners();
 
     try {
       const { Terminal } = await import("@xterm/xterm");
@@ -249,9 +491,12 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
       }
       fitAddonRef.current = null;
 
+      const terminalFontSize = getTerminalFontSize();
+      lastTerminalFontSizeRef.current = terminalFontSize;
+
       const term = new Terminal({
         cursorBlink: true,
-        fontSize: 13,
+        fontSize: terminalFontSize,
         fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
         lineHeight: 1.0,
         customGlyphs: true,
@@ -290,6 +535,7 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
 
       termRef.current = term;
       fitAddonRef.current = fitAddon;
+      setupResponsiveFontSizeListeners();
 
       if (containerRef.current) {
         term.open(containerRef.current);
@@ -441,12 +687,14 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
     }
   }, [
     baseWsUrl,
+    clearResponsiveFontSizeListeners,
     disconnectResizeObserver,
     fitContainerToUsableSize,
     scheduleFit,
     sendInput,
     sendResizeMessage,
     setTerminalStatus,
+    setupResponsiveFontSizeListeners,
   ]);
 
   useEffect(() => {
@@ -484,15 +732,17 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
         wsRef.current = null;
       }
       disconnectResizeObserver();
+      clearResponsiveFontSizeListeners();
       lastFitContainerSizeRef.current = null;
       lastSentTerminalSizeRef.current = null;
+      lastTerminalFontSizeRef.current = null;
       if (termRef.current) {
         termRef.current.dispose();
         termRef.current = null;
       }
       fitAddonRef.current = null;
     };
-  }, [connect, disconnectResizeObserver]);
+  }, [clearResponsiveFontSizeListeners, connect, disconnectResizeObserver]);
 
   // Runtime theme update without reconnection
   useEffect(() => {
