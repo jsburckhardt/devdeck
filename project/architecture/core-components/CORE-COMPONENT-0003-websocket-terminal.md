@@ -202,8 +202,8 @@ wss.on('connection', (ws, req) => {
 - [x] Test coverage requirements: Terminal hook and WebSocket handler must have unit tests
 - [x] Automated checks: `use-voice-input.test.ts` covers speech availability, secure-context guard, optional permission checks, start/stop/cancel/clear, interim/final transcript state, error normalization, cleanup, and stale-callback guards
 - [x] Automated checks: `terminal-panel.test.tsx` covers microphone accessibility, live status/alert semantics, editable review, validation, exact `Send text` / `Send + Enter` dispatch strings, `sendInput(false)` retry behavior, focus restoration, disconnect/context cleanup, and terminal container stability
-- [ ] Automated checks: `use-terminal.test.ts` must cover exact responsive font-size tiers, layout viewport usage, constructor options, runtime font-size tier changes without reconnect, forced fits, resize propagation, and listener cleanup
-- [ ] Automated checks: Playwright terminal coverage must include a touch/tablet viewport asserting 12px rendered xterm font size, active connection, and no horizontal overflow
+- [x] Automated checks: `use-terminal.test.ts` must cover exact responsive font-size tiers, layout viewport usage, constructor options, runtime font-size tier changes without reconnect, forced fits, resize propagation, and listener cleanup
+- [x] Automated checks: Playwright terminal coverage must include a touch/tablet viewport asserting 12px rendered xterm font size, active connection, and no horizontal overflow
 - [x] Verification: `./harness verify` passes before implementation completion
 
 ## Related ADRs
