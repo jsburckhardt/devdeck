@@ -17,14 +17,14 @@ This file is the single registry of all architectural decisions and core-compone
 
 | ID | Title | Status | Date |
 |----|-------|--------|------|
-| CORE-COMPONENT-0002 | Commit Standards | Adopted | 2026-05-05 |
+| CORE-COMPONENT-0002 | Commit Standards | Adopted (updated) | 2026-06-25 |
 | CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2026-06-20 |
 | CORE-COMPONENT-0004 | Theming | Adopted (updated) | 2026-05-21 |
 | CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2026-06-15 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
 | CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-06-11 |
 | CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-06-15 |
-| CORE-COMPONENT-0009 | Engineering Harness | Adopted (updated) | 2026-06-20 |
+| CORE-COMPONENT-0009 | Engineering Harness | Adopted (updated) | 2026-06-25 |
 
 ## Decisions
 
@@ -277,3 +277,6 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 243 | Reuse shared smoke implementation inside `./harness verify` after build | CORE-COMPONENT-0009 | 2026-06-20 |
 | 244 | Forward `./harness test -- <args>` verbatim to Vitest with safe arrays | CORE-COMPONENT-0009 | 2026-06-20 |
 | 245 | Sanitize smoke and test JSON evidence; prohibit tokens and raw logs | CORE-COMPONENT-0009 | 2026-06-20 |
+| 246 | Use `rpiv-*` selectors for all RPIV stage subagents | CORE-COMPONENT-0009 | 2026-06-25 |
+| 247 | Require RPIV agents to run `./harness help` before choosing project commands | CORE-COMPONENT-0009 | 2026-06-25 |
+| 248 | Require RPIV agents to answer the harness friction question before completing and record non-empty friction | CORE-COMPONENT-0009 | 2026-06-25 |

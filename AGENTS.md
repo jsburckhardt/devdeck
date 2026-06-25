@@ -12,11 +12,13 @@ You MUST inspect existing repo code and documentation before proposing new work.
 You MUST NOT skip any stage in the pipeline.
 You MUST update the APS version badge in README.md and the APS_BADGE constant when the APS skill is upgraded.
 You SHOULD prefer `./harness` over direct `npm run` or `just` commands for all supported verbs.
+You MUST run `./harness help` at the beginning of each RPIV stage when the harness is available, before choosing project commands.
 You SHOULD start unfamiliar work with `./harness orient`.
 You SHOULD check health with `./harness doctor`.
 You MUST use `./harness verify` before claiming code-change completion when the harness is available.
 You MAY use direct commands when the harness lacks a verb, explains a degraded path, or raw diagnostic output is required.
-You SHOULD record inference friction with `./harness friction add` when bypassing the harness for a supported verb.
+You MUST answer "What did the agent have to infer that the harness should have proved?" before completing each RPIV stage.
+You MUST record non-empty inference friction with `./harness friction add` when the friction answer identifies missing harness proof, unclear command mapping, unavailable diagnostics, degraded harness behavior, or a raw-command bypass for a supported verb.
 You MUST update the harness when repository commands change.
 </instructions>
 
@@ -47,11 +49,14 @@ DevDeck uses a repo-local `./harness` CLI as the preferred operating surface. Bo
 
 ### Workflow
 
-1. Start unfamiliar work with `./harness orient`
-2. Check health with `./harness doctor`
-3. Use `./harness verify` before claiming completion
-4. Update the harness when repository commands change
-5. Do NOT bypass a working harness to run equivalent raw commands
+1. Run `./harness help` before choosing project commands
+2. Start unfamiliar work with `./harness orient`
+3. Check health with `./harness doctor`
+4. Use `./harness verify` before claiming completion
+5. Before completing, answer: "What did the agent have to infer that the harness should have proved?"
+6. If the answer is non-empty, record it with `./harness friction add "<concise inference>"`
+7. Update the harness when repository commands change
+8. Do NOT bypass a working harness to run equivalent raw commands
 
 ### Contract
 
@@ -64,15 +69,15 @@ PIPELINE_STAGES: YAML<<
   purpose: Explore the problem space, classify scope, produce a research brief
 - id: plan
   name: Plan
-  agent: planner
+  agent: rpiv-planner
   purpose: Commit architectural decisions via ADRs and core-components, then produce the action plan, task breakdown, and test plan
 - id: implement
   name: Implement
-  agent: implementer
+  agent: rpiv-implementer
   purpose: Execute tasks, write code and tests, verify against the plan
 - id: verify
   name: Verify
-  agent: verifier
+  agent: rpiv-verifier
   purpose: Run tests, commit, push, and open a pull request for review
 >>
 AGENTS: YAML<<
@@ -186,12 +191,14 @@ rpiv-research:
     - Research Brief (Section 5.1)
   guardrails:
     - classify scope_type as exactly one of issue, architecture_decision, core_component
+    - run ./harness help at stage start when the harness is available
     - inspect existing repo code and docs before proposing new work
     - explicitly state if ADRs or core-components are required
     - propose ADR titles and core-component titles when applicable
     - never make architectural decisions — only propose them
-planner:
-  file: .github/agents/planner.agent.md
+    - answer the harness friction question before completing and record non-empty friction
+rpiv-planner:
+  file: .github/agents/rpiv-planner.agent.md
   purpose: Own the Plan stage — read the research brief, commit architectural decisions via ADRs and core-components, then produce the action plan, task breakdown, and test plan.
   tools:
     - codebase exploration (rg, glob, view)
@@ -217,6 +224,7 @@ planner:
     - Task Breakdown (Section 5.5)
     - Test Plan (Section 5.6)
   guardrails:
+    - run ./harness help at stage start when the harness is available
     - no architectural decision exists unless it is in an ADR
     - no reusable cross-cutting behavior exists unless it is a core-component
     - every ADR or core-component change must update DECISION-LOG.md
@@ -225,8 +233,9 @@ planner:
     - every task must have acceptance criteria
     - every task must have explicit test coverage requirements
     - tasks must reference relevant ADRs and core-components
-implementer:
-  file: .github/agents/implementer.agent.md
+    - answer the harness friction question before completing and record non-empty friction
+rpiv-implementer:
+  file: .github/agents/rpiv-implementer.agent.md
   purpose: Execute tasks from the plan, produce code and tests, and verify implementation against the test plan.
   tools:
     - code generation and editing with apply_patch
@@ -245,14 +254,15 @@ implementer:
     - project/issues/<ISSUE_NUMBER>/implementation/README.md
   templates: []
   guardrails:
+    - must run ./harness help at stage start when the harness is available
     - must implement within architectural boundaries defined by ADRs and core-components
     - deviations from ADRs or core-components require returning to the Plan stage
     - implementation must satisfy the test plan
     - must not skip tests defined in the test plan
     - must use ./harness verify as the primary verification mechanism when the harness is available
-    - must record friction via ./harness friction add when bypassing the harness for a supported verb
-verifier:
-  file: .github/agents/verifier.agent.md
+    - must answer the harness friction question before completing and record non-empty friction via ./harness friction add
+rpiv-verifier:
+  file: .github/agents/rpiv-verifier.agent.md
   purpose: Verify completed work — run tests, create commits following Conventional Commits, push, and open a PR assigned to Copilot for review.
   tools:
     - terminal execution (git, gh, test runners)
@@ -275,6 +285,7 @@ verifier:
     - README.md
   templates: []
   guardrails:
+    - must run ./harness help at stage start when the harness is available
     - must use ./harness verify as the primary verification mechanism when the harness is available
     - must fall back to auto-detecting applicable verification steps when the harness is not available
     - must not proceed if any verification step fails
@@ -285,6 +296,7 @@ verifier:
     - must not force-push or use --no-verify
     - must not modify application source code
     - must verify the branch is clean after all commits
+    - must answer the harness friction question before completing and record non-empty friction via ./harness friction add
     - must assign the PR to Copilot for review using the GitHub API (`gh api repos/.../pulls/.../requested_reviewers --method POST -f "reviewers[]=Copilot"`), since `gh pr create --reviewer Copilot` fails to resolve the user
 >>
 TEMPLATE_PATHS: YAML<<

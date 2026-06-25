@@ -29,7 +29,7 @@ All git commits in any repository using the Soft Factory template. This applies 
 
 ### Expectations
 - Every commit on a feature branch follows this format.
-- The verifier agent authors commits in this format but does not run automated validation.
+- The `rpiv-verifier` agent authors commits in this format but does not run automated validation.
 - Squash merges use the PR title as the commit message.
 
 ## Rationale
@@ -56,7 +56,7 @@ Co-authored-by: github-copilot[bot] <175728472+github-copilot[bot]@users.noreply
 
 ## Integration Guidelines
 
-- The verifier agent checks commit format before pushing to remote.
+- The `rpiv-verifier` agent checks commit format before pushing to remote.
 - PR titles follow the same format for squash-merge consistency.
 - Use `feat` for new functionality visible to users.
 - Use `fix` for bug fixes.
@@ -71,7 +71,7 @@ Co-authored-by: github-copilot[bot] <175728472+github-copilot[bot]@users.noreply
 
 ## Enforcement
 
-- [ ] Automated checks — not currently enforced; the verifier agent authors compliant commits but does not validate.
+- [ ] Automated checks — not currently enforced; the `rpiv-verifier` agent authors compliant commits but does not validate.
 - [x] Code review checklist — PR titles are reviewed for Conventional Commits compliance.
 - [ ] Test coverage requirements — not applicable.
 
