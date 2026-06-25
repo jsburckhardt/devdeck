@@ -18,7 +18,9 @@ Cross-cutting: affects all pipeline agents (Research, Plan, Implement, Verify), 
 
 - `./harness` is the preferred entrypoint for orienting, verifying, smoking, testing, linting, building, booting, and cleaning the project.
 - Direct project commands are allowed when the harness lacks a verb, explains a degraded path, or deeper diagnosis requires raw output.
-- When bypassing the harness, the reason SHOULD be recorded as friction via `./harness friction add`.
+- RPIV agents and the JustDoIt orchestrator MUST run `./harness help` at the beginning of their stage when the harness is available, before choosing project commands.
+- RPIV agents and the JustDoIt orchestrator MUST answer "What did the agent have to infer that the harness should have proved?" before completing or returning an error.
+- Non-empty answers identifying missing harness proof, unclear command mapping, unavailable diagnostics, degraded harness behavior, or raw-command bypasses for supported verbs MUST be recorded as friction via `./harness friction add`.
 - Every harness command returns exactly one verdict: `pass` (exit 0), `fail` (exit 1), `degraded` (exit 2), or `unknown` (exit 3).
 - `./harness verify` is the primary verification mechanism for the Implement and Verify pipeline stages.
 - `./harness smoke [--port auto|PORT] [--json]` MUST be a first-class verb that starts the built Next.js app with `npm run start`/`next start`, probes only the root HTTP surface, and exits with the standard harness verdict codes.
@@ -50,6 +52,7 @@ Cross-cutting: affects all pipeline agents (Research, Plan, Implement, Verify), 
 ### Expectations
 
 - Pipeline agents MUST use `./harness verify` as the primary verification path when the harness is available.
+- Pipeline agents MUST run `./harness help` before selecting project commands when the harness is available.
 - Pipeline agents SHOULD use `./harness orient` to understand the project before starting unfamiliar work.
 - Pipeline agents SHOULD use `./harness doctor` to check prerequisites.
 - Pipeline agents SHOULD use `./harness test -- <targets...>` for focused Vitest regressions instead of direct `npm run test -- <targets...>` when the harness is available.
@@ -100,11 +103,13 @@ DevDeck previously had multiple command surfaces (npm scripts, justfile, and a s
 
 ## Integration Guidelines
 
-- **Implementer agent:** MUST run `./harness verify` after implementing each task. SHOULD use `./harness lint`, `./harness test -- <targets...>`, `./harness smoke`, and `./harness build` over direct npm commands.
-- **Verifier agent:** MUST use `./harness verify` as the primary verification mechanism. SHOULD use `./harness smoke` to isolate built-app smoke failures. Falls back to auto-detection only when the harness is absent.
-- **Research agent:** SHOULD use `./harness orient` and `./harness doctor` to understand the project.
-- **Planner agent:** SHOULD reference `./harness` verbs in task acceptance criteria.
-- **JustDoIt orchestrator:** MUST instruct subagents to use `./harness` verbs.
+- **All RPIV agents:** MUST run `./harness help` at stage start when the harness is available, then answer the harness friction question before completing or returning an error.
+- **`rpiv-implementer` agent:** MUST run `./harness verify` after implementing each task. SHOULD use `./harness lint`, `./harness test -- <targets...>`, `./harness smoke`, and `./harness build` over direct npm commands.
+- **`rpiv-verifier` agent:** MUST use `./harness verify` as the primary verification mechanism. SHOULD use `./harness smoke` to isolate built-app smoke failures. Falls back to auto-detection only when the harness is absent.
+- **`rpiv-research` agent:** SHOULD use `./harness orient` and `./harness doctor` to understand the project.
+- **`rpiv-planner` agent:** SHOULD reference `./harness` verbs in task acceptance criteria.
+- **RPIV stage selectors:** MUST use `rpiv-research`, `rpiv-planner`, `rpiv-implementer`, and `rpiv-verifier` for subagent dispatch.
+- **JustDoIt orchestrator:** MUST run `./harness help`, instruct subagents to use `./harness` verbs, inject the harness friction ritual into every stage prompt, and answer the harness friction question before completing.
 - **Human developers:** SHOULD use `./harness verify` before pushing.
 - **CI:** SHOULD use `./harness verify` so pull-request checks exercise the same verification contract as local agents.
 - **Harness maintainers:** MUST update `./harness help`, `./harness orient --json`, `.harness/contract.yml`, `.harness/README.md`, `LLM.txt`, and agent-facing guidance when harness verbs or passthrough contracts change.
@@ -122,7 +127,8 @@ DevDeck previously had multiple command surfaces (npm scripts, justfile, and a s
 ## Enforcement
 
 - [x] `./harness verify` runs the full verification sequence and writes evidence
-- [x] Agent instructions require harness usage (MUST for verifier/implementer, SHOULD for others)
+- [x] Agent instructions require `./harness help` preflight and harness usage (MUST for `rpiv-verifier`/`rpiv-implementer`, SHOULD for others)
+- [x] Agent instructions require end-of-stage friction reflection and non-empty friction recording
 - [x] Friction log tracks every harness bypass
 - [x] `./harness smoke` has automated parser, port, lifecycle, cleanup, JSON, and evidence tests
 - [x] `./harness test -- <targets...>` has automated passthrough, quoting, sanitization, and Vitest `--json` forwarding tests

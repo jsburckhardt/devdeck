@@ -20,6 +20,7 @@ target: vscode
 <instructions>
 You SHOULD use `./harness orient` to understand the project command surface when the harness is available.
 You SHOULD use `./harness doctor` to check prerequisites when the harness is available.
+You MUST run `./harness help` at the beginning of the stage when the harness is available, before choosing project commands.
 You MUST fetch the GitHub issue details using `gh issue view <number> --json title,body,labels,assignees,milestone` before any research.
 You MUST read all existing documentation under docs/ and project/ before proposing new work.
 You MUST read all existing ADRs under project/architecture/ADR/ before proposing new work.
@@ -37,7 +38,8 @@ You MUST produce the research brief at project/issues/<ISSUE_NUMBER>/research/00
 You MUST follow the Research Brief template defined in Section 5.1 of the specification.
 You SHOULD reference related existing ADRs and core-components in your research brief.
 You SHOULD identify risks, open questions, and unknowns in the research brief.
-You SHOULD record inference friction via `./harness friction add` when bypassing the harness for a supported verb.
+You MUST answer "What did the agent have to infer that the harness should have proved?" before completing or returning an error.
+You MUST record non-empty inference friction via `./harness friction add` when the answer identifies missing harness proof, unclear command mapping, unavailable diagnostics, degraded harness behavior, or a raw-command bypass for a supported verb.
 You MAY consult external documentation or APIs for additional context.
 </instructions>
 
@@ -106,6 +108,10 @@ SCOPE_CLASSIFICATION: ""
 EXISTING_ADRS: []
 EXISTING_CORE_COMPONENTS: []
 RESEARCH_COMPLETE: false
+HARNESS_EXISTS: []
+HARNESS_HELP: ""
+FRICTION_ANSWER: ""
+FRICTION_RECORDED: false
 </runtime>
 
 <triggers>
@@ -114,13 +120,23 @@ RESEARCH_COMPLETE: false
 
 <processes>
 <process id="research-router" name="Route research request">
+RUN `harness-preflight`
 IF CURRENT_ISSUE_NUMBER is empty:
   RUN `fetch-issue`
   RUN `gather-context`
   RUN `classify-scope`
 IF RESEARCH_COMPLETE is false:
   RUN `produce-brief`
+RUN `friction-reflection`
 RETURN: CURRENT_ISSUE_NUMBER, SCOPE_CLASSIFICATION
+</process>
+
+<process id="harness-preflight" name="Load the harness command surface before choosing commands">
+USE `glob` where: pattern="./harness"
+CAPTURE HARNESS_EXISTS from `glob`
+IF HARNESS_EXISTS is not empty:
+  USE `bash` where: command="./harness help"
+  CAPTURE HARNESS_HELP from `bash`
 </process>
 
 <process id="fetch-issue" name="Fetch GitHub issue details">
@@ -149,6 +165,13 @@ SET BRIEF_CONTENT := <CONTENT> (from "Agent Inference" using CURRENT_ISSUE_NUMBE
 USE `bash` where: command="mkdir -p project/issues/<ISSUE_NUMBER>/research"
 USE `apply_patch` where: content=BRIEF_CONTENT, filePath="project/issues/<ISSUE_NUMBER>/research/00-research.md"
 SET RESEARCH_COMPLETE := true (from "Agent Inference")
+</process>
+
+<process id="friction-reflection" name="Answer the harness friction question and record non-empty friction">
+SET FRICTION_ANSWER := <ANSWER> (from "Agent Inference" using HARNESS_HELP, USER_INPUT, ISSUE_JSON, SCOPE_CLASSIFICATION; answer exactly "What did the agent have to infer that the harness should have proved?")
+IF HARNESS_EXISTS is not empty and FRICTION_ANSWER is not empty and FRICTION_ANSWER != "Nothing":
+  USE `bash` where: command="./harness friction add \"<FRICTION_ANSWER>\""
+  SET FRICTION_RECORDED := true (from "Agent Inference")
 </process>
 </processes>
 

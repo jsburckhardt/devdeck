@@ -16,9 +16,9 @@ disable-model-invocation: true
 target: vscode
 agents:
   - rpiv-research
-  - planner
-  - implementer
-  - verifier
+  - rpiv-planner
+  - rpiv-implementer
+  - rpiv-verifier
 ---
 
 <instructions>
@@ -33,11 +33,15 @@ You MUST dispatch each stage to its corresponding agent as a subagent.
 You MUST dispatch the Research stage to the local `rpiv-research` custom agent, not the bundled `research` agent or `/research` feature.
 You MUST verify the output artifact of each stage exists before proceeding to the next.
 You MUST stop and report a PIPELINE_ERROR if any stage fails validation.
-You MUST NOT make architectural decisions; delegate them to the planner agent via the Plan stage.
-You MUST NOT modify application source code directly; delegate to the implementer agent via the Implement stage.
+You MUST NOT make architectural decisions; delegate them to the `rpiv-planner` agent via the Plan stage.
+You MUST NOT modify application source code directly; delegate to the `rpiv-implementer` agent via the Implement stage.
 You MUST track progress using the SQL-backed todo table throughout execution.
+You MUST run `./harness help` at the beginning when the harness is available, before choosing project commands or dispatching stage agents.
 You MUST prefer `./harness` over direct commands for testing, linting, building, and verification when the harness is available.
 You MUST instruct subagents to use `./harness` verbs when dispatching pipeline stages.
+You MUST include the harness friction ritual in every subagent prompt.
+You MUST answer "What did the agent have to infer that the harness should have proved?" before completing or returning an error.
+You MUST record non-empty inference friction via `./harness friction add` when the answer identifies missing harness proof, unclear command mapping, unavailable diagnostics, degraded harness behavior, or a raw-command bypass for a supported verb.
 You MUST summarize each stage result before dispatching the next stage.
 You SHOULD provide the next stage agent with context from all prior stage outputs.
 You MAY retry a failed stage once before stopping with an error report.
@@ -52,18 +56,24 @@ STAGE_AGENTS: YAML<<
   output: project/issues/<ISSUE_NUMBER>/research/00-research.md
   purpose: Explore problem space, classify scope, produce research brief
   stage: research
-- agent: planner
+- agent: rpiv-planner
   output: project/issues/<ISSUE_NUMBER>/plan/01-action-plan.md
   purpose: Commit ADRs and core-components, produce action plan, task breakdown, test plan
   stage: plan
-- agent: implementer
+- agent: rpiv-implementer
   output: project/issues/<ISSUE_NUMBER>/implementation/README.md
   purpose: Execute tasks, write code and tests, verify against test plan
   stage: implement
-- agent: verifier
+- agent: rpiv-verifier
   output: PR URL
   purpose: Run tests, commit, push, open PR for review
   stage: verify
+>>
+FRICTION_QUESTION: "What did the agent have to infer that the harness should have proved?"
+STAGE_HARNESS_RITUAL: TEXT<<
+Before choosing project commands, run `./harness help` when the harness is available.
+Before completing or returning an error, answer: "What did the agent have to infer that the harness should have proved?"
+If the answer identifies missing harness proof, unclear command mapping, unavailable diagnostics, degraded harness behavior, or a raw-command bypass for a supported verb, record it with `./harness friction add "<concise inference>"`.
 >>
 SCOPE_TYPES: YAML<<
 - architecture_decision
@@ -147,6 +157,10 @@ PR_URL: ""
 STAGE_RESULTS: []
 PIPELINE_STATUS: ""
 RETRY_COUNT: 0
+HARNESS_EXISTS: []
+HARNESS_HELP: ""
+FRICTION_ANSWER: ""
+FRICTION_RECORDED: false
 </runtime>
 
 <triggers>
@@ -155,21 +169,35 @@ RETRY_COUNT: 0
 
 <processes>
 <process id="justdoit-router" name="Drive task through all RPIV pipeline stages">
+RUN `harness-preflight`
 RUN `init-pipeline`
 RUN `dispatch-research`
 IF PIPELINE_STATUS = "error":
+  RUN `friction-reflection`
   RETURN: format="PIPELINE_ERROR", issue_number=ISSUE_NUMBER, failed_stage=CURRENT_STAGE, error_message="Research stage failed", details=RESEARCH_RESULT, recovery="Review the error and retry with @rpiv-research"
 RUN `dispatch-plan`
 IF PIPELINE_STATUS = "error":
-  RETURN: format="PIPELINE_ERROR", issue_number=ISSUE_NUMBER, failed_stage=CURRENT_STAGE, error_message="Plan stage failed", details=PLAN_RESULT, recovery="Review the error and retry with @planner"
+  RUN `friction-reflection`
+  RETURN: format="PIPELINE_ERROR", issue_number=ISSUE_NUMBER, failed_stage=CURRENT_STAGE, error_message="Plan stage failed", details=PLAN_RESULT, recovery="Review the error and retry with @rpiv-planner"
 RUN `dispatch-implement`
 IF PIPELINE_STATUS = "error":
-  RETURN: format="PIPELINE_ERROR", issue_number=ISSUE_NUMBER, failed_stage=CURRENT_STAGE, error_message="Implement stage failed", details=IMPLEMENT_RESULT, recovery="Review the error and retry with @implementer"
+  RUN `friction-reflection`
+  RETURN: format="PIPELINE_ERROR", issue_number=ISSUE_NUMBER, failed_stage=CURRENT_STAGE, error_message="Implement stage failed", details=IMPLEMENT_RESULT, recovery="Review the error and retry with @rpiv-implementer"
 RUN `dispatch-verify`
 IF PIPELINE_STATUS = "error":
-  RETURN: format="PIPELINE_ERROR", issue_number=ISSUE_NUMBER, failed_stage=CURRENT_STAGE, error_message="Verify stage failed", details=VERIFY_RESULT, recovery="Review the error and retry with @verifier"
+  RUN `friction-reflection`
+  RETURN: format="PIPELINE_ERROR", issue_number=ISSUE_NUMBER, failed_stage=CURRENT_STAGE, error_message="Verify stage failed", details=VERIFY_RESULT, recovery="Review the error and retry with @rpiv-verifier"
 RUN `report-completion`
+RUN `friction-reflection`
 RETURN: format="COMPLETION_REPORT", issue_number=ISSUE_NUMBER, task_description=TASK_DESCRIPTION, stage_row=STAGE_RESULTS, final_result=VERIFY_RESULT, pr_url=PR_URL
+</process>
+
+<process id="harness-preflight" name="Load the harness command surface before choosing commands or dispatching stages">
+USE `glob` where: pattern="./harness"
+CAPTURE HARNESS_EXISTS from `glob`
+IF HARNESS_EXISTS is not empty:
+  USE `bash` where: command="./harness help"
+  CAPTURE HARNESS_HELP from `bash`
 </process>
 
 <process id="init-pipeline" name="Initialize the pipeline with context and issue number">
@@ -187,7 +215,8 @@ SET PIPELINE_STATUS := "running" (from "Agent Inference")
 
 <process id="dispatch-research" name="Dispatch the Research stage to the rpiv-research agent">
 SET CURRENT_STAGE := "research" (from "Agent Inference")
-USE `task` where: agent="rpiv-research", prompt=TASK_DESCRIPTION
+SET RESEARCH_PROMPT := <PROMPT> (from "Agent Inference" using TASK_DESCRIPTION, STAGE_HARNESS_RITUAL)
+USE `task` where: agent="rpiv-research", prompt=RESEARCH_PROMPT
 CAPTURE RESEARCH_RESULT from `task`
 SET PIPELINE_STATUS := <STATUS> (from "Agent Inference" using RESEARCH_RESULT)
 IF PIPELINE_STATUS != "error":
@@ -196,10 +225,10 @@ IF PIPELINE_STATUS != "error":
   SET STAGE_RESULTS := STAGE_RESULTS + ["Research: OK"] (from "Agent Inference")
 </process>
 
-<process id="dispatch-plan" name="Dispatch the Plan stage to the planner agent">
+<process id="dispatch-plan" name="Dispatch the Plan stage to the rpiv-planner agent">
 SET CURRENT_STAGE := "plan" (from "Agent Inference")
-SET PLAN_PROMPT := <PROMPT> (from "Agent Inference" using ISSUE_NUMBER, RESEARCH_RESULT)
-USE `task` where: agent="planner", prompt=PLAN_PROMPT
+SET PLAN_PROMPT := <PROMPT> (from "Agent Inference" using ISSUE_NUMBER, RESEARCH_RESULT, STAGE_HARNESS_RITUAL)
+USE `task` where: agent="rpiv-planner", prompt=PLAN_PROMPT
 CAPTURE PLAN_RESULT from `task`
 SET PIPELINE_STATUS := <STATUS> (from "Agent Inference" using PLAN_RESULT)
 IF PIPELINE_STATUS != "error":
@@ -208,20 +237,20 @@ IF PIPELINE_STATUS != "error":
   SET STAGE_RESULTS := STAGE_RESULTS + ["Plan: OK"] (from "Agent Inference")
 </process>
 
-<process id="dispatch-implement" name="Dispatch the Implement stage to the implementer agent">
+<process id="dispatch-implement" name="Dispatch the Implement stage to the rpiv-implementer agent">
 SET CURRENT_STAGE := "implement" (from "Agent Inference")
-SET IMPL_PROMPT := <PROMPT> (from "Agent Inference" using ISSUE_NUMBER, PLAN_RESULT)
-USE `task` where: agent="implementer", prompt=IMPL_PROMPT
+SET IMPL_PROMPT := <PROMPT> (from "Agent Inference" using ISSUE_NUMBER, PLAN_RESULT, STAGE_HARNESS_RITUAL)
+USE `task` where: agent="rpiv-implementer", prompt=IMPL_PROMPT
 CAPTURE IMPLEMENT_RESULT from `task`
 SET PIPELINE_STATUS := <STATUS> (from "Agent Inference" using IMPLEMENT_RESULT)
 IF PIPELINE_STATUS != "error":
   SET STAGE_RESULTS := STAGE_RESULTS + ["Implement: OK"] (from "Agent Inference")
 </process>
 
-<process id="dispatch-verify" name="Dispatch the Verify stage to the verifier agent">
+<process id="dispatch-verify" name="Dispatch the Verify stage to the rpiv-verifier agent">
 SET CURRENT_STAGE := "verify" (from "Agent Inference")
-SET VERIFY_PROMPT := <PROMPT> (from "Agent Inference" using ISSUE_NUMBER)
-USE `task` where: agent="verifier", prompt=VERIFY_PROMPT
+SET VERIFY_PROMPT := <PROMPT> (from "Agent Inference" using ISSUE_NUMBER, STAGE_HARNESS_RITUAL)
+USE `task` where: agent="rpiv-verifier", prompt=VERIFY_PROMPT
 CAPTURE VERIFY_RESULT from `task`
 SET PIPELINE_STATUS := <STATUS> (from "Agent Inference" using VERIFY_RESULT)
 IF PIPELINE_STATUS != "error":
@@ -231,6 +260,13 @@ IF PIPELINE_STATUS != "error":
 
 <process id="report-completion" name="Generate the final completion report">
 SET PIPELINE_STATUS := "complete" (from "Agent Inference")
+</process>
+
+<process id="friction-reflection" name="Answer the harness friction question and record non-empty friction">
+SET FRICTION_ANSWER := <ANSWER> (from "Agent Inference" using HARNESS_HELP, STAGE_RESULTS, RESEARCH_RESULT, PLAN_RESULT, IMPLEMENT_RESULT, VERIFY_RESULT; answer FRICTION_QUESTION)
+IF HARNESS_EXISTS is not empty and FRICTION_ANSWER is not empty and FRICTION_ANSWER != "Nothing":
+  USE `bash` where: command="./harness friction add \"<FRICTION_ANSWER>\""
+  SET FRICTION_RECORDED := true (from "Agent Inference")
 </process>
 </processes>
 

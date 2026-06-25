@@ -25,7 +25,7 @@ Each stage has clear inputs, outputs, and artifact locations. No stage may be sk
 
 ## Stage 2 — Plan
 
-- Reads the research brief before creating any architectural artifacts
+- The `rpiv-planner` agent reads the research brief before creating any architectural artifacts
 - Creates ADRs in `project/architecture/ADR/` using the ADR template **when the research brief identifies them as needed**
 - Creates core-components in `project/architecture/core-components/` using the core-component template **when the research brief identifies them as needed**
 - Updates `project/architecture/ADR/DECISION-LOG.md` with every new ADR or core-component
@@ -36,14 +36,14 @@ Each stage has clear inputs, outputs, and artifact locations. No stage may be sk
 
 ## Stage 3 — Implement
 
-- Executes tasks from the task breakdown
+- The `rpiv-implementer` agent executes tasks from the task breakdown
 - Writes tests as specified in the test plan
 - Documents implementation notes in `project/issues/<ISSUE_NUMBER>/implementation/README.md`
 - Deviations from ADRs or core-components require returning to the Plan stage
 
 ## Stage 4 — Verify
 
-- Runs the full test suite and confirms all tests pass
+- The `rpiv-verifier` agent runs the full test suite and confirms all tests pass
 - Creates logical, atomic commits following [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
 - Pushes to a feature branch (`<type>/<ISSUE_NUMBER>-<short-slug>`)
 - Opens a pull request with `Closes #<ISSUE_NUMBER>` in the body
