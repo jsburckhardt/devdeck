@@ -6,6 +6,7 @@ The `./harness` CLI is the preferred operating surface for DevDeck. It wraps exi
 
 ```bash
 ./harness help      # List all verbs
+./harness install   # Install dependencies from package-lock.json
 ./harness doctor    # Check prerequisites
 ./harness verify    # Run full verification
 ./harness smoke     # Smoke an existing production build
@@ -19,6 +20,7 @@ The `./harness` CLI is the preferred operating surface for DevDeck. It wraps exi
 | `help` | Show available verbs and options | — |
 | `orient` | Describe detected project surfaces | — |
 | `doctor` | Check prerequisites (node, npm, git, just, tmux) | — |
+| `install` | Install dependencies from package-lock.json | `npm ci` |
 | `lint` | Run ESLint | `npm run lint` |
 | `test` | Run vitest suite; pass targets after `--` | `npm run test [-- <vitest args...>]` |
 | `build` | Build Next.js app | `npm run build` |
@@ -47,6 +49,7 @@ Most verbs support `--json` for machine-readable output:
 
 ```bash
 ./harness doctor --json
+./harness install --json
 ./harness test --json -- src/server/start-dev.test.ts
 ./harness smoke --json
 ./harness verify --json

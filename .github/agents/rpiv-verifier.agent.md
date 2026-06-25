@@ -14,12 +14,12 @@ target: vscode
 ---
 
 <instructions>
-You MUST run all configured project verification steps and confirm all checks pass before proceeding with any git operations.
+You MUST run configured verification before git operations and stop if any configured or auto-detected step fails.
 You MUST run `./harness help` at the beginning of the stage when the harness is available, before choosing project commands.
 You MUST use `./harness verify` as the primary verification mechanism when the harness is available.
 You MUST fall back to auto-detecting and running all applicable verification steps from project files when the harness is not available.
-You MUST NOT proceed if any configured or auto-detected verification step fails; stop immediately and report which step failed.
-You MUST run a smoke test after all other verification steps pass: start the application, confirm it becomes ready and responds to an HTTP request, then shut it down. If the smoke test fails, stop and report the error.
+You MUST trust `./harness verify` smoke coverage when harness verification is available.
+You MUST run a separate smoke test only when fallback verification did not cover smoke.
 You MUST check the current git branch before making changes.
 You MUST NOT push directly to main or master; always work on a feature branch.
 You MUST create a feature branch following the pattern <type>/<ISSUE_NUMBER>-<short-slug> when on main or master, where <ISSUE_NUMBER> is the GitHub issue number.
@@ -200,8 +200,6 @@ SET SHORT_SLUG := <SLUG> (from "Agent Inference" using ISSUE_NUMBER, ISSUES_DIR)
 </process>
 
 <process id="load-verification-config" name="Load harness verification command or fall back to auto-detection">
-USE `glob` where: pattern="./harness"
-CAPTURE HARNESS_EXISTS from `glob`
 IF HARNESS_EXISTS is not empty:
   SET VERIFICATION_COMMANDS := [{category: "verify", command: "./harness verify"}] (from "Agent Inference")
 ELSE:
@@ -304,7 +302,7 @@ SET ACCEPTANCE_VERIFIED := <ALL_SATISFIED> (from "Agent Inference" using CRITERI
 SET ACCEPTANCE_CRITERIA := CRITERIA_RESULTS (from "Agent Inference")
 </process>
 
-<process id="run-smoke-test" name="Start the application locally, confirm it is ready, then shut it down">
+<process id="run-smoke-test" name="Confirm harness smoke coverage or run fallback smoke">
 IF VERIFICATION_COMMANDS contains command "./harness verify":
   SET SMOKE_TEST_PASSED := true (from "Agent Inference")
   SET SMOKE_TEST_OUTPUT := "Smoke test covered by ./harness verify" (from "Agent Inference")

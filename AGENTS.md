@@ -27,12 +27,13 @@ APS_BADGE: "[![APS version](https://img.shields.io/badge/APS-v1.2.2-blue?logo=gi
 DEVDECK_HARNESS_GUIDANCE: TEXT<<
 ## Engineering Harness
 
-DevDeck uses a repo-local `./harness` CLI as the preferred operating surface. Both humans and AI agents SHOULD prefer `./harness` for orienting, verifying, testing, linting, building, and booting the project.
+DevDeck uses a repo-local `./harness` CLI as the preferred operating surface. Both humans and AI agents SHOULD prefer `./harness` for installing dependencies, orienting, verifying, testing, linting, building, and booting the project.
 
 ### Usage
 
 ```bash
 ./harness help      # List all verbs
+./harness install   # Install dependencies from package-lock.json
 ./harness orient    # Understand project surfaces
 ./harness doctor    # Check prerequisites
 ./harness verify    # Run full verification

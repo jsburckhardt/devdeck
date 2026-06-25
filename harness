@@ -143,6 +143,7 @@ $(_bold "Verbs:")
   help            Show this help message
   orient          Describe detected project surfaces and command mapping
   doctor          Check local prerequisites and project health
+  install         Install dependencies from package-lock.json
   lint            Run ESLint on the codebase
   test            Run vitest test suite; pass targets after --
   build           Build the Next.js application
@@ -158,6 +159,7 @@ $(_bold "Options:")
   --json          Output machine-readable JSON (supported by most verbs)
 
 $(_bold "Examples:")
+  ./harness install
   ./harness test -- src/server/start-dev.test.ts
   ./harness test -- --json src/server/start-dev.test.ts
   ./harness smoke
@@ -184,7 +186,7 @@ cmd_orient() {
   if $JSON_MODE; then
     local surfaces
     surfaces=$(cat <<'ORIENT_JSON'
-{"verb":"orient","verdict":"pass","command":null,"steps":[],"evidence":null,"message":"Detected project surfaces for DevDeck","timestamp":"__TS__","commands":{"lint":{"command":"npm run lint"},"test":{"command":"npm run test [-- <targets>]","supportsTargets":true,"passthrough":"./harness test -- <vitest args...>","json":"./harness test --json -- <vitest args...>"},"build":{"command":"npm run build"},"smoke":{"command":"npm run start -- --hostname 127.0.0.1 --port <selectedPort>","usage":"./harness smoke [--port auto|PORT] [--json]","portModeDefault":"auto","autoRange":"41000-41999"},"boot":{"command":"npx tsx src/server/start-dev.mts"},"verify":{"sequence":["lint","format_check","build","test","smoke"]}},"surfaces":{"package_json":{"detected":true,"scripts":["dev","build","analyze","start","terminal","dev:all","lint","format","format:check","test","test:watch","test:coverage"]},"justfile":{"detected":true,"recipes":["dev","dev-next","dev-terminal","build","start","test","test-watch","test-coverage","lint","format","format-check","check","install","clean","reinstall","info"]},"harness_contract":{"detected":true,"verbs":["help","orient","doctor","lint","test","build","boot","smoke","verify","status","clean","friction add","friction list"],"verify_steps":["lint","format_check","build","test","smoke"]},"devcontainer":{"detected":true},"ci_workflows":{"detected":true,"files":["ci.yml"]}}}
+{"verb":"orient","verdict":"pass","command":null,"steps":[],"evidence":null,"message":"Detected project surfaces for DevDeck","timestamp":"__TS__","commands":{"install":{"command":"npm ci"},"lint":{"command":"npm run lint"},"test":{"command":"npm run test [-- <targets>]","supportsTargets":true,"passthrough":"./harness test -- <vitest args...>","json":"./harness test --json -- <vitest args...>"},"build":{"command":"npm run build"},"smoke":{"command":"npm run start -- --hostname 127.0.0.1 --port <selectedPort>","usage":"./harness smoke [--port auto|PORT] [--json]","portModeDefault":"auto","autoRange":"41000-41999"},"boot":{"command":"npx tsx src/server/start-dev.mts"},"verify":{"sequence":["lint","format_check","build","test","smoke"]}},"surfaces":{"package_json":{"detected":true,"scripts":["dev","build","analyze","start","terminal","dev:all","lint","format","format:check","test","test:watch","test:coverage"]},"justfile":{"detected":true,"recipes":["dev","dev-next","dev-terminal","build","start","test","test-watch","test-coverage","lint","format","format-check","check","install","clean","reinstall","info"]},"harness_contract":{"detected":true,"verbs":["help","orient","doctor","install","lint","test","build","boot","smoke","verify","status","clean","friction add","friction list"],"verify_steps":["lint","format_check","build","test","smoke"]},"devcontainer":{"detected":true},"ci_workflows":{"detected":true,"files":["ci.yml"]}}}
 ORIENT_JSON
 )
     local ts
@@ -211,6 +213,7 @@ ORIENT_JSON
 
   _bold "Verb → Command Mapping:"
   echo ""
+  printf "  %-20s %s\n" "install" "npm ci"
   printf "  %-20s %s\n" "lint"   "npm run lint"
   printf "  %-20s %s\n" "test"   "npm run test"
   printf "  %-20s %s\n" "test -- <args>" "npm run test -- <args...>"
@@ -274,7 +277,7 @@ cmd_doctor() {
   else
     nm_verdict="degraded"
     missing_optional+=("node_modules")
-    details+=("node_modules: $(_yellow "MISSING") (run npm install)")
+    details+=("node_modules: $(_yellow "MISSING") (run ./harness install)")
   fi
   if [[ -n "$steps_json" ]]; then steps_json+=","; fi
   steps_json+="{\"name\":\"node_modules\",\"verdict\":\"$nm_verdict\",\"exitCode\":$(if [[ "$nm_verdict" == "pass" ]]; then echo 0; else echo 2; fi),\"durationMs\":0}"
@@ -383,6 +386,12 @@ _run_wrapped() {
   fi
 
   _verdict_exit "$verdict"
+}
+
+# ── Verb: install ──────────────────────────────────────────────
+cmd_install() {
+  _parse_json_only_args "$@"
+  _run_wrapped "install" "Install dependencies from package-lock.json" "$NPM_BIN" ci
 }
 
 # ── Verb: lint ─────────────────────────────────────────────────
@@ -1739,6 +1748,9 @@ case "$VERB" in
     ;;
   doctor)
     cmd_doctor "$@"
+    ;;
+  install)
+    cmd_install "$@"
     ;;
   lint)
     cmd_lint "$@"
