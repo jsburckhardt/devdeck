@@ -150,6 +150,11 @@ const exitFor = (name) => Number(process.env[name] || "0");
 
 record({ event: "invoke", args });
 
+if (args[0] === "ci") {
+  record({ event: "ci" });
+  process.exit(exitFor("FAKE_NPM_CI_EXIT"));
+}
+
 if (args[0] !== "run") {
   process.exit(1);
 }
@@ -384,6 +389,27 @@ afterEach(() => {
 });
 
 describe("harness parser and targeted test passthrough", () => {
+  it("installs dependencies with npm ci", () => {
+    const recordPath = path.join(testDir, "npm-record.jsonl");
+    const fakeNpm = createFakeNpm();
+
+    const result = runHarness(["install", "--json"], {
+      HARNESS_NPM_BIN: fakeNpm,
+      FAKE_NPM_RECORD: recordPath,
+    });
+
+    expect(result.status).toBe(0);
+    const json = parseJson(result);
+    expect(json.verdict).toBe("pass");
+    expect(json.steps[0].name).toBe("install");
+
+    const records = readRecords(recordPath);
+    expect(
+      records.filter((record) => record.args).map((record) => record.args.join(" ")),
+    ).toContain("ci");
+    expect(records.some((record) => record.event === "ci")).toBe(true);
+  });
+
   it("reports full-suite test JSON metadata as non-targeted", () => {
     const recordPath = path.join(testDir, "npm-record.jsonl");
     const fakeNpm = createFakeNpm();
@@ -964,12 +990,14 @@ describe("harness discovery output", () => {
   it("documents smoke and targeted test commands in help and human orient output", () => {
     const help = runHarness(["help"]);
     expect(help.status).toBe(0);
+    expect(String(help.stdout)).toContain("install");
     expect(String(help.stdout)).toContain("smoke --port auto");
     expect(String(help.stdout)).toContain("test -- src/server/start-dev.test.ts");
 
     const orient = runHarness(["orient"]);
     expect(orient.status).toBe(0);
     expect(String(orient.stdout)).toContain("test -- <args>");
+    expect(String(orient.stdout)).toContain("install");
     expect(String(orient.stdout)).toContain("smoke");
   });
 
@@ -982,6 +1010,7 @@ describe("harness discovery output", () => {
       "help",
       "orient",
       "doctor",
+      "install",
       "lint",
       "test",
       "build",
@@ -1003,6 +1032,7 @@ describe("harness discovery output", () => {
     expect(json.commands.smoke.command).toBe(
       "npm run start -- --hostname 127.0.0.1 --port <selectedPort>",
     );
+    expect(json.commands.install.command).toBe("npm ci");
     expect(json.commands.smoke.portModeDefault).toBe("auto");
     expect(json.commands.smoke.defaultPortMode).toBeUndefined();
     expect(json.commands.test.command).toBe("npm run test [-- <targets>]");

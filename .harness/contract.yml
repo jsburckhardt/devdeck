@@ -47,6 +47,14 @@ verbs:
       - tmux
       - curl
 
+  - name: install
+    command: "npm ci"
+    description: Install dependencies exactly from package-lock.json without rewriting it
+    json: true
+    source: package-lock.json
+    lockfile_required: true
+    lockfile_mutation: false
+
   - name: lint
     command: "npm run lint"
     description: Run ESLint on the codebase

@@ -54,7 +54,7 @@ check: lint format-check build test
 
 # Install dependencies
 install:
-    npm install
+    npm ci
 
 # Clean build artifacts and node_modules
 clean:

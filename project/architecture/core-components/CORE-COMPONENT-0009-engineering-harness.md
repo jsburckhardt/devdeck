@@ -6,17 +6,18 @@ Adopted (updated)
 
 ## Purpose
 
-Provide a single, repo-local CLI (`./harness`) as the preferred operating surface for humans and AI agents. The harness wraps existing project commands, standardizes verdict reporting, records inference friction, and produces verification evidence — eliminating the need for agents and contributors to infer which command surface to use. Smoke verification and targeted Vitest execution are first-class harness contracts so agents can validate built runtime health and focused regressions without bypassing the harness.
+Provide a single, repo-local CLI (`./harness`) as the preferred operating surface for humans and AI agents. The harness wraps existing project commands, standardizes verdict reporting, records inference friction, and produces verification evidence — eliminating the need for agents and contributors to infer which command surface to use. Dependency installation, smoke verification, and targeted Vitest execution are first-class harness contracts so agents can prepare dependencies, validate built runtime health, and run focused regressions without bypassing the harness.
 
 ## Scope
 
-Cross-cutting: affects all pipeline agents (Research, Plan, Implement, Verify), the justdoit orchestrator, CI workflows, and human developer workflows. The harness is the repository verification source of truth and wraps existing project tools such as npm scripts and the justfile. This scope includes harness command parsing, smoke-test lifecycle management, test target passthrough, discovery metadata, local evidence, local runtime metadata, and documentation for supported harness workflows.
+Cross-cutting: affects all pipeline agents (Research, Plan, Implement, Verify), the justdoit orchestrator, CI workflows, and human developer workflows. The harness is the repository verification source of truth and wraps existing project tools such as npm scripts and the justfile. This scope includes harness command parsing, dependency installation, smoke-test lifecycle management, test target passthrough, discovery metadata, local evidence, local runtime metadata, and documentation for supported harness workflows.
 
 ## Definition
 
 ### Rules
 
 - `./harness` is the preferred entrypoint for orienting, verifying, smoking, testing, linting, building, booting, and cleaning the project.
+- `./harness install [--json]` MUST install dependencies with `npm ci` from `package-lock.json` and MUST NOT rewrite the lockfile.
 - Direct project commands are allowed when the harness lacks a verb, explains a degraded path, or deeper diagnosis requires raw output.
 - RPIV agents and the JustDoIt orchestrator MUST run `./harness help` at the beginning of their stage when the harness is available, before choosing project commands.
 - RPIV agents and the JustDoIt orchestrator MUST answer "What did the agent have to infer that the harness should have proved?" before completing or returning an error.
@@ -40,6 +41,7 @@ Cross-cutting: affects all pipeline agents (Research, Plan, Implement, Verify), 
 ### Interfaces
 
 - `./harness <verb> [--json]` — CLI entrypoint supporting all required verbs.
+- `./harness install [--json]` — Lockfile-exact dependency installation wrapper.
 - `./harness smoke [--port auto|PORT] [--json]` — Standalone built-app smoke verification with loopback-only probing and deterministic cleanup.
 - `./harness test [--json] [-- <vitest args...>]` — Vitest wrapper with optional targeted passthrough after `--`.
 - `./harness verify [--json]` — Full verification sequence that runs lint, format check, build, test, and the shared smoke implementation.
@@ -55,6 +57,7 @@ Cross-cutting: affects all pipeline agents (Research, Plan, Implement, Verify), 
 - Pipeline agents MUST run `./harness help` before selecting project commands when the harness is available.
 - Pipeline agents SHOULD use `./harness orient` to understand the project before starting unfamiliar work.
 - Pipeline agents SHOULD use `./harness doctor` to check prerequisites.
+- Pipeline agents SHOULD use `./harness install` instead of direct `npm install` or `just install` when dependencies need to be restored.
 - Pipeline agents SHOULD use `./harness test -- <targets...>` for focused Vitest regressions instead of direct `npm run test -- <targets...>` when the harness is available.
 - Pipeline agents SHOULD use `./harness smoke` for standalone built-app smoke checks instead of copying `next start` lifecycle scripts.
 - The harness MUST wrap existing project commands; it MUST NOT invent a new build system.
@@ -72,6 +75,9 @@ DevDeck previously had multiple command surfaces (npm scripts, justfile, and a s
 
 # Check prerequisites
 ./harness doctor
+
+# Install dependencies exactly from the lockfile
+./harness install
 
 # Run verification before claiming completion
 ./harness verify
@@ -104,7 +110,7 @@ DevDeck previously had multiple command surfaces (npm scripts, justfile, and a s
 ## Integration Guidelines
 
 - **All RPIV agents:** MUST run `./harness help` at stage start when the harness is available, then answer the harness friction question before completing or returning an error.
-- **`rpiv-implementer` agent:** MUST run `./harness verify` after implementing each task. SHOULD use `./harness lint`, `./harness test -- <targets...>`, `./harness smoke`, and `./harness build` over direct npm commands.
+- **`rpiv-implementer` agent:** MUST run `./harness verify` after implementing each task. SHOULD use `./harness install`, `./harness lint`, `./harness test -- <targets...>`, `./harness smoke`, and `./harness build` over direct npm commands.
 - **`rpiv-verifier` agent:** MUST use `./harness verify` as the primary verification mechanism. SHOULD use `./harness smoke` to isolate built-app smoke failures. Falls back to auto-detection only when the harness is absent.
 - **`rpiv-research` agent:** SHOULD use `./harness orient` and `./harness doctor` to understand the project.
 - **`rpiv-planner` agent:** SHOULD reference `./harness` verbs in task acceptance criteria.
@@ -118,6 +124,7 @@ DevDeck previously had multiple command surfaces (npm scripts, justfile, and a s
 
 - Repos without a harness: agents fall back to auto-detecting applicable verification commands from project files.
 - Debugging: direct commands are allowed when the harness abstracts away needed diagnostic detail; record as friction.
+- Dependency maintenance: direct `npm install` or `npm install --package-lock-only` is allowed when intentionally changing dependency constraints or regenerating `package-lock.json`; normal dependency restoration should use `./harness install`.
 - CI environments: CI pipelines should run `./harness verify`; direct commands require updating `.harness/contract.yml` to avoid drift.
 - Bootstrap: new projects may not have a harness until the harness-cli-it skill runs.
 - Smoke does not build the application; callers MUST run `./harness build` first or use `./harness verify` for build-before-smoke sequencing.
@@ -130,6 +137,7 @@ DevDeck previously had multiple command surfaces (npm scripts, justfile, and a s
 - [x] Agent instructions require `./harness help` preflight and harness usage (MUST for `rpiv-verifier`/`rpiv-implementer`, SHOULD for others)
 - [x] Agent instructions require end-of-stage friction reflection and non-empty friction recording
 - [x] Friction log tracks every harness bypass
+- [x] `./harness install` provides deterministic lockfile-based dependency installation
 - [x] `./harness smoke` has automated parser, port, lifecycle, cleanup, JSON, and evidence tests
 - [x] `./harness test -- <targets...>` has automated passthrough, quoting, sanitization, and Vitest `--json` forwarding tests
 - [x] `./harness verify` evidence proves it uses the shared smoke implementation and preserves aggregate verdict behavior

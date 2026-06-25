@@ -280,3 +280,5 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 246 | Use `rpiv-*` selectors for all RPIV stage subagents | CORE-COMPONENT-0009 | 2026-06-25 |
 | 247 | Require RPIV agents to run `./harness help` before choosing project commands | CORE-COMPONENT-0009 | 2026-06-25 |
 | 248 | Require RPIV agents to answer the harness friction question before completing and record non-empty friction | CORE-COMPONENT-0009 | 2026-06-25 |
+| 249 | Expose `./harness install` as a first-class dependency installation verb | CORE-COMPONENT-0009 | 2026-06-25 |
+| 250 | Require normal dependency restoration to use lockfile-exact `npm ci` through the harness | CORE-COMPONENT-0009 | 2026-06-25 |

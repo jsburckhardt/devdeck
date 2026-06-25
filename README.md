@@ -16,24 +16,25 @@ A web-based development environment that replicates the IDE experience with a re
 
 ```bash
 # Install dependencies
-just install
+./harness install
 
 # Start development server
 just dev
 
 # Run all checks
-just check
+./harness verify
 ```
 
 ## Development
 
 ```bash
-just              # Show all available commands
+./harness help    # Show all supported harness commands
+./harness install # Install dependencies from package-lock.json
 just dev          # Start dev server with Turbopack
 just test         # Run tests
 just lint         # Run ESLint
 just format       # Format code with Prettier
-just check        # Run lint + format:check + build + test
+./harness verify  # Run lint + format:check + build + test + smoke
 ```
 
 ## Configuration
