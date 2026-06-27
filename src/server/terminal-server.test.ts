@@ -1,7 +1,9 @@
+// @vitest-environment node
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 import type { IPty } from "node-pty";
-import { createTerminalServer } from "./terminal-server.mts";
+import { createTerminalServer, detectCopilotState } from "./terminal-server.mts";
 
 const spawnMock = vi.fn();
 
@@ -26,6 +28,22 @@ async function waitForListening(server: {
   });
 }
 
+function serverPort(server: { wss: { address: () => string | { port: number } | null } }): number {
+  return (server.wss.address() as { port: number }).port;
+}
+
+function waitForClose(client: WebSocket): Promise<{ code: number; reason: string }> {
+  return new Promise((resolve) => {
+    client.on("close", (code, reason) => resolve({ code, reason: reason.toString() }));
+  });
+}
+
+function waitForMessage(client: WebSocket): Promise<string> {
+  return new Promise((resolve) => {
+    client.on("message", (message) => resolve(message.toString()));
+  });
+}
+
 describe("terminal server default endpoint", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -38,21 +56,21 @@ describe("terminal server default endpoint", () => {
     delete process.env.DEVDECK_WORKSPACE_ROOT;
   });
 
-  it("rejects slug and worktree context with a 1008 error frame before spawning a PTY", async () => {
+  it.each([
+    ["slug", "slug=demo"],
+    ["worktree", "worktree=.trees/demo"],
+    ["slug and worktree", "slug=demo&worktree=.trees/demo"],
+  ])("rejects %s context with a 1008 error frame before spawning a PTY", async (_label, query) => {
     const server = createTerminalServer({ port: 0, token: "secret" });
     await waitForListening(server);
-    const client = new WebSocket(
-      `ws://127.0.0.1:${(server.wss.address() as { port: number }).port}?token=secret&slug=demo`,
-    );
+    const client = new WebSocket(`ws://127.0.0.1:${serverPort(server)}?token=secret&${query}`);
 
     const messages: string[] = [];
     client.on("message", (message) => {
       messages.push(message.toString());
     });
 
-    const closeEvent = await new Promise<{ code: number; reason: string }>((resolve) => {
-      client.on("close", (code, reason) => resolve({ code, reason: reason.toString() }));
-    });
+    const closeEvent = await waitForClose(client);
 
     expect(closeEvent.code).toBe(1008);
     expect(closeEvent.reason).toBe("Unsupported terminal context");
@@ -68,14 +86,40 @@ describe("terminal server default endpoint", () => {
     server.cleanup();
   });
 
+  it.each([
+    ["slug", "slug=demo"],
+    ["worktree", "worktree=.trees/demo"],
+  ])(
+    "rejects unauthenticated %s context with 4401 before unsupported-context handling",
+    async (_label, query) => {
+      const server = createTerminalServer({ port: 0, token: "secret" });
+      await waitForListening(server);
+      const client = new WebSocket(`ws://127.0.0.1:${serverPort(server)}?${query}`);
+
+      const messages: string[] = [];
+      client.on("message", (message) => {
+        messages.push(message.toString());
+      });
+
+      const closeEvent = await waitForClose(client);
+
+      expect(closeEvent.code).toBe(4401);
+      expect(closeEvent.reason).toBe("Unauthorized");
+      expect(messages).toEqual([]);
+      expect(spawnMock).not.toHaveBeenCalled();
+
+      client.close();
+      server.cleanup();
+    },
+  );
+
   it("uses the configured cwd over the env workspace root and process.cwd for the default shell", async () => {
     const server = createTerminalServer({ port: 0, cwd: "/override/cwd", token: "secret" });
     await waitForListening(server);
-    const client = new WebSocket(
-      `ws://127.0.0.1:${(server.wss.address() as { port: number }).port}?token=secret`,
-    );
+    const client = new WebSocket(`ws://127.0.0.1:${serverPort(server)}?token=secret`);
+    const setupMessage = waitForMessage(client);
 
-    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    await expect(setupMessage).resolves.toBe(JSON.stringify({ type: "setup", mode: "shell" }));
     expect(spawnMock).toHaveBeenCalledWith(
       expect.any(String),
       expect.any(Array),
@@ -89,11 +133,10 @@ describe("terminal server default endpoint", () => {
     process.env.DEVDECK_WORKSPACE_ROOT = "/env/workspace";
     const server = createTerminalServer({ port: 0, token: "secret" });
     await waitForListening(server);
-    const client = new WebSocket(
-      `ws://127.0.0.1:${(server.wss.address() as { port: number }).port}?token=secret`,
-    );
+    const client = new WebSocket(`ws://127.0.0.1:${serverPort(server)}?token=secret`);
+    const setupMessage = waitForMessage(client);
 
-    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    await expect(setupMessage).resolves.toBe(JSON.stringify({ type: "setup", mode: "shell" }));
     expect(spawnMock).toHaveBeenCalledWith(
       expect.any(String),
       expect.any(Array),
@@ -107,11 +150,10 @@ describe("terminal server default endpoint", () => {
     const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue("/current/workdir");
     const server = createTerminalServer({ port: 0, token: "secret" });
     await waitForListening(server);
-    const client = new WebSocket(
-      `ws://127.0.0.1:${(server.wss.address() as { port: number }).port}?token=secret`,
-    );
+    const client = new WebSocket(`ws://127.0.0.1:${serverPort(server)}?token=secret`);
+    const setupMessage = waitForMessage(client);
 
-    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    await expect(setupMessage).resolves.toBe(JSON.stringify({ type: "setup", mode: "shell" }));
     expect(spawnMock).toHaveBeenCalledWith(
       expect.any(String),
       expect.any(Array),
@@ -120,5 +162,10 @@ describe("terminal server default endpoint", () => {
     cwdSpy.mockRestore();
     client.close();
     server.cleanup();
+  });
+
+  it("detects Copilot running status lines with whitespace and ellipsis", () => {
+    expect(detectCopilotState("✦ Thinking...")).toBe("running");
+    expect(detectCopilotState("\n  ⊙ Working esc cancel")).toBe("running");
   });
 });

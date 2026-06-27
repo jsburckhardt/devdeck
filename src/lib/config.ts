@@ -252,15 +252,10 @@ async function persistGeneratedToken(
   const nextConfig: RawConfig = { ...raw, token };
   delete nextConfig.dataDir;
   await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(
-    tmpPath,
-    `${JSON.stringify(nextConfig, null, 2)}
-`,
-    {
-      encoding: "utf-8",
-      mode: 0o600,
-    },
-  );
+  await fs.writeFile(tmpPath, `${JSON.stringify(nextConfig, null, 2)}\n`, {
+    encoding: "utf-8",
+    mode: 0o600,
+  });
   if (process.platform !== "win32") await fs.chmod(tmpPath, 0o600);
   await fs.rename(tmpPath, configPath);
   if (process.platform !== "win32") await fs.chmod(configPath, 0o600);

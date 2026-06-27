@@ -18,7 +18,7 @@ export function stripAnsi(text: string): string {
 const STATUS_GLYPHS = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⣾⣽⣻⢿⡿⣟⣯⣷◐◓◑◒✦✧◆◇●⊙";
 const BRAILLE_SPINNER = /(?:^|\n)\s*[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏](?:\s|$)/m;
 const RUNNING_STATUS_LINE = new RegExp(
-  `(?:^|\n)\s*[${STATUS_GLYPHS}]\s*(?:Thinking|Working|Processing|Generating|Analyzing|Planning|Implementing|Verifying)(?:\.\.|…|\s+esc\s+cancel)?\s*$`,
+  `(?:^|\\n)\\s*[${STATUS_GLYPHS}]\\s*(?:Thinking|Working|Processing|Generating|Analyzing|Planning|Implementing|Verifying)(?:\\.\\.\\.|…|\\s+esc\\s+cancel)?\\s*$`,
   "im",
 );
 const WAITING_PROMPT =

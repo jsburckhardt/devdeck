@@ -220,10 +220,10 @@ wss.on('connection', (ws, req) => {
 - [x] Automated checks: `terminal-panel.test.tsx` covers microphone accessibility, live status/alert semantics, editable review, validation, exact `Send text` / `Send + Enter` dispatch strings, `sendInput(false)` retry behavior, focus restoration, disconnect/context cleanup, and terminal container stability
 - [x] Automated checks: `use-terminal.test.ts` must cover exact responsive font-size tiers, layout viewport usage, constructor options, runtime font-size tier changes without reconnect, forced fits, resize propagation, and listener cleanup
 - [x] Automated checks: Playwright terminal coverage must include a touch/tablet viewport asserting 12px rendered xterm font size, active connection, and no horizontal overflow
-- [ ] Automated checks: Terminal server tests must assert `slug`/`worktree` requests close with 1008 after auth and before PTY spawn
-- [ ] Automated checks: Terminal server tests must assert default cwd precedence uses options, forwarded workspace root, then `process.cwd()`
-- [ ] Automated checks: Terminal hook tests must assert 1008 unsupported-context closes do not reconnect
-- [ ] Automated checks: WorkspaceLayout and TerminalPanel tests must assert default terminal receives no `slug`/`worktree` and updates no project-sidebar Copilot state
+- [x] Automated checks: Terminal server tests must assert `slug`/`worktree` requests close with 1008 after auth and before PTY spawn
+- [x] Automated checks: Terminal server tests must assert default cwd precedence uses options, forwarded workspace root, then `process.cwd()`
+- [x] Automated checks: Terminal hook tests must assert 1008 unsupported-context closes do not reconnect
+- [x] Automated checks: WorkspaceLayout and TerminalPanel tests must assert default terminal receives no `slug`/`worktree` and updates no project-sidebar Copilot state
 - [x] Verification: `./harness verify` passes before implementation completion
 
 ## Related ADRs
