@@ -71,7 +71,7 @@ Supported keys and env overrides:
 | --- | --- | --- |
 | `token` | `DEVDECK_TOKEN` | generated UUID persisted to config |
 | `projectsDir` | `DEVDECK_PROJECTS_DIR` | `/workspaces` |
-| `workspaceRoot` | `DEVDECK_WORKSPACE_ROOT` | user home directory |
+| `workspaceRoot` | `DEVDECK_WORKSPACE_ROOT` | DevDeck launch cwd (`launchCwd`, else `process.cwd()`) |
 | `host` | `DEVDECK_HOST` | `0.0.0.0` |
 | `port` | `PORT` | `8070` |
 | `terminalHost` | `TERMINAL_HOST` | `127.0.0.1` |
@@ -81,6 +81,8 @@ Supported keys and env overrides:
 `DEVDECK_DATA_DIR` is env-only because it determines where `config.json` is read from; a `dataDir` key in the config file is ignored with a warning. If neither `DEVDECK_TOKEN` nor a config `token` is provided, DevDeck generates a UUID once and persists it to `config.json` with private POSIX permissions where supported. Generated first-run tokens are printed in full; env/config tokens are masked as `[redacted:env]` or `[redacted:config]` in startup logs.
 
 `initialProjects` seeds manual project registry entries additively and idempotently during `just dev` / `npm run dev:all` startup. Each entry must be an object with a required `path` and optional string `name`/`description`. Paths are resolved server-side, support leading `~`, must point to existing directories, and are skipped when they duplicate an existing slug/path or collide with an auto-discovered project. Optional metadata is trimmed before being saved; blank `name` or `description` values are omitted.
+
+The default terminal is a host shell rooted at the DevDeck launch directory unless an explicit `DEVDECK_WORKSPACE_ROOT` or config `workspaceRoot` overrides it. Selecting a project continues to scope Explorer/File Preview and worktree-aware file-tree sync, but it no longer changes the default terminal cwd.
 
 Security note: `config.json` may contain a bearer token and should be treated as sensitive. The config-file loader currently runs through the development startup wrapper (`src/server/start-dev.mts`); production `next start` remains env-driven for this issue, so production deployments should provide the same values with environment variables.
 

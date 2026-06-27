@@ -14,8 +14,6 @@ export type TerminalStatus =
 
 export interface UseTerminalOptions {
   wsUrl?: string;
-  slug?: string;
-  worktree?: string;
   theme?: ITheme;
 }
 
@@ -38,6 +36,7 @@ export interface UseTerminalReturn {
 
 const MAX_RECONNECT_ATTEMPTS = 3;
 const WS_CLOSE_UNAUTHORIZED = 4401;
+const WS_CLOSE_UNSUPPORTED_CONTEXT = 1008;
 
 const DEFAULT_THEME = TERMINAL_THEMES[0].colors;
 
@@ -232,13 +231,11 @@ function normalizeContainerSize(
   };
 }
 
-function buildWsUrl(slug?: string, worktree?: string, cols?: number, rows?: number): string {
+function buildWsUrl(cols?: number, rows?: number): string {
   if (typeof window === "undefined") return "ws://localhost:8001/api/terminal";
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
   const base = `${proto}//${window.location.host}/api/terminal`;
   const params = new URLSearchParams();
-  if (slug) params.set("slug", slug);
-  if (worktree) params.set("worktree", worktree);
   if (cols != null) params.set("cols", String(cols));
   if (rows != null) params.set("rows", String(rows));
   const qs = params.toString();
@@ -255,7 +252,7 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
   const [copilotStatus, setCopilotStatus] = useState<CopilotCliState>("idle");
   const statusRef = useRef<TerminalStatus>("disconnected");
 
-  const baseWsUrl = options?.wsUrl ?? buildWsUrl(options?.slug, options?.worktree);
+  const baseWsUrl = options?.wsUrl ?? buildWsUrl();
 
   const generationRef = useRef(0);
   const intentionalCloseRef = useRef(false);
@@ -643,6 +640,12 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
         if (event.code === WS_CLOSE_UNAUTHORIZED) {
           setTerminalStatus("failed");
           setError("Unauthorized — please reload with a valid token");
+          return;
+        }
+
+        if (event.code === WS_CLOSE_UNSUPPORTED_CONTEXT) {
+          setTerminalStatus("failed");
+          setError("Project-scoped terminals are not supported by the default terminal.");
           return;
         }
 

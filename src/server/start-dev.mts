@@ -65,6 +65,7 @@ function printBanner(config: ResolvedConfig, log: StartDevDeps["log"] = console.
       ")",
   );
   log("   Projects: " + config.projectsDir + " (" + config.sources.projectsDir + ")");
+  log("   Workspace: " + config.workspaceRoot + " (" + config.sources.workspaceRoot + ")");
   log("   Data:     " + config.dataDir + " (" + config.sources.dataDir + ")");
   log("");
 }
@@ -77,7 +78,7 @@ export async function startDev(deps: StartDevDeps = {}): Promise<StartDevHandle>
   const baseEnv = deps.env ?? process.env;
   const cwd = deps.cwd ?? process.cwd();
   const exit = deps.exit ?? process.exit;
-  const config = await load({ env: baseEnv, warn: (message) => log(message) });
+  const config = await load({ env: baseEnv, warn: (message) => log(message), launchCwd: cwd });
 
   await seed(config.initialProjects, {
     log: (message) => log(message),
@@ -107,7 +108,7 @@ export async function startDev(deps: StartDevDeps = {}): Promise<StartDevHandle>
   function shutdown() {
     if (shuttingDown) return;
     shuttingDown = true;
-    log("\nShutting down...");
+    log("Shutting down...");
     terminal.kill("SIGTERM");
     next.kill("SIGTERM");
     setTimeout(() => exit(0), 3000);

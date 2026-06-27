@@ -2,17 +2,22 @@
 
 ## Status
 
-Adopted (updated) - 2026-06-20
+Adopted (amended) - 2026-06-27
 
 ## Purpose
 
 Establish the communication pattern between the browser-based terminal (xterm.js) and the server-side PTY process (node-pty). This is the core architectural concern that enables the real terminal experience in DevDeck.
+
+The default terminal is a host terminal. It is intentionally decoupled from project selection,
+worktree selection, and tmux routing so Explorer and File Preview can track the active project while
+the terminal remains rooted at the configured workspace/launch context.
 
 ## Scope
 
 - Frontend: xterm.js terminal widget and WebSocket client
 - Backend: WebSocket server, PTY process lifecycle management
 - Communication protocol between frontend and backend
+- Default host-terminal cwd resolution and unsupported project/worktree context rejection
 - Responsive xterm.js font-size selection, refit behavior, and PTY resize propagation
 - Terminal input helper controls, including keyboard helpers and browser-only microphone review input, that inject raw input through `useTerminal.sendInput(data)`
 
@@ -28,14 +33,15 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - The server MUST validate the token BEFORE spawning a PTY process
 - Invalid or missing tokens MUST result in WebSocket close code 4401 ("Unauthorized") with no PTY spawned
 - The frontend MUST detect close code 4401 and surface an "Unauthorized" error without reconnecting
-- The client MAY pass `slug=<project-slug>` as a query parameter on the WebSocket upgrade URL to request a project-specific terminal session
-- The server MUST resolve the CWD server-side using `resolveProjectPath(slug)` — the filesystem path MUST NOT be exposed to the client in any WebSocket message
-- The server MUST sanitize the slug before passing it to `resolveProjectPath` or using it as a tmux session name
-- The server MUST use this terminal spawn decision tree for project slugs:
-  1. If `<resolvedCwd>/.devcontainer/.tmux-shared` exists and is a socket, and `tmux -S <socketPath> has-session -t <sanitizedSlug>` succeeds, spawn `tmux -S <socketPath> attach-session -t <sanitizedSlug>` using the shared socket.
-  2. If `.devcontainer/.tmux-shared` is absent, attempt `tmux new-session -A -s <sanitizedSlug>` on the system default tmux socket. System-default tmux sessions are visible to processes for the same host user.
-  3. If tmux attach/create fails, tmux exits non-zero, or tmux cannot be spawned, fall back to a regular shell in the resolved project directory.
-- If no slug is provided, the server MUST fall back to the configured default CWD (`DEVDECK_WORKSPACE_ROOT`, `options.cwd`, or `os.homedir()`)
+- The default `/api/terminal` endpoint MUST NOT accept `slug` or `worktree` query parameters
+- After successful token validation and before spawning any PTY, requests containing `slug` or `worktree` MUST receive a fixed JSON text frame `{ "type": "error", "message": "Project-scoped terminals are not supported by the default terminal." }` and then close with WebSocket close code 1008
+- Unsupported-context rejection MUST NOT echo supplied `slug` or `worktree` values in WebSocket frames, close reasons, or logs
+- The frontend MUST detect close code 1008, surface an unsupported-context error state, and MUST NOT reconnect automatically
+- The default terminal MUST spawn a regular host shell only; it MUST NOT call `resolveProjectPath(slug)`, attach to tmux, create system-default tmux sessions, or route to project/worktree directories
+- The default terminal CWD precedence MUST be `TerminalServerOptions.cwd` → explicit `DEVDECK_WORKSPACE_ROOT`/resolved `workspaceRoot` → DevDeck launch cwd forwarded by startup → standalone `process.cwd()`
+- `WorkspaceLayout` MUST render the default `TerminalPanel` without selected project slug or active worktree props
+- Default `TerminalPanelProps` MUST NOT expose `slug` or `worktree`
+- Default `UseTerminalOptions` MUST NOT expose `slug` or `worktree`; the hook may still accept `wsUrl` test overrides and terminal theme options
 - Terminal server token, bind host, bind port, projects directory, data directory, and workspace root MUST be resolved by the centralized startup config flow and forwarded to `src/server/terminal-server.mts` through environment variables; the standalone `.mts` server MUST remain env-driven and MUST NOT import the config loader.
 - The client MUST pass initial terminal dimensions as `cols` and `rows` query parameters on the WebSocket upgrade URL so the server can spawn the PTY at the correct size before any resize message arrives
 - The frontend MUST load `@xterm/addon-clipboard` (ClipboardAddon) to support OSC 52 clipboard escape sequences from programs like tmux and vim
@@ -52,21 +58,18 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - The initial computed terminal font size MUST be applied before the first fit and WebSocket connection so initial `cols`/`rows` query parameters reflect the selected tier
 - Runtime terminal font-size tier changes MUST update `term.options.fontSize`, force a fit even when the container dimensions are unchanged, and propagate resulting `onResize` events through the existing duplicate resize suppression path
 - Runtime terminal font-size tier changes MUST NOT reconnect the WebSocket solely because the font-size tier changed
-- Responsive terminal font-size listeners MUST be instance-local, SSR-safe, and cleaned up on unmount, project/worktree context changes, reconnects, and React Strict Mode remounts, including both modern and legacy media-query listener APIs
-- After the PTY is successfully spawned (and before flushing any pending input messages), the server MUST send a JSON text frame `{ type: "setup", mode: "tmux" | "shell" }` to the client to communicate the active session mode
-- When tmux attach exits with a non-zero code and the server falls back to a regular shell, the server MUST send `{ type: "setup", mode: "shell", fallback: true, reason: "tmux-attach-failed" }` before wiring the fallback PTY
-- The client MUST handle `setup` messages: update `terminalMode` state, and call `term.clear()` when `fallback: true` is received to erase any error output the failed tmux process may have written to the terminal buffer
+- Responsive terminal font-size listeners MUST be instance-local, SSR-safe, and cleaned up on unmount, terminal context changes, reconnects, and React Strict Mode remounts, including both modern and legacy media-query listener APIs
+- After the default PTY is successfully spawned (and before flushing any pending input messages), the server MUST send a JSON text frame `{ type: "setup", mode: "shell" }` to the client
+- `tmux` setup modes and tmux fallback setup frames are not part of the default terminal endpoint; any future explicit project terminal context requires a separate architecture amendment
+- The client MUST handle `setup` messages by updating `terminalMode` state; fallback-clearing behavior may remain for future explicit terminal contexts but MUST NOT be required for the default endpoint
 - The client MUST reset `terminalMode` to `"unknown"` and `isFallback` to `false` at the start of each `connect()` attempt
-- The client MAY pass `worktree=<relative-path>` (e.g. `.trees/feature-branch`) as a query parameter on the WebSocket upgrade URL to open a terminal scoped to a git worktree directory
-- When `worktree` is present, the server MUST resolve CWD to `<resolvedProjectRoot>/<relativeWorktreePath>` and MUST bypass the tmux decision tree entirely, spawning a plain login shell in the worktree directory
-- The server MUST reject `worktree` paths containing `..` segments or resolving outside the project root; on rejection, fall back to the project root shell
-- An `extractWorktree(req: IncomingMessage): string | null` function MUST be added to `terminal-server.mts` to extract and sanitize the `worktree` query param before it reaches `resolveTerminalSetup`
-- Worktree terminal sessions MUST always result in `{ type: "setup", mode: "shell" }` sent to the client
+- Project-scoped and worktree-scoped terminal routing decisions (#42, #43, #44, #45, #46, #65, #66, #85, #86, #87) are superseded for the default endpoint; stale or hand-crafted default endpoint requests carrying those parameters are unsupported contexts
 - The server MAY send `{ type: "status", copilotState: CopilotCliState }` JSON text frames to communicate Copilot CLI state changes detected via PTY output pattern matching (see ADR-0005)
 - A pure function `detectCopilotState(strippedOutput: string): CopilotCliState | null` MUST be implemented in `terminal-server.mts` to detect Copilot CLI state from PTY output
 - `detectCopilotState()` MUST strip ANSI escape sequences from PTY output before pattern matching
 - The server MUST maintain a per-project Copilot CLI status cache keyed by project slug so newly connected browser clients can receive the current known `"running"` or `"waiting"` state without waiting for fresh PTY output
 - The server MUST broadcast detected Copilot CLI status changes to every connected WebSocket client for the same project slug
+- Default host terminal connections have no project key; they MUST NOT update `OpenProjectsContext`, project-sidebar Copilot badges, or per-project Copilot status cache entries
 - The server MUST only emit a `"status"` frame when the detected state differs from the current per-connection `copilotState` or cached per-project state
 - The server MUST maintain a per-connection idle timeout (default 30 seconds) that reverts `copilotState` and the per-project status cache to `"idle"` when no Copilot CLI output pattern is matched within the timeout window
 - The server MUST reset the idle timer on every `onData` call that matches a Copilot CLI pattern
@@ -97,31 +100,34 @@ Establish the communication pattern between the browser-based terminal (xterm.js
 - If `sendInput(data)` returns `false`, TerminalPanel MUST retain the reviewed text, show a retryable terminal-unavailable alert, and MUST NOT call `focusTerminal()`
 - Successful voice review sends MUST clear transient voice state and restore xterm focus by calling `focusTerminal()`
 - Cancel and Escape handling MUST stop active recognition, clear transient voice state, and call `focusTerminal()` when possible
-- Disconnect, slug change, worktree change, and unmount MUST stop active recognition and clear transient voice state
-- Voice recognition callbacks MUST use a generation or terminal-context guard so late callbacks after stop, cancel, unmount, disconnect, slug change, or worktree change cannot update stale UI or send to a stale terminal
+- Disconnect, terminal context change, and unmount MUST stop active recognition and clear transient voice state
+- Voice recognition callbacks MUST use a generation or terminal-context guard so late callbacks after stop, cancel, unmount, disconnect, or terminal context change cannot update stale UI or send to a stale terminal
 - Voice transcript and review text MUST be rendered as text only; HTML injection mechanisms such as `dangerouslySetInnerHTML` MUST NOT be used
 - Terminal microphone controls MUST be disabled while terminal input is unavailable and MUST NOT start recognition when disconnected
 
 ### Interfaces
-- **WebSocket endpoint:** `/api/terminal?token=<bearer>&slug=<project-slug>&worktree=<relative-path>&cols=<N>&rows=<N>` — accepts WebSocket upgrade requests with valid token (via query param or cookie); `slug` is optional and selects per-project CWD and tmux session; `worktree` is optional and, when combined with `slug`, overrides CWD to the worktree directory in shell-only mode; `cols`/`rows` are optional initial dimensions (clamped server-side, defaults to 80×24)
-- **Token handshake:** On upgrade, server extracts `token` from query string or `devdeck_token` cookie, validates via `crypto.timingSafeEqual`, rejects with close code 4401 if invalid
-- **Frontend hook:** `useTerminal(options?: { slug?, worktree?, wsUrl?, theme? })` — manages xterm.js instance, WebSocket connection, token injection, addon lifecycle, and exposes `containerRef`, `terminalMode`, `isFallback`, `sendInput(data)`, and `focusTerminal()` state/actions; when `worktree` is provided, the WebSocket URL includes it as a query parameter
+- **WebSocket endpoint:** `/api/terminal?token=<bearer>&cols=<N>&rows=<N>` — accepts default host-terminal WebSocket upgrade requests with valid token (via query param or cookie); `cols`/`rows` are optional initial dimensions (clamped server-side, defaults to 80×24); `slug` and `worktree` are unsupported on this endpoint
+- **Token handshake:** On upgrade, server extracts `token` from query string or `devdeck_token` cookie, validates via `crypto.timingSafeEqual`, rejects with close code 4401 if invalid, then rejects unsupported `slug`/`worktree` context with close code 1008 before any PTY spawn
+- **Unsupported context error frame:** `{ "type": "error", "message": "Project-scoped terminals are not supported by the default terminal." }` — sent as a JSON text frame before close code 1008 and never includes supplied query parameter values
+- **Frontend hook:** `useTerminal(options?: { wsUrl?, theme? })` — manages xterm.js instance, WebSocket connection, token injection, addon lifecycle, and exposes `containerRef`, `terminalMode`, `isFallback`, `sendInput(data)`, and `focusTerminal()` state/actions; default callers do not pass project or worktree identity
+- **TerminalPanel:** Default terminal panel has no `slug` or `worktree` props and calls `useTerminal({ theme })`; selected project and active worktree remain Explorer/File Preview state only
 - **Responsive terminal font-size helper:** `getTerminalFontSize(input?)` returns `11 | 12 | 13` from layout viewport width, primary coarse pointer state, any-coarse pointer state, and `navigator.maxTouchPoints`; when browser APIs are unavailable, it returns the desktop fallback `13`
 - **Responsive font-size lifecycle:** `useTerminal` listens for layout viewport, orientation, media-query, and touch-capability changes; tier changes update xterm.js options and force-fit without reconnecting, while refit-only events may schedule the existing fit path
 - **Message format:** Raw binary data (ArrayBuffer) for terminal I/O; JSON for control messages (resize, ping)
-- **Setup message (server → client):** `{ type: "setup", mode: "tmux" | "shell", fallback?: true, reason?: string }` — sent as a JSON text frame immediately after PTY spawn and on any session mode transition (e.g., tmux fallback to shell)
+- **Setup message (server → client):** `{ type: "setup", mode: "shell" }` — sent as a JSON text frame immediately after the default host-shell PTY spawn
 - **Status message (server → client):** `{ type: "status", copilotState: "idle" | "running" | "waiting" }` — sent as a JSON text frame whenever the server detects a Copilot CLI state change via PTY output pattern matching, broadcasts that change to same-project clients, or replays cached same-project state to a newly connected client
 - **CopilotCliState type:** `"idle" | "running" | "waiting"` — inlined in `terminal-server.mts` (no `@/` imports) and exported from `src/lib/types.ts` for client-side use
 - **Frontend hook (extended):** `useTerminal(options?)` additionally returns `copilotStatus: CopilotCliState` (`"idle"` by default, updated on `"status"` frames)
 - **Helper input actions:** `sendInput(data: string): boolean` returns `true` only after sending encoded bytes to the active open WebSocket; `focusTerminal(): boolean` returns `true` only after focusing the active xterm instance
 - **Voice input hook:** `useVoiceInput(...)` encapsulates browser `SpeechRecognition` detection and lifecycle, exposes support/status/interim/final transcript state, normalized errors, start/stop/cancel/clear actions, and a late-callback generation guard without adding a server interface
 - **Terminal microphone review action:** `TerminalPanel` uses `useVoiceInput` to start/stop one-shot recognition from a toolbar button, displays interim transcripts, copies final transcripts into an editable review field, and sends only user-reviewed text through `sendInput(data)` or ``sendInput(`${reviewText}\r`)``
-- **Terminal server configuration:** startup resolves ADR-0006 config values and forwards them as `DEVDECK_TOKEN`, `TERMINAL_HOST`, `TERMINAL_PORT`, `DEVDECK_PROJECTS_DIR`, `DEVDECK_DATA_DIR`, and `DEVDECK_WORKSPACE_ROOT`; `TerminalServerOptions` remain available for direct test overrides.
+- **Terminal server configuration:** startup resolves ADR-0006 config values and forwards them as `DEVDECK_TOKEN`, `TERMINAL_HOST`, `TERMINAL_PORT`, `DEVDECK_PROJECTS_DIR`, `DEVDECK_DATA_DIR`, and `DEVDECK_WORKSPACE_ROOT`; `TerminalServerOptions.cwd` remains available for direct test overrides and takes precedence over forwarded workspace root; standalone fallback is `process.cwd()`.
 
 ### Expectations
 - Terminal input/output latency MUST be under 50ms on localhost
 - PTY processes MUST be killed when the client disconnects
 - The terminal MUST support resize (xterm.js addon-fit → resize message → node-pty.resize)
+- Selecting projects or worktrees MUST NOT reconnect or reroute the default terminal
 - Terminal font-size tiers MUST render at 11px on phones, 12px on qualifying touch tablets, and 13px on desktop tiers
 - Initial and runtime terminal font-size selection MUST keep PTY dimensions accurate without reconnecting solely for font-size changes
 - Browser zoom MUST NOT shrink terminal text by influencing font-size tier selection
@@ -167,7 +173,15 @@ wss.on('connection', (ws, req) => {
   }
   const cols = Math.max(1, Math.min(500, Number(url.searchParams.get('cols')) || 80));
   const rows = Math.max(1, Math.min(200, Number(url.searchParams.get('rows')) || 24));
-  const shell = pty.spawn('bash', ['-l'], { cols, rows, cwd: os.homedir() });
+  if (url.searchParams.has('slug') || url.searchParams.has('worktree')) {
+    ws.send(JSON.stringify({
+      type: 'error',
+      message: 'Project-scoped terminals are not supported by the default terminal.',
+    }));
+    ws.close(1008, 'Unsupported terminal context');
+    return;
+  }
+  const shell = pty.spawn('bash', ['-l'], { cols, rows, cwd: process.cwd() });
   ws.on('message', (data) => shell.write(data));
   shell.onData((data) => ws.send(data));
 });
@@ -178,6 +192,8 @@ wss.on('connection', (ws, req) => {
 - The WebSocket server setup should be in `src/server/terminal-server.mts` (`.mts` extension required for ESM interop with `tsx` runner)
 - Config-file loading belongs in startup code, not in `src/server/terminal-server.mts`; the terminal server consumes resolved values through env vars to preserve standalone `.mts` compatibility.
 - The frontend hook should be in `src/hooks/use-terminal.ts`
+- Default `/api/terminal` callers should rely on `useTerminal({ theme })`; do not pass project slugs or worktree paths
+- Project selection, active worktree selection, and project-sidebar Copilot state belong to CORE-COMPONENT-0008, not the default terminal panel
 - The responsive terminal font-size helper should stay in `src/hooks/use-terminal.ts` or a small adjacent helper file; update `LLM.txt` if a new source file is added
 - Compute terminal font size from layout viewport width plus `(pointer: coarse)`, `(any-pointer: coarse)`, and `navigator.maxTouchPoints`; do not use `visualViewport.width` for tier selection
 - Runtime font-size tier changes should reuse the existing forced-fit, `term.onResize`, and duplicate resize-message suppression path
@@ -204,6 +220,10 @@ wss.on('connection', (ws, req) => {
 - [x] Automated checks: `terminal-panel.test.tsx` covers microphone accessibility, live status/alert semantics, editable review, validation, exact `Send text` / `Send + Enter` dispatch strings, `sendInput(false)` retry behavior, focus restoration, disconnect/context cleanup, and terminal container stability
 - [x] Automated checks: `use-terminal.test.ts` must cover exact responsive font-size tiers, layout viewport usage, constructor options, runtime font-size tier changes without reconnect, forced fits, resize propagation, and listener cleanup
 - [x] Automated checks: Playwright terminal coverage must include a touch/tablet viewport asserting 12px rendered xterm font size, active connection, and no horizontal overflow
+- [x] Automated checks: Terminal server tests must assert `slug`/`worktree` requests close with 1008 after auth and before PTY spawn
+- [x] Automated checks: Terminal server tests must assert default cwd precedence uses options, forwarded workspace root, then `process.cwd()`
+- [x] Automated checks: Terminal hook tests must assert 1008 unsupported-context closes do not reconnect
+- [x] Automated checks: WorkspaceLayout and TerminalPanel tests must assert default terminal receives no `slug`/`worktree` and updates no project-sidebar Copilot state
 - [x] Verification: `./harness verify` passes before implementation completion
 
 ## Related ADRs

@@ -10,7 +10,7 @@ This file is the single registry of all architectural decisions and core-compone
 | ADR-0003 | Project Registry & Persistence Strategy | Accepted | 2025-07-15 |
 | ADR-0004 | Token-Based Authentication | Accepted (amended) | 2026-05-24 |
 | ADR-0005 | Copilot CLI Status Detection Strategy | Accepted (amended) | 2026-06-11 |
-| ADR-0006 | Config File-Driven Configuration System | Accepted | 2026-05-24 |
+| ADR-0006 | Config File-Driven Configuration System | Accepted (amended) | 2026-06-27 |
 | ADR-0007 | Filesystem Sync Transport Strategy - Server-Push SSE with Polling Fallback | Accepted | 2026-06-15 |
 
 ## Core-Components
@@ -18,7 +18,7 @@ This file is the single registry of all architectural decisions and core-compone
 | ID | Title | Status | Date |
 |----|-------|--------|------|
 | CORE-COMPONENT-0002 | Commit Standards | Adopted (updated) | 2026-06-25 |
-| CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (updated) | 2026-06-20 |
+| CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (amended) | 2026-06-27 |
 | CORE-COMPONENT-0004 | Theming | Adopted (updated) | 2026-05-21 |
 | CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2026-06-15 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
@@ -282,3 +282,15 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 248 | Require RPIV agents to answer the harness friction question before completing and record non-empty friction | CORE-COMPONENT-0009 | 2026-06-25 |
 | 249 | Expose `./harness install` as a first-class dependency installation verb | CORE-COMPONENT-0009 | 2026-06-25 |
 | 250 | Require normal dependency restoration to use lockfile-exact `npm ci` through the harness | CORE-COMPONENT-0009 | 2026-06-25 |
+| 251 | Use DevDeck launch cwd as default workspaceRoot when env/config omit it | ADR-0006 | 2026-06-27 |
+| 252 | Fall back to process.cwd() when no launch cwd is supplied | ADR-0006 | 2026-06-27 |
+| 253 | Report resolved workspaceRoot source in startup output | ADR-0006 | 2026-06-27 |
+| 254 | Validate terminal auth before unsupported context rejection | CORE-COMPONENT-0003 | 2026-06-27 |
+| 255 | Supersede default terminal slug routing with 1008 rejection | CORE-COMPONENT-0003 | 2026-06-27 |
+| 256 | Supersede default terminal worktree routing with 1008 rejection | CORE-COMPONENT-0003 | 2026-06-27 |
+| 257 | Supersede default terminal tmux routing with host-shell spawning | CORE-COMPONENT-0003 | 2026-06-27 |
+| 258 | Resolve default terminal cwd from options, workspaceRoot, then process.cwd() | CORE-COMPONENT-0003 | 2026-06-27 |
+| 259 | Remove slug and worktree from default TerminalPanel and useTerminal options | CORE-COMPONENT-0003 | 2026-06-27 |
+| 260 | Prohibit default terminal project-sidebar Copilot status updates | CORE-COMPONENT-0003 | 2026-06-27 |
+| 261 | Prohibit reconnects after default terminal close code 1008 | CORE-COMPONENT-0003 | 2026-06-27 |
+| 262 | Send fixed unsupported-context error frame without echoing supplied parameters | CORE-COMPONENT-0003 | 2026-06-27 |
