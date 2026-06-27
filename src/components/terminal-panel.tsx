@@ -5,7 +5,6 @@ import { useTerminal } from "@/hooks/use-terminal";
 import { useTerminalTheme } from "@/hooks/use-terminal-theme";
 import { useVoiceInput } from "@/hooks/use-voice-input";
 import type { TerminalThemeDefinition } from "@/hooks/use-terminal-theme";
-import { useOpenProjects } from "@/lib/open-projects-context";
 import {
   WarningCircle,
   Spinner,
@@ -18,10 +17,7 @@ import {
 } from "@phosphor-icons/react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 
-interface TerminalPanelProps {
-  slug?: string;
-  worktree?: string;
-}
+type TerminalPanelProps = Record<string, never>;
 
 type TerminalHelperKey = "tab" | "up" | "right";
 
@@ -132,7 +128,7 @@ function getVoiceAlertMessage({
   return null;
 }
 
-export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
+export function TerminalPanel() {
   const { themeId, theme, setThemeId, themes } = useTerminalTheme();
   const voicePanelId = useId();
   const voiceReviewFieldId = `${voicePanelId}-review`;
@@ -154,8 +150,7 @@ export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
     copilotStatus,
     sendInput,
     focusTerminal,
-  } = useTerminal({ slug, worktree, theme: theme.colors });
-  const { updateCopilotStatus } = useOpenProjects();
+  } = useTerminal({ theme: theme.colors });
   const {
     isSupported: isVoiceInputSupported,
     isListening: isVoiceInputListening,
@@ -169,20 +164,12 @@ export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
     cancel: cancelVoiceInput,
     clear: clearVoiceInput,
   } = useVoiceInput({
-    contextKey: `${slug ?? "default"}\u0000${worktree ?? "root"}\u0000${
-      isConnected ? "connected" : "disconnected"
-    }`,
+    contextKey: isConnected ? "connected" : "disconnected",
   });
   const [reviewText, setReviewText] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [shouldFocusVoiceReview, setShouldFocusVoiceReview] = useState(false);
-
-  useEffect(() => {
-    if (slug && isConnected) {
-      updateCopilotStatus(slug, copilotStatus);
-    }
-  }, [slug, copilotStatus, isConnected, updateCopilotStatus]);
 
   const [isKeyboardHelperOpen, setKeyboardHelperOpen] = useState(false);
   const [isCtrlActive, setCtrlActive] = useState(false);
@@ -285,10 +272,10 @@ export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
   );
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset transient helper UI when terminal context changes
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset transient helper UI on connect/disconnect changes
     setKeyboardHelperOpen(false);
     setCtrlActive(false);
-  }, [slug, worktree]);
+  }, [isConnected]);
 
   useEffect(() => {
     if (!isConnected) {
@@ -299,9 +286,7 @@ export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
   }, [isConnected]);
 
   useEffect(() => {
-    const nextVoiceContext = `${slug ?? "default"}\u0000${worktree ?? "root"}\u0000${
-      isConnected ? "connected" : "disconnected"
-    }`;
+    const nextVoiceContext = isConnected ? "connected" : "disconnected";
 
     if (previousVoiceContextRef.current === null) {
       previousVoiceContextRef.current = nextVoiceContext;
@@ -315,7 +300,7 @@ export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
     previousVoiceContextRef.current = nextVoiceContext;
     clearVoiceInput();
     clearLocalVoiceState();
-  }, [clearLocalVoiceState, clearVoiceInput, isConnected, slug, worktree]);
+  }, [clearLocalVoiceState, clearVoiceInput, isConnected]);
 
   useEffect(() => {
     return () => {
@@ -457,9 +442,7 @@ export function TerminalPanel({ slug, worktree }: TerminalPanelProps) {
     >
       <div className="flex h-8 shrink-0 items-center justify-between border-b border-border bg-card/50 px-3">
         <div className="flex items-center gap-1.5">
-          <span className="font-mono text-xs text-muted-foreground">
-            Terminal{worktree ? ` · ${worktree.replace(/^\.trees\//, "")}` : ""}
-          </span>
+          <span className="font-mono text-xs text-muted-foreground">Terminal</span>
           <ThemePicker themes={themes} activeThemeId={themeId} onSelect={setThemeId} />
         </div>
         <div className="flex items-center gap-1.5">

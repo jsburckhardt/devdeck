@@ -321,3 +321,14 @@ test("rejects access without token", async ({ page }) => {
   expect(response?.status()).toBe(401);
   await expect(page.locator("text=Access Denied")).toBeVisible({ timeout: 5000 });
 });
+
+test("default terminal stays on the launch cwd after selecting a project", async ({ page }) => {
+  const launchCwd = process.cwd();
+  await openFirstProjectTerminal(page);
+
+  const terminalContainer = page.locator('[data-testid="terminal-container"]');
+  await terminalContainer.click();
+  await page.keyboard.type("pwd\n");
+
+  await expectTerminalLine(page, launchCwd);
+});

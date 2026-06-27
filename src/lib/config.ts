@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 
-export type ConfigSource = "env" | "config" | "default" | "generated";
+export type ConfigSource = "env" | "config" | "default" | "generated" | "launch";
 
 export interface ConfigFieldSources {
   token: ConfigSource;
@@ -42,6 +42,7 @@ export interface LoadConfigOptions {
   warn?: (message: string) => void;
   platform?: NodeJS.Platform;
   homedir?: string;
+  launchCwd?: string;
 }
 
 type RawConfig = Record<string, unknown>;
@@ -210,6 +211,24 @@ function resolveEnvOrConfigString(
   return { value: defaultValue, source: "default" };
 }
 
+function resolveWorkspaceRoot(
+  envValue: string | undefined,
+  configValue: unknown,
+  launchCwd: string | undefined,
+  configPath: string,
+): { value: string; source: ConfigSource } {
+  if (envValue !== undefined) {
+    return { value: requireString(envValue, "workspaceRoot", configPath), source: "env" };
+  }
+  if (configValue !== undefined) {
+    return { value: requireString(configValue, "workspaceRoot", configPath), source: "config" };
+  }
+  if (launchCwd !== undefined) {
+    return { value: launchCwd, source: "launch" };
+  }
+  return { value: process.cwd(), source: "default" };
+}
+
 function resolveEnvOrConfigPort(
   envValue: string | undefined,
   configValue: unknown,
@@ -233,10 +252,15 @@ async function persistGeneratedToken(
   const nextConfig: RawConfig = { ...raw, token };
   delete nextConfig.dataDir;
   await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(tmpPath, `${JSON.stringify(nextConfig, null, 2)}\n`, {
-    encoding: "utf-8",
-    mode: 0o600,
-  });
+  await fs.writeFile(
+    tmpPath,
+    `${JSON.stringify(nextConfig, null, 2)}
+`,
+    {
+      encoding: "utf-8",
+      mode: 0o600,
+    },
+  );
   if (process.platform !== "win32") await fs.chmod(tmpPath, 0o600);
   await fs.rename(tmpPath, configPath);
   if (process.platform !== "win32") await fs.chmod(configPath, 0o600);
@@ -273,11 +297,10 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Resol
     "projectsDir",
     configPath,
   );
-  const workspaceRoot = resolveEnvOrConfigString(
+  const workspaceRoot = resolveWorkspaceRoot(
     env.DEVDECK_WORKSPACE_ROOT,
     raw.workspaceRoot,
-    homedir,
-    "workspaceRoot",
+    options.launchCwd,
     configPath,
   );
   const host = resolveEnvOrConfigString(

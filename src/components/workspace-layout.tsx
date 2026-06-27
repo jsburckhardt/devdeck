@@ -471,7 +471,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
           className="min-h-0 min-w-0 overflow-hidden"
         >
           <ErrorBoundary>
-            <TerminalPanel slug={project.slug} worktree={activeWorktree ?? undefined} />
+            <TerminalPanel />
           </ErrorBoundary>
         </Panel>
       </Group>
