@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted (amended) - 2026-06-27
 
 ## Context
 
@@ -19,6 +19,11 @@ That keeps the first version simple, but it creates several problems:
 The project already stores persistent runtime data in `$DEVDECK_DATA_DIR`, defaulting to
 `~/.config/devdeck`, and the registry uses JSON with atomic temp-file writes. The config system
 should follow the same local-first, dependency-free model.
+
+Issue #101 decouples the default terminal from the selected project. That change makes the old
+`workspaceRoot = os.homedir()` default surprising because launching DevDeck from a repository should
+produce a default host terminal rooted at the launch directory unless the user explicitly configured
+a different root.
 
 ## Decision
 
@@ -38,7 +43,7 @@ The supported config keys are:
 | --- | --- | --- |
 | `token` | `DEVDECK_TOKEN` | generated UUID persisted to config |
 | `projectsDir` | `DEVDECK_PROJECTS_DIR` | `/workspaces` |
-| `workspaceRoot` | `DEVDECK_WORKSPACE_ROOT` | `os.homedir()` |
+| `workspaceRoot` | `DEVDECK_WORKSPACE_ROOT` | DevDeck launch cwd (`launchCwd`, else `process.cwd()`) |
 | `host` | `DEVDECK_HOST` | `0.0.0.0` |
 | `port` | `PORT` | `8070` |
 | `terminalHost` | `TERMINAL_HOST` | `127.0.0.1` |
@@ -53,6 +58,10 @@ Config loading rules:
 - Unknown keys warn but do not fail startup.
 - Ports must be integers from 1 to 65535.
 - Hosts must be non-empty strings after trimming whitespace.
+- `workspaceRoot` resolves from `DEVDECK_WORKSPACE_ROOT`, then config `workspaceRoot`, then the
+  startup-provided launch cwd, and finally `process.cwd()` if no launch cwd was supplied.
+- Startup output must include the resolved `workspaceRoot` and source so users can distinguish
+  explicit env/config roots from the launch-cwd default.
 - Whitespace-only tokens are treated as missing.
 - Existing world-readable config files warn on POSIX systems.
 - Created config files use POSIX mode `0600` where supported.
@@ -85,7 +94,9 @@ Token rules:
 
 Runtime contexts should continue to consume environment variables after config resolution. Startup
 code resolves the config once and forwards the resolved values through child-process env. The
-standalone terminal server remains env-driven and must not import the config module.
+startup wrapper passes the DevDeck launch cwd into config loading so the forwarded
+`DEVDECK_WORKSPACE_ROOT` carries the host-terminal default cwd. The standalone terminal server
+remains env-driven and must not import the config module.
 
 The production `next start` script remains env-driven for this issue; a production wrapper can be
 added later if needed.
@@ -97,6 +108,7 @@ added later if needed.
 | Environment variables only | Existing behavior; simple | No persistent token or reusable config file | Does not solve the issue |
 | Read config independently in every server context | Localized changes | Breaks Edge middleware and risks inconsistent precedence | Middleware cannot use `fs`; startup resolution is safer |
 | Import config loader into `terminal-server.mts` | Direct access in terminal server | Standalone `.mts` import constraints and path-alias risks | Env forwarding matches existing standalone server design |
+| Keep `workspaceRoot` defaulting to `os.homedir()` | Preserves historical behavior | Default terminal opens outside the DevDeck launch context | Conflicts with the host-terminal default model in Issue #101 |
 | Add a database-backed config store | Stronger schema evolution | Adds dependencies and complexity | JSON is sufficient for local single-user configuration |
 
 ## Consequences
@@ -108,6 +120,7 @@ added later if needed.
 - Startup validation centralizes invalid-value handling.
 - Existing env-var deployments remain backward compatible.
 - Initial project seeding supports reproducible first-launch workspaces.
+- Users launching DevDeck from a repository get a default terminal rooted at that launch context.
 
 ### Negative
 
@@ -115,15 +128,18 @@ added later if needed.
 - Production `next start` does not automatically load the config file in this issue.
 - Simultaneous first starts may race to persist generated tokens; atomic writes prevent corruption,
   but the last writer wins.
+- Users who relied on the implicit home-directory workspace root must configure it explicitly.
 
 ### Neutral
 
 - `DEVDECK_DATA_DIR` remains the only config-location selector.
 - Runtime modules continue reading env vars after startup normalization.
+- Standalone `loadConfig()` callers that omit `launchCwd` use their own `process.cwd()` fallback.
 
 ## Related Issues
 
 - [#53](https://github.com/jsburckhardt/devdeck/issues/53)
+- [#101](https://github.com/jsburckhardt/devdeck/issues/101)
 
 ## References
 
