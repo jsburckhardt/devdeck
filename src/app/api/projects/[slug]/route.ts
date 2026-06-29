@@ -123,8 +123,9 @@ export async function GET(
 
     return NextResponse.json(body, { headers: CACHE_HEADERS });
   } catch (error) {
+    console.error("Failed to load project detail", error);
     return NextResponse.json(
-      { error: "Failed to load project", code: "PROJECT_DETAIL_FAILED", details: String(error) },
+      { error: "Failed to load project", code: "PROJECT_DETAIL_FAILED" },
       { status: 500 },
     );
   }

@@ -3,8 +3,8 @@ import { createHash } from "crypto";
 import fs from "fs/promises";
 import path from "path";
 import { promisify } from "util";
-import { resolveProjectPath } from "./registry";
-import type { WorktreeListResponse, WorktreeSummary, WorktreeSummaryState } from "./types";
+import { resolveProjectPath } from "@/lib/registry";
+import type { WorktreeListResponse, WorktreeSummary, WorktreeSummaryState } from "@/lib/types";
 
 const execFileAsync = promisify(execFile);
 const WORKTREE_ID_SHORT_LENGTH = 16;

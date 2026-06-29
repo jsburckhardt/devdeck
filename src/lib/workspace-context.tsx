@@ -206,17 +206,28 @@ function normalizeCachedWorkspaceState(
 ): PerProjectWorkspaceState | undefined {
   if (!cachedState) return undefined;
 
+  const rawActiveWorktree = cachedState.activeWorktreeId ?? cachedState.activeWorktree ?? null;
+  const activeWorktreeId =
+    rawActiveWorktree && (rawActiveWorktree.includes("/") || rawActiveWorktree.includes("\\"))
+      ? null
+      : rawActiveWorktree;
   const showExplorer = cachedState.showExplorer ?? true;
   if (!showExplorer && !cachedState.showFileViewer && !cachedState.showTerminal) {
     return {
       ...cachedState,
+      activeWorktreeId,
+      activeWorktree: activeWorktreeId,
       showExplorer: false,
       showFileViewer: false,
       showTerminal: true,
     };
   }
 
-  return cachedState;
+  return {
+    ...cachedState,
+    activeWorktreeId,
+    activeWorktree: activeWorktreeId,
+  };
 }
 
 function scopedStateFromCache(

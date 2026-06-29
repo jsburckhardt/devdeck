@@ -38,6 +38,7 @@ function WorkspaceConsumer({
       <span data-testid="show-file-viewer">{String(state.showFileViewer)}</span>
       <span data-testid="show-terminal">{String(state.showTerminal)}</span>
       <span data-testid="expanded-count">{state.expandedFolders.size}</span>
+      <span data-testid="active-worktree-id">{state.activeWorktreeId ?? "root"}</span>
     </div>
   );
 }
@@ -246,6 +247,29 @@ describe("WorkspaceProvider with slug integration", () => {
     );
 
     expect(screen.getByTestId("show-explorer").textContent).toBe("true");
+  });
+
+  it("Issue #103: legacy cached .trees active worktree resets before API usage", () => {
+    const legacyCachedState: PerProjectWorkspaceState = {
+      selectedFile: null,
+      expandedFolders: [],
+      showFileViewer: true,
+      showTerminal: true,
+      fileTree: [],
+      activeWorktree: ".trees/legacy",
+    };
+
+    render(
+      <OpenProjectsProvider>
+        <CacheSetup slug="proj-a" state={legacyCachedState}>
+          <WorkspaceProvider slug="proj-a">
+            <WorkspaceConsumer onState={() => {}} />
+          </WorkspaceProvider>
+        </CacheSetup>
+      </OpenProjectsProvider>,
+    );
+
+    expect(screen.getByTestId("active-worktree-id").textContent).toBe("root");
   });
 
   it("T18: state round-trip — modify, unmount, remount, verify restored", async () => {

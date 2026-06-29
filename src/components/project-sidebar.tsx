@@ -216,8 +216,9 @@ function SelectedProjectDetail({
     );
   }
 
+  const activeDetail = detail?.slug === activeSlug ? detail : null;
   const display =
-    detail ??
+    activeDetail ??
     ({
       slug: activeSlug,
       name: fallbackProject?.name ?? activeSlug,

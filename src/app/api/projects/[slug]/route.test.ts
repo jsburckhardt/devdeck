@@ -138,6 +138,25 @@ describe("GET /api/projects/[slug]", () => {
     expect(data.repoUrlDisplay).toBeNull();
     expect(JSON.stringify(data)).not.toContain("not a url");
   });
+
+  it("returns stable 500 errors without raw error details", async () => {
+    mockResolveProjectRecord.mockRejectedValue(new Error("/secret/path failed"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const res = await GET(new Request("http://localhost/api/projects/proj") as never, {
+        params: Promise.resolve({ slug: "proj" }),
+      });
+      const data = await res.json();
+
+      expect(res.status).toBe(500);
+      expect(data).toEqual({ error: "Failed to load project", code: "PROJECT_DETAIL_FAILED" });
+      expect(JSON.stringify(data)).not.toContain("/secret/path");
+      expect(errorSpy).toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
 });
 
 describe("PUT /api/projects/[slug]", () => {
