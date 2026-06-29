@@ -2,11 +2,11 @@
 
 ## Status
 
-Adopted (updated) - 2026-06-15
+Adopted (updated) - 2026-06-29
 
 ## Purpose
 
-Enable users to keep multiple projects "open" simultaneously via persistent sidebar tabs, preserving per-project workspace UI state (selected file, expanded folders, panel visibility, loaded file-tree state, and per-directory load state) in memory while switching between projects. This removes the need to navigate back to the landing page and re-enter a project, ensures the workspace feels stateful across tab switches, prevents large workspaces from blocking initial explorer rendering through eager deep traversal, and keeps active file-tree and worktree-selector state synchronized with filesystem changes in near realtime.
+Enable users to keep multiple projects "open" simultaneously via persistent sidebar tabs, preserving per-project workspace UI state (selected file, expanded folders, panel visibility, loaded file-tree state, and per-directory load state) in memory while switching between projects. This removes the need to navigate back to the landing page and re-enter a project, ensures the workspace feels stateful across tab switches, prevents large workspaces from blocking initial explorer rendering through eager deep traversal, keeps active file-tree and worktree-selector state synchronized with filesystem changes in near realtime, and treats selected worktrees as explicit workspace contexts addressed by safe IDs rather than client-visible filesystem paths.
 
 ## Scope
 
@@ -21,9 +21,9 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - Lazy file-tree loading contract for root and directory children
 - File-tree request deduplication and stale-response protection
 - Per-directory loading, error, retry, and empty-state behavior
-- Worktree-aware file-tree root switching, request scoping, and per-worktree state caching
+- Worktree-aware file-tree root switching, request scoping, and per-worktree state caching via safe worktree IDs
 - Worktree-aware HTTP file APIs and FileViewer requests
-- Worktree selector visualization and `.trees/` directory icon behavior
+- Selected-project detail visualization, worktree selector behavior, and `.trees/` directory icon behavior
 - Near-realtime server-push synchronization for active file-tree state, with 5000 ms degraded polling fallback for file-tree and worktree list state
 
 ## Definition
@@ -88,9 +88,9 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - `WorkspaceContext` MUST expose `loadDirectoryChildren: (path: string, explicitSlug?: string) => Promise<void>` for lazy child loading
 - `WorkspaceContext` MUST expose serializable per-directory loading and error state keyed by project-relative directory path
 - `refreshFileTree` MUST be a no-op when neither `explicitSlug` nor the active context `project.slug` is available
-- `refreshFileTree` MUST issue a root request to `/api/files?slug=<targetSlug>` with `{ cache: "no-store" }`, appending `worktree=<activeWorktree>` when a worktree is active
-- `loadDirectoryChildren` MUST issue `/api/files?slug=<targetSlug>&path=<relative-dir>` with `{ cache: "no-store" }`, appending `worktree=<activeWorktree>` when a worktree is active
-- Root and child file-tree requests MUST be deduplicated by `slug + activeWorktree + path`; duplicate in-flight calls for the same scoped key MUST share the same work and MUST NOT issue duplicate fetches
+- `refreshFileTree` MUST issue a root request to `/api/files?slug=<targetSlug>` with `{ cache: "no-store" }`, appending `worktree=<activeWorktreeId>` when a worktree is active
+- `loadDirectoryChildren` MUST issue `/api/files?slug=<targetSlug>&path=<relative-dir>` with `{ cache: "no-store" }`, appending `worktree=<activeWorktreeId>` when a worktree is active
+- Root and child file-tree requests MUST be deduplicated by `slug + activeWorktreeId + path`; duplicate in-flight calls for the same scoped key MUST share the same work and MUST NOT issue duplicate fetches
 - File-tree responses MUST be ignored if they target a stale project slug, stale active worktree, stale request generation, or obsolete directory request
 - `refreshFileTree` MUST update the root `fileTree` on success without clearing unrelated loaded child state unless that subtree no longer exists
 - `loadDirectoryChildren` MUST merge loaded children immutably into the matching directory node without replacing unrelated directories
@@ -107,20 +107,21 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - `FileTree` MUST render per-directory loading, error, retry, and empty states without clearing the existing root tree
 - `FileTree` MUST preserve unreadable-node affordances and MUST NOT try to expand unreadable directories
 - Directory loading indicators, errors, retry controls, and empty states MUST have accessible text or labels and MUST NOT rely on color alone
-- `WorkspaceContext` MUST expose `activeWorktree: string | null` and `setActiveWorktree(path: string | null)` for worktree terminal scoping
+- `WorkspaceContext` MUST expose `activeWorktreeId: string | null` and `setActiveWorktreeId(id: string | null)` for workspace context scoping; legacy `activeWorktree` aliases MAY remain temporarily but MUST carry the same safe ID value
 - `WorkspaceContext` MUST expose `worktreesSectionCollapsed: boolean` and `toggleWorktreesSection()`
-- `PerProjectWorkspaceState` MUST include `activeWorktree: string | null` and `worktreesSectionCollapsed: boolean` for per-project cache persistence
+- `PerProjectWorkspaceState` MUST include `activeWorktreeId: string | null` and `worktreesSectionCollapsed: boolean` for per-project cache persistence
 - `WorkspaceProvider` MUST preserve project-root and worktree file-tree state separately within each project; switching active worktree MUST save the outgoing scoped state and restore the incoming scoped state when available
 - Worktree-scoped workspace state MUST include `fileTree`, `expandedFolders`, `selectedFile`, loaded directory paths, directory errors, and directory loading state safe defaults
-- Worktree-scoped workspace state MUST be keyed by project slug plus active worktree, where `null` active worktree represents the project root
+- Worktree-scoped workspace state MUST be keyed by project slug plus active safe worktree ID, where `null` active worktree represents the project root
 - `WorkspaceProvider` MUST keep a current active-worktree ref alongside the current slug ref so stale file-tree responses compare both dimensions before mutating visible state
 - `GET /api/files`, `GET /api/files/content`, `PUT /api/files/content`, and `GET /api/files/diff` MUST accept an optional `worktree` parameter; omitting it MUST preserve project-root behavior
-- HTTP file APIs MUST resolve worktree roots with a shared helper that first resolves the project root with `resolveProjectPath(slug)`, then resolves `<projectRoot>/.trees/<worktree>` server-side
-- The shared HTTP worktree resolver MUST reject empty, absolute, or traversal-containing worktree parameters
-- The shared HTTP worktree resolver MUST call `fs.realpath()` on both the project root and candidate worktree root, then reject the request if the real worktree path is outside the real project root
-- Missing worktree directories MUST produce a structured `WORKTREE_NOT_FOUND` response rather than an empty directory listing
+- HTTP file APIs MUST resolve worktree roots with a shared helper that first resolves the project root with `resolveProjectPath(slug)`, then re-runs `git worktree list --porcelain`, recomputes safe IDs, and matches the requested ID
+- The shared HTTP worktree resolver MUST reject empty worktree parameters with `400 INVALID_WORKTREE`
+- Unknown, locked, prunable, or missing worktree IDs MUST produce a structured `WORKTREE_NOT_FOUND` response rather than an empty directory listing or fallback cwd
+- Worktree ID collisions MUST produce `409 WORKTREE_ID_CONFLICT` with no filesystem paths in the response
+- Worktrees outside `.trees/` MUST be supported when reported by porcelain; traversal and symlink checks for requested files MUST remain relative to the effective resolved worktree root
 - When `/api/files` serves a worktree-rooted request, every returned `FileNode.path` MUST be relative to the active worktree root
-- `FileViewer` MUST pass `activeWorktree` to content GET, content PUT, and diff GET requests when a worktree is active
+- `FileViewer` MUST pass `activeWorktreeId` to content GET, content PUT, and diff GET requests when a worktree is active
 - `FileViewer` MUST rely on `refreshFileTree()` to refresh the currently active root or worktree context after successful saves
 - `PerProjectWorkspaceState` MUST include `copilotStatus?: CopilotCliState` for per-project Copilot CLI status caching
 - `OpenProjectsContextValue` MUST expose `updateCopilotStatus(slug: string, status: CopilotCliState): void` to update the cached Copilot status for a project
@@ -136,15 +137,21 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - The status indicator MUST NOT be cleared merely because one browser terminal WebSocket disconnects; it remains driven by the latest server status frame and is hidden only after an explicit `"idle"` status, an unrecognized status, or project closure
 - `TerminalPanel` MUST update `OpenProjectsContext` Copilot status only while its terminal WebSocket is connected so a failed or disconnected browser session does not overwrite a valid active project badge with `"idle"`
 - Sidebar Copilot bot badges MUST remain visible on project badges in expanded and collapsed modes
-- `WorktreeTree` MUST be rendered in `ProjectSidebar` for the active project, always mounted per Decision #84, hidden via CSS when the worktree list is empty or when the sidebar is collapsed, and MUST NOT render inside `ExplorerContent`
-- Worktree data MUST be fetched via `GET /api/worktrees?slug=<slug>` returning `Worktree[]`; an empty array MUST be returned (not a server error) when `.trees/` is absent or git is unavailable
-- A `useWorktrees(slug: string | undefined)` hook MUST be provided exposing `{ worktrees: Worktree[], loading: boolean, error: string | null, refresh: () => void }`
-- `WorktreeTree` MUST render filesystem-style selector nodes with icons, indentation, keyboard-accessible buttons, `aria-current` on the active entry, and active-state affordances that do not rely on color alone
+- `ProjectSidebar` MUST render a selected-project detail region sourced from the active `/project/[slug]` route; `/` or no active route MUST render no-selection detail
+- `GET /api/projects/[slug]` MUST return `ProjectDetailResponse` with sanitized `repoUrl`/`repoUrlDisplay` and `repoUrlStatus`, returning `404` only for unknown slugs and `200 available:false` for known unavailable paths
+- `GET /api/worktrees?slug=<slug>` MUST return `WorktreeListResponse`, not a bare array; statuses are `available`, `not-git`, `git-unavailable`, `project-unavailable`, or `error`
+- `WorktreeSummary.id` MUST be a safe ID derived from `sha256(canonicalWorktreeKey).slice(0, 16)`, extending to 32 hex chars on 16-char collisions and failing with `409 WORKTREE_ID_CONFLICT` if 32-char collisions remain
+- `canonicalWorktreeKey` MUST use resolved/realpath-normalized porcelain paths with trailing separators removed, separators normalized to `/`, and Unicode normalized to NFC
+- `repoRelativeLabel` MAY expose `.trees/foo` only when the porcelain path is actually under the project root; absolute paths MUST never be returned to the client
+- Worktree data MUST be discovered from `git worktree list --porcelain` only; DevDeck MUST NOT scan `.trees/` directories to discover worktrees
+- A `useWorktrees(slug: string | undefined, activeWorktreeId?: string | null)` hook MUST be provided exposing `{ response, worktrees, loading, error, refresh }` and must keep active flags scoped to the current selected ID
+- `WorktreeTree` MUST render project root and worktree context selector nodes in the selected-project detail region, with icons, keyboard-accessible buttons, `aria-current` on the active entry, disabled unavailable states using `aria-disabled`, and active-state affordances that do not rely on color alone
 - `WorktreeTree` MUST remain a selector only; it MUST NOT render nested inline file trees under each worktree
-- The project-root selector in `WorktreeTree` MUST clear `activeWorktree`; worktree selectors MUST set `activeWorktree` to the corresponding `.trees/<name>` relative path
-- If a restored or active worktree is no longer returned by `GET /api/worktrees`, `WorktreeTree` MUST reset `activeWorktree` to project root and show a non-fatal notice
+- The project-root selector in `WorktreeTree` MUST clear `activeWorktreeId`; worktree selectors MUST set `activeWorktreeId` to the selected safe ID
+- If a restored legacy `.trees/<name>` active worktree value is present, `WorktreeTree` MUST migrate it to a matching safe ID by comparing returned `repoRelativeLabel`; if no match exists, reset to project root with a non-fatal notice
+- If a restored safe ID is no longer returned by `GET /api/worktrees`, `WorktreeTree` MUST reset `activeWorktreeId` to project root and show a non-fatal notice
 - `FileTree` directory nodes named `.trees` MUST render a `Tree` icon from `@phosphor-icons/react` in both expanded and collapsed states
-- Near-realtime file explorer synchronization MUST use `GET /api/files/events?slug=<slug>[&worktree=<relative-worktree>]` SSE server-push invalidation as the primary transport, per ADR-0007
+- Near-realtime file explorer synchronization MUST use `GET /api/files/events?slug=<slug>[&worktree=<safe-worktree-id>]` SSE server-push invalidation as the primary transport, per ADR-0007
 - File-tree SSE events MUST be treated as invalidation hints only; clients MUST refresh canonical state through existing `/api/files` root and directory responses
 - The file-tree sync stream MUST emit only the named events `file-tree:ready`, `file-tree:changed`, and `file-tree:degraded`
 - `file-tree:ready` MUST mark the scoped stream usable without mutating file-tree contents or clearing existing loaded-directory state
@@ -171,18 +178,18 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 
 - **OpenProjectsProvider:** React context providing `openProjects`, `openProject()`, `closeProject()`, `requestProjectClose()`, `clearProjectCloseRequest()`, `saveWorkspaceState()`, `restoreWorkspaceState()`, `updateCopilotStatus()`, `getCopilotStatus()`
 - **useOpenProjects():** Hook to consume the context; throws if used outside provider
-- **PerProjectWorkspaceState:** `{ selectedFile: string | null; expandedFolders: string[]; showExplorer?: boolean; showFileViewer: boolean; showTerminal: boolean; fileTree: FileNode[]; directoryLoadErrors?: Record<string, string>; loadedDirectories?: string[]; activeWorktree: string | null; worktreesSectionCollapsed: boolean }`
+- **PerProjectWorkspaceState:** `{ selectedFile: string | null; expandedFolders: string[]; showExplorer?: boolean; showFileViewer: boolean; showTerminal: boolean; fileTree: FileNode[]; directoryLoadErrors?: Record<string, string>; loadedDirectories?: string[]; activeWorktreeId: string | null; worktreesSectionCollapsed: boolean }`
 - **FileNode lazy metadata:** `hasChildren?: boolean; childrenLoaded?: boolean; children?: FileNode[]; unreadable?: boolean; truncated?: boolean; truncatedReason?: "max-depth" | "entry-limit"`
-- **File tree root endpoint:** `GET /api/files?slug=<slug>[&worktree=<relative-worktree>]` returns `FileNode[]` containing direct root children of the project root or active worktree root only
-- **File tree directory endpoint:** `GET /api/files?slug=<slug>&path=<relative-dir>[&worktree=<relative-worktree>]` returns `FileNode[]` containing direct children of the requested directory under the project root or active worktree root
-- **File content endpoint:** `GET /api/files/content?slug=<slug>&path=<relative-file>[&worktree=<relative-worktree>]` reads from the project root or active worktree root; `PUT /api/files/content` accepts the same optional `worktree` in its JSON body
-- **File diff endpoint:** `GET /api/files/diff?slug=<slug>&path=<relative-file>[&worktree=<relative-worktree>]` runs git diff/status from the project root or active worktree root
-- **Shared HTTP worktree resolver:** `resolveWorktreeRoot(slug: string, worktree?: string): Promise<string>` resolves the effective file API root and applies symlink-escape protection when `worktree` is present
+- **File tree root endpoint:** `GET /api/files?slug=<slug>[&worktree=<safe-worktree-id>]` returns `FileNode[]` containing direct root children of the project root or active worktree root only
+- **File tree directory endpoint:** `GET /api/files?slug=<slug>&path=<relative-dir>[&worktree=<safe-worktree-id>]` returns `FileNode[]` containing direct children of the requested directory under the project root or active worktree root
+- **File content endpoint:** `GET /api/files/content?slug=<slug>&path=<relative-file>[&worktree=<safe-worktree-id>]` reads from the project root or active worktree root; `PUT /api/files/content` accepts the same optional safe `worktree` ID in its JSON body
+- **File diff endpoint:** `GET /api/files/diff?slug=<slug>&path=<relative-file>[&worktree=<safe-worktree-id>]` runs git diff/status from the project root or active worktree root
+- **Shared HTTP worktree resolver:** `resolveWorktreeRoot(slug: string, worktreeId?: string): Promise<string>` resolves the effective file API root by recomputing safe IDs from porcelain and matching the requested ID
 - **WorkspaceContextValue (extended):** in addition to existing members (`setProject`, `selectFile`, `toggleFolder`, `toggleFileViewer`, `toggleTerminal`, `setFileTree`, `setFileTreeLoading`), MUST include:
   - `showExplorer: boolean` — whether the Explorer panel is expanded
   - `toggleExplorer: () => void` — toggles Explorer visibility while preserving mounted Explorer state
-  - `refreshFileTree: (explicitSlug?: string) => Promise<void>` — root lazy-list refresh using `cache: "no-store"`; uses `explicitSlug` when provided, else active `project.slug`, and scopes the request to `activeWorktree` when set
-  - `loadDirectoryChildren: (path: string, explicitSlug?: string) => Promise<void>` — lazy child-list request and merge for a readable directory, scoped to `activeWorktree` when set
+  - `refreshFileTree: (explicitSlug?: string) => Promise<void>` — root lazy-list refresh using `cache: "no-store"`; uses `explicitSlug` when provided, else active `project.slug`, and scopes the request to `activeWorktreeId` when set
+  - `loadDirectoryChildren: (path: string, explicitSlug?: string) => Promise<void>` — lazy child-list request and merge for a readable directory, scoped to `activeWorktreeId` when set
   - `fileTreeRefreshing: boolean` — true while any root refresh is in flight
   - `fileTreeError: string | null` — set when a root refresh fails (non-OK or network error), cleared on new refresh start, success, or project switch; used by `ExplorerContent` to render error+retry UI when tree is empty
   - `fileTreeSyncStatus: FileTreeSyncStatus` — exposes EventSource/degraded synchronization state for the active project/worktree scope
@@ -192,14 +199,15 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
   - `directoryLoading: ReadonlySet<string>` or equivalent serializable/context-safe representation — directory paths with in-flight child loads
   - `directoryErrors: ReadonlyMap<string, string>` or equivalent serializable/context-safe representation — directory paths with last child-load error messages
   - `retryDirectoryChildren: (path: string) => Promise<void>` MAY be exposed as an alias or implemented by clearing the path error and calling `loadDirectoryChildren(path)`
-  - `activeWorktree: string | null` — relative path of the currently active worktree (e.g. `.trees/feature-branch`), or null
-  - `setActiveWorktree: (path: string | null) => void` — set the active worktree for terminal scoping
+  - `activeWorktreeId: string | null` — safe ID of the currently active worktree, or null for project root
+  - `setActiveWorktreeId: (id: string | null) => void` — set the active workspace context
   - `worktreesSectionCollapsed: boolean` — whether the worktrees section in the project sidebar is collapsed
   - `toggleWorktreesSection: () => void` — toggle worktrees section collapsed state
-- **Worktree:** `{ name: string; branch: string }`
-- **Worktree endpoint:** `GET /api/worktrees?slug=<slug>` → `Worktree[]` — parses `git worktree list --porcelain`, filters to `.trees/`-relative entries; returns `[]` on any error
-- **File-tree sync endpoint:** `GET /api/files/events?slug=<slug>[&worktree=<relative-worktree>]` opens a same-origin authenticated SSE stream that emits scoped file-tree invalidation events and never emits absolute filesystem paths
-- **FileTreeSyncScope:** `{ slug: string; worktree: string | null }` where `worktree: null` represents the project root and non-null values use the same relative worktree parameter accepted by `/api/files`
+- **ProjectDetailResponse:** `{ slug: string; name: string; description?: string; language?: string; available: boolean; repoUrl: string | null; repoUrlDisplay: string | null; repoUrlStatus: "available" | "no-origin" | "not-git" | "git-unavailable" | "unavailable" | "invalid" }`
+- **WorktreeSummary:** `{ id: string; name: string; branch: string | null; head: string | null; state: "available" | "detached" | "locked" | "prunable" | "missing"; active: boolean; repoRelativeLabel: string | null }`
+- **Worktree endpoint:** `GET /api/worktrees?slug=<slug>` → `WorktreeListResponse` — parses `git worktree list --porcelain`, supports worktrees outside `.trees/`, and never emits absolute paths
+- **File-tree sync endpoint:** `GET /api/files/events?slug=<slug>[&worktree=<safe-worktree-id>]` opens a same-origin authenticated SSE stream that emits scoped file-tree invalidation events and never emits absolute filesystem paths
+- **FileTreeSyncScope:** `{ slug: string; worktree: string | null }` where `worktree: null` represents the project root and non-null values use the same safe worktree ID accepted by `/api/files`
 - **File-tree sync ready event:** SSE event name `file-tree:ready`; data `{ type: "file-tree:ready"; scope: FileTreeSyncScope; pollIntervalMs: 5000 }`
 - **File-tree sync changed event:** SSE event name `file-tree:changed`; data `{ type: "file-tree:changed"; scope: FileTreeSyncScope; paths: string[]; directories: string[]; rootChanged: boolean; gitStatusChanged: boolean; truncated: boolean; version: number }`
 - **File-tree sync degraded event:** SSE event name `file-tree:degraded`; data `{ type: "file-tree:degraded"; scope: FileTreeSyncScope; code: string; message: string; retryAfterMs?: number; pollIntervalMs: 5000; fatal?: boolean }`
@@ -207,9 +215,9 @@ Enable users to keep multiple projects "open" simultaneously via persistent side
 - **useFileTreeSync(slug, worktree):** Client-only hook that owns EventSource lifecycle, scoped event parsing, retry/backoff, degraded fallback polling handoff, heartbeat timeout detection, stale-scope cleanup, and manual retry
 - **Near-realtime degraded sync interval:** `5000` ms default for fallback active root file-tree and active project worktree list polling; configurability is deferred until a future config-system amendment
 - **Near-realtime fallback polling lifecycle:** Client-only workspace lifecycle that calls `refreshFileTree(project.slug)` on degraded interval ticks and visibility catch-up without touching `fileTreeLoading`
-- **useWorktrees(slug: string | undefined):** Hook exposing `{ worktrees: Worktree[], loading: boolean, error: string | null, refresh: () => void }`; it retains no-store active-project worktree list refresh, degraded fallback polling, visibility pause/resume, stale-response guards, and cleanup
-- **WorktreeTree:** Collapsible selector component rendered in the project sidebar; lists project root and worktrees as filesystem-style selector nodes without nested inline file trees
-- **ProjectSidebar:** Component rendering the collapsible vertical tab strip, conditional Copilot bot badge replacement, and the active project's CSS-hideable worktree selector; consumes `useOpenProjects()` and `usePathname()`
+- **useWorktrees(slug: string | undefined, activeWorktreeId?: string | null):** Hook exposing `{ response, worktrees, loading, error, refresh: () => void }`; it retains no-store active-project worktree list refresh, degraded fallback polling, visibility pause/resume, stale-response guards, and cleanup
+- **WorktreeTree:** Selector component rendered in the selected-project detail region; lists project root and worktrees as filesystem-style selector nodes without nested inline file trees
+- **ProjectSidebar:** Component rendering the collapsible vertical tab strip, conditional Copilot bot badge replacement, and selected-project detail region; consumes `useOpenProjects()`, `useWorkspace()`, and `usePathname()`
 - **WorkspaceLayout Close Project action:** Visible current-project control that consumes `useOpenProjects().requestProjectClose()`, `clearProjectCloseRequest()`, and `useRouter()` to mirror sidebar close navigation from wide workspace controls
 - **languageColor(language?: string): string** — Shared utility extracted to `src/lib/utils.ts`
 
@@ -240,7 +248,7 @@ The file tree previously performed an eager recursive traversal to depth 6 for e
 
 Request deduplication and stale-response protection are required because React initialization, project switching, and user expansion actions can overlap. Per-directory state is required so one failed or slow child load does not blank the whole explorer.
 
-Worktree file-tree integration extends the same lazy loading and stale-response model to multiple roots within one project. The project root and each linked worktree can contain identical relative paths such as `src/`, so request keys and cached UI state must include the active worktree dimension to prevent collisions and stale UI.
+Worktree file-tree integration extends the same lazy loading and stale-response model to multiple roots within one project. The project root and each linked worktree can contain identical relative paths such as `src/`, so request keys and cached UI state must include the active worktree dimension to prevent collisions and stale UI. Safe worktree IDs keep filesystem paths out of client state and allow outside-`.trees/` worktrees discovered by porcelain to participate without changing the user's original checkout.
 
 Near-realtime synchronization uses server-push SSE invalidation as the primary contract because Issue #81 requires external filesystem changes to reach the explorer without waiting for fixed client polling. SSE keeps the transport one-way and compatible with HTTP auth middleware, while canonical `/api/files` refreshes preserve existing path validation, worktree scoping, git status, and lazy direct-child listing behavior. The existing 5000 ms polling implementation remains valuable as degraded fallback when EventSource or the watcher stream is unavailable, but it is no longer the primary near-realtime mechanism. Configurable fallback intervals are deferred until a future config amendment demonstrates demand.
 
@@ -313,7 +321,7 @@ async function handleDirectoryClick(node: FileNode) {
 // Client-only server-push invalidation sketch
 useFileTreeSync({
   slug: project.slug,
-  worktree: activeWorktree,
+  worktree: activeWorktreeId,
   onChanged: async (event) => {
     await invalidateFileTreeScope(event);
   },
@@ -339,10 +347,12 @@ useFileTreeSync({
 - Any component that mutates the working tree (file save, create, delete, rename) MUST call `refreshFileTree()` from `useWorkspace()` after the mutation succeeds; failure paths MUST NOT call it
 - Components rendering tree-derived UI (e.g., `ExplorerContent`) MUST consume `fileTreeLoading` for initial spinner gating and MUST NOT read `fileTreeRefreshing`
 - File tree UI must use per-directory state for child loading/error/retry/empty rendering and must preserve existing unreadable affordances
-- `useFileTreeSync` belongs at the client workspace boundary (`WorkspaceLayout` or a dedicated child hook used by it) where the active project and active worktree are known
+- `useFileTreeSync` belongs at the client workspace boundary (`WorkspaceLayout` or a dedicated child hook used by it) where the active project and active safe worktree ID are known
 - SSE changed-event handling must call `invalidateFileTreeScope(...)`; only canonical `/api/files` refreshes may mutate file-tree nodes
 - Fallback poll ticks must call `refreshFileTree(...)` directly; only initial load and explicit retry flows may use wrappers that set `fileTreeLoading`
 - Worktree list fallback polling belongs in `useWorktrees` or its caller and must share the 5000 ms interval, document visibility pause/resume, no-store fetch behavior, and cleanup contract
+- `ProjectSidebar` selected-project detail should fetch `GET /api/projects/[slug]` for repo URL status and use `GET /api/worktrees?slug=<slug>` for context selectors; it should not derive context IDs from paths
+- Legacy cached `.trees/<name>` active worktree values should be migrated in memory by matching `repoRelativeLabel`, then saved back as safe IDs on the next workspace-state save
 - Sync tests must cover EventSource lifecycle, fake-timer fallback polling, mocked `document.visibilityState`, stale-scope cleanup, and listener cleanup without real-time sleeps
 
 ## Exceptions
@@ -360,6 +370,10 @@ useFileTreeSync({
 - [x] Automated checks: Unit tests for `ProjectSidebar` (render, active state, close, navigation, accessibility)
 - [x] Code review checklist: New sidebar elements must use CSS custom properties, not hardcoded colors
 - [x] Test coverage requirements: Workspace state round-trip (save on unmount → restore on mount) must be tested
+- [ ] Automated checks: Worktree utility tests must cover safe ID generation, collision extension/conflict, outside-`.trees` porcelain entries, duplicate display-name disambiguation, and legacy `.trees` migration matching
+- [ ] Automated checks: API tests must cover `ProjectDetailResponse`, `WorktreeListResponse`, no absolute path leakage, empty worktree rejection, unknown safe ID rejection, and file/sync safe-ID scoping
+- [ ] Automated checks: ProjectSidebar and WorktreeTree tests must cover selected-project detail states, root/worktree selection, disabled unavailable states, collapsed mode, and polite active-context announcements
+- [ ] Test coverage requirements: Workspace context tests must cover `activeWorktreeId` scoped state save/restore, stale guards, request dedupe, and migration/reset behavior
 - [x] Test coverage requirements: `refreshFileTree` unit tests assert `cache: "no-store"`, success update, no-op without slug, explicit slug behavior, and no global loading mutation
 - [x] Test coverage requirements: `FileViewer` save tests assert `refreshFileTree` is called exactly once on success and zero times on failure
 - [x] Code review checklist: `ExplorerContent` and future tree consumers MUST NOT read `fileTreeRefreshing`

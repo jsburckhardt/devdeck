@@ -499,16 +499,14 @@ describe("ProjectSidebar", () => {
     expect(collapseToggle.className).not.toContain("mt-auto");
 
     const worktreeTree = screen.getByTestId("project-panel-worktree-tree");
-    const wrapper = screen.getByTestId("active-worktree-wrapper");
     expect(worktreeTree).toHaveTextContent(activeSlug);
-    expect(wrapper.className).not.toContain("hidden");
+    expect(screen.getByTestId("selected-project-detail")).toBeInTheDocument();
 
     await user.click(collapseToggle);
 
     const expandToggle = screen.getByRole("button", { name: "Expand sidebar" });
     expect(footer).toContainElement(expandToggle);
-    expect(screen.getByTestId("project-panel-worktree-tree")).toBe(worktreeTree);
-    expect(wrapper.className).toContain("hidden");
+    expect(screen.queryByTestId("project-panel-worktree-tree")).not.toBeInTheDocument();
   });
 
   it("TP5: close buttons retain hover reveal expanded and are visible collapsed", async () => {
@@ -534,19 +532,18 @@ describe("ProjectSidebar", () => {
     expect(mockCloseProject).toHaveBeenCalledWith("proj-a");
   });
 
-  it("TP6: keeps active WorktreeTree mounted and CSS-hidden when collapsed", async () => {
+  it("TP6: renders selected-project worktree detail expanded and hides it when collapsed", async () => {
     const user = userEvent.setup();
     render(<ProjectSidebar />);
 
     const worktreeTree = screen.getByTestId("project-panel-worktree-tree");
-    const wrapper = screen.getByTestId("active-worktree-wrapper");
     expect(worktreeTree).toHaveTextContent("proj-b");
-    expect(wrapper.className).not.toContain("hidden");
+    expect(screen.getByTestId("selected-project-detail")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
 
-    expect(screen.getByTestId("project-panel-worktree-tree")).toBe(worktreeTree);
-    expect(wrapper.className).toContain("hidden");
+    expect(screen.queryByTestId("project-panel-worktree-tree")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("selected-project-detail")).not.toBeInTheDocument();
   });
 
   it("TP7: keeps Copilot status visible on badges when collapsed", async () => {
@@ -592,7 +589,7 @@ describe("ProjectSidebar", () => {
     );
   });
 
-  it("renders the worktree selector in the project panel for the active project only", () => {
+  it("renders the worktree selector in the selected project detail for the active project only", () => {
     render(<ProjectSidebar />);
 
     const worktreeTrees = screen.getAllByTestId("project-panel-worktree-tree");

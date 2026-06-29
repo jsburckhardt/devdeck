@@ -2,7 +2,7 @@
 
 ## Status
 
-Adopted (amended) - 2026-06-27
+Adopted (amended) - 2026-06-29
 
 ## Purpose
 
@@ -18,6 +18,7 @@ the terminal remains rooted at the configured workspace/launch context.
 - Backend: WebSocket server, PTY process lifecycle management
 - Communication protocol between frontend and backend
 - Default host-terminal cwd resolution and unsupported project/worktree context rejection
+- Explicit workspace-scoped terminal routing for project pages
 - Responsive xterm.js font-size selection, refit behavior, and PTY resize propagation
 - Terminal input helper controls, including keyboard helpers and browser-only microphone review input, that inject raw input through `useTerminal.sendInput(data)`
 
@@ -70,6 +71,15 @@ the terminal remains rooted at the configured workspace/launch context.
 - The server MUST maintain a per-project Copilot CLI status cache keyed by project slug so newly connected browser clients can receive the current known `"running"` or `"waiting"` state without waiting for fresh PTY output
 - The server MUST broadcast detected Copilot CLI status changes to every connected WebSocket client for the same project slug
 - Default host terminal connections have no project key; they MUST NOT update `OpenProjectsContext`, project-sidebar Copilot badges, or per-project Copilot status cache entries
+- `/api/terminal/workspace` MUST be the only project/worktree-scoped terminal WebSocket endpoint
+- Workspace terminal auth/token validation and origin checks MUST run before slug/worktree resolution or PTY spawn
+- Workspace terminal requests MUST include `slug=<project-slug>` and MAY include `worktree=<safe-worktree-id>`; omitting `worktree` means project root
+- Workspace terminal requests with `worktree=` as an empty string, unknown worktree IDs, invalid slugs, or unresolved roots MUST receive a fixed JSON error frame that does not echo input/path values and close with code 1008
+- Workspace terminal project-root sessions MUST spawn a shell with cwd at the resolved project root
+- Workspace terminal worktree sessions MUST re-run `git worktree list --porcelain`, match the safe worktree ID, verify the resolved root exists, and spawn a shell with cwd at that worktree root
+- Workspace terminal sessions MUST use shell mode in v1; they MUST NOT use the default endpoint tmux decision tree or run `git checkout`
+- Changing workspace terminal context MUST close the current WebSocket, kill the old PTY through normal cleanup, clear terminal scrollback by recreating the xterm instance, reconnect to the new cwd, and show visible status text such as `Terminal restarted in <context>`
+- The terminal header MUST show the active workspace context label and MUST NOT imply a worktree cwd until the connection URL is scoped to that context
 - The server MUST only emit a `"status"` frame when the detected state differs from the current per-connection `copilotState` or cached per-project state
 - The server MUST maintain a per-connection idle timeout (default 30 seconds) that reverts `copilotState` and the per-project status cache to `"idle"` when no Copilot CLI output pattern is matched within the timeout window
 - The server MUST reset the idle timer on every `onData` call that matches a Copilot CLI pattern
@@ -107,10 +117,11 @@ the terminal remains rooted at the configured workspace/launch context.
 
 ### Interfaces
 - **WebSocket endpoint:** `/api/terminal?token=<bearer>&cols=<N>&rows=<N>` — accepts default host-terminal WebSocket upgrade requests with valid token (via query param or cookie); `cols`/`rows` are optional initial dimensions (clamped server-side, defaults to 80×24); `slug` and `worktree` are unsupported on this endpoint
+- **Workspace WebSocket endpoint:** `/api/terminal/workspace?slug=<project-slug>&worktree=<safe-worktree-id>&cols=<N>&rows=<N>` — accepts explicit project-page terminal WebSocket upgrades; omits `worktree` for project root and resolves safe IDs server-side from current porcelain output
 - **Token handshake:** On upgrade, server extracts `token` from query string or `devdeck_token` cookie, validates via `crypto.timingSafeEqual`, rejects with close code 4401 if invalid, then rejects unsupported `slug`/`worktree` context with close code 1008 before any PTY spawn
 - **Unsupported context error frame:** `{ "type": "error", "message": "Project-scoped terminals are not supported by the default terminal." }` — sent as a JSON text frame before close code 1008 and never includes supplied query parameter values
 - **Frontend hook:** `useTerminal(options?: { wsUrl?, theme? })` — manages xterm.js instance, WebSocket connection, token injection, addon lifecycle, and exposes `containerRef`, `terminalMode`, `isFallback`, `sendInput(data)`, and `focusTerminal()` state/actions; default callers do not pass project or worktree identity
-- **TerminalPanel:** Default terminal panel has no `slug` or `worktree` props and calls `useTerminal({ theme })`; selected project and active worktree remain Explorer/File Preview state only
+- **TerminalPanel:** Default terminal panel has no `slug` or `worktree` props and calls `useTerminal({ theme })`; project pages may pass an explicit `workspace` option that routes to `/api/terminal/workspace`
 - **Responsive terminal font-size helper:** `getTerminalFontSize(input?)` returns `11 | 12 | 13` from layout viewport width, primary coarse pointer state, any-coarse pointer state, and `navigator.maxTouchPoints`; when browser APIs are unavailable, it returns the desktop fallback `13`
 - **Responsive font-size lifecycle:** `useTerminal` listens for layout viewport, orientation, media-query, and touch-capability changes; tier changes update xterm.js options and force-fit without reconnecting, while refit-only events may schedule the existing fit path
 - **Message format:** Raw binary data (ArrayBuffer) for terminal I/O; JSON for control messages (resize, ping)
@@ -128,6 +139,7 @@ the terminal remains rooted at the configured workspace/launch context.
 - PTY processes MUST be killed when the client disconnects
 - The terminal MUST support resize (xterm.js addon-fit → resize message → node-pty.resize)
 - Selecting projects or worktrees MUST NOT reconnect or reroute the default terminal
+- Selecting projects or worktrees MAY reconnect the explicit workspace terminal only, and that reconnect MUST be visible to the user
 - Terminal font-size tiers MUST render at 11px on phones, 12px on qualifying touch tablets, and 13px on desktop tiers
 - Initial and runtime terminal font-size selection MUST keep PTY dimensions accurate without reconnecting solely for font-size changes
 - Browser zoom MUST NOT shrink terminal text by influencing font-size tier selection
@@ -193,6 +205,7 @@ wss.on('connection', (ws, req) => {
 - Config-file loading belongs in startup code, not in `src/server/terminal-server.mts`; the terminal server consumes resolved values through env vars to preserve standalone `.mts` compatibility.
 - The frontend hook should be in `src/hooks/use-terminal.ts`
 - Default `/api/terminal` callers should rely on `useTerminal({ theme })`; do not pass project slugs or worktree paths
+- Project-page workspace terminal callers should pass a `workspace` context to `TerminalPanel`, which passes it to `useTerminal` so the hook builds `/api/terminal/workspace` URLs with safe worktree IDs
 - Project selection, active worktree selection, and project-sidebar Copilot state belong to CORE-COMPONENT-0008, not the default terminal panel
 - The responsive terminal font-size helper should stay in `src/hooks/use-terminal.ts` or a small adjacent helper file; update `LLM.txt` if a new source file is added
 - Compute terminal font size from layout viewport width plus `(pointer: coarse)`, `(any-pointer: coarse)`, and `navigator.maxTouchPoints`; do not use `visualViewport.width` for tier selection
@@ -224,6 +237,8 @@ wss.on('connection', (ws, req) => {
 - [x] Automated checks: Terminal server tests must assert default cwd precedence uses options, forwarded workspace root, then `process.cwd()`
 - [x] Automated checks: Terminal hook tests must assert 1008 unsupported-context closes do not reconnect
 - [x] Automated checks: WorkspaceLayout and TerminalPanel tests must assert default terminal receives no `slug`/`worktree` and updates no project-sidebar Copilot state
+- [ ] Automated checks: Terminal server tests must assert `/api/terminal/workspace` validates auth before context resolution, spawns cwd for root and safe worktree IDs, rejects empty/unknown worktree IDs with 1008, and preserves default `/api/terminal` 1008 rejection
+- [ ] Automated checks: Terminal hook/panel tests must assert workspace URL construction, context-change restart status, scrollback-clearing reconnect lifecycle, and context labels
 - [x] Verification: `./harness verify` passes before implementation completion
 
 ## Related ADRs

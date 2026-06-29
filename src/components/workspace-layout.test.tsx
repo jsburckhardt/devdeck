@@ -39,7 +39,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
   } as Project;
 }
 
-describe("WorkspaceLayout terminal decoupling", () => {
+describe("WorkspaceLayout workspace terminal routing", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseWorkspace.mockReturnValue({
@@ -55,7 +55,8 @@ describe("WorkspaceLayout terminal decoupling", () => {
       toggleExplorer: vi.fn(),
       toggleFileViewer: vi.fn(),
       toggleTerminal: vi.fn(),
-      activeWorktree: ".trees/feat",
+      activeWorktreeId: "0123456789abcdef",
+      activeWorktree: "0123456789abcdef",
       fileTreeSyncStatus: "ready",
       fileTreeSyncError: null,
       fileTreeSyncFallbackActive: false,
@@ -72,14 +73,20 @@ describe("WorkspaceLayout terminal decoupling", () => {
     });
   });
 
-  it("renders the terminal without slug/worktree props while file-tree sync still uses project context", () => {
+  it("renders the terminal with explicit workspace context while file-tree sync uses the same context", () => {
     render(<WorkspaceLayout project={makeProject()} />);
 
     const terminal = screen.getByTestId("terminal-panel");
     const props = JSON.parse(terminal.getAttribute("data-props") ?? "{}");
-    expect(props).toEqual({});
+    expect(props).toEqual({
+      workspace: {
+        slug: "demo",
+        worktreeId: "0123456789abcdef",
+        label: "Worktree 01234567",
+      },
+    });
     expect(mockUseFileTreeSync).toHaveBeenCalledWith(
-      expect.objectContaining({ slug: "demo", worktree: ".trees/feat" }),
+      expect.objectContaining({ slug: "demo", worktree: "0123456789abcdef" }),
     );
   });
 });

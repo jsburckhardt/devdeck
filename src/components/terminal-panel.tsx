@@ -17,7 +17,13 @@ import {
 } from "@phosphor-icons/react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 
-type TerminalPanelProps = Record<string, never>;
+interface TerminalPanelProps {
+  workspace?: {
+    slug: string;
+    worktreeId: string | null;
+    label: string;
+  };
+}
 
 type TerminalHelperKey = "tab" | "up" | "right";
 
@@ -128,7 +134,7 @@ function getVoiceAlertMessage({
   return null;
 }
 
-export function TerminalPanel() {
+export function TerminalPanel({ workspace }: TerminalPanelProps = {}) {
   const { themeId, theme, setThemeId, themes } = useTerminalTheme();
   const voicePanelId = useId();
   const voiceReviewFieldId = `${voicePanelId}-review`;
@@ -137,6 +143,11 @@ export function TerminalPanel() {
   const firstVoiceSendButtonRef = useRef<HTMLButtonElement>(null);
   const lastAppliedFinalTranscriptRef = useRef("");
   const previousVoiceContextRef = useRef<string | null>(null);
+  const previousTerminalContextRef = useRef<string | null>(null);
+  const terminalContextKey = workspace
+    ? `${workspace.slug}:${workspace.worktreeId ?? "root"}`
+    : "default";
+  const terminalContextLabel = workspace?.label ?? "Host terminal";
   const {
     containerRef,
     status,
@@ -150,7 +161,10 @@ export function TerminalPanel() {
     copilotStatus,
     sendInput,
     focusTerminal,
-  } = useTerminal({ theme: theme.colors });
+  } = useTerminal({
+    theme: theme.colors,
+    ...(workspace ? { workspace: { slug: workspace.slug, worktreeId: workspace.worktreeId } } : {}),
+  });
   const {
     isSupported: isVoiceInputSupported,
     isListening: isVoiceInputListening,
@@ -164,12 +178,17 @@ export function TerminalPanel() {
     cancel: cancelVoiceInput,
     clear: clearVoiceInput,
   } = useVoiceInput({
-    contextKey: isConnected ? "connected" : "disconnected",
+    contextKey: workspace
+      ? `${isConnected ? "connected" : "disconnected"}:${terminalContextKey}`
+      : isConnected
+        ? "connected"
+        : "disconnected",
   });
   const [reviewText, setReviewText] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [shouldFocusVoiceReview, setShouldFocusVoiceReview] = useState(false);
+  const [restartNotice, setRestartNotice] = useState<string | null>(null);
 
   const [isKeyboardHelperOpen, setKeyboardHelperOpen] = useState(false);
   const [isCtrlActive, setCtrlActive] = useState(false);
@@ -434,6 +453,19 @@ export function TerminalPanel() {
     }
   }, [isFallback]);
 
+  useEffect(() => {
+    if (previousTerminalContextRef.current === null) {
+      previousTerminalContextRef.current = terminalContextKey;
+      return;
+    }
+
+    if (previousTerminalContextRef.current === terminalContextKey) return;
+    previousTerminalContextRef.current = terminalContextKey;
+    setRestartNotice(`Terminal restarted in ${terminalContextLabel}`);
+    const timer = setTimeout(() => setRestartNotice(null), 3000);
+    return () => clearTimeout(timer);
+  }, [terminalContextKey, terminalContextLabel]);
+
   return (
     <div
       data-testid="terminal-panel"
@@ -443,6 +475,12 @@ export function TerminalPanel() {
       <div className="flex h-8 shrink-0 items-center justify-between border-b border-border bg-card/50 px-3">
         <div className="flex items-center gap-1.5">
           <span className="font-mono text-xs text-muted-foreground">Terminal</span>
+          <span
+            className="max-w-40 truncate rounded bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground"
+            title={terminalContextLabel}
+          >
+            {terminalContextLabel}
+          </span>
           <ThemePicker themes={themes} activeThemeId={themeId} onSelect={setThemeId} />
         </div>
         <div className="flex items-center gap-1.5">
@@ -648,6 +686,15 @@ export function TerminalPanel() {
             aria-label="Terminal fallback notification"
           >
             tmux session unavailable — using shell
+          </div>
+        )}
+        {restartNotice && (
+          <div
+            className="absolute top-2 left-1/2 z-10 -translate-x-1/2 rounded bg-primary/90 px-3 py-1 text-xs text-primary-foreground"
+            role="status"
+            aria-label="Terminal context restart notification"
+          >
+            {restartNotice}
           </div>
         )}
         {status === "connecting" && (

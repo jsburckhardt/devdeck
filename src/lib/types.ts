@@ -9,6 +9,25 @@ export interface Project {
   available?: boolean;
 }
 
+export type RepoUrlStatus =
+  | "available"
+  | "no-origin"
+  | "not-git"
+  | "git-unavailable"
+  | "unavailable"
+  | "invalid";
+
+export interface ProjectDetailResponse {
+  slug: string;
+  name: string;
+  description?: string;
+  language?: string;
+  available: boolean;
+  repoUrl: string | null;
+  repoUrlDisplay: string | null;
+  repoUrlStatus: RepoUrlStatus;
+}
+
 export interface ProjectRegistryEntry {
   slug: string;
   path: string;
@@ -125,10 +144,39 @@ export interface DiffHunk {
   newStart: number;
 }
 
-export interface Worktree {
-  name: string; // Directory name under .trees/
-  branch: string; // Git branch name (fallback: directory name)
+export type WorktreeListStatus =
+  | "available"
+  | "not-git"
+  | "git-unavailable"
+  | "project-unavailable"
+  | "error";
+
+export type WorktreeSummaryState = "available" | "detached" | "locked" | "prunable" | "missing";
+
+export interface WorktreeRootSummary {
+  id: null;
+  name: "Project root";
+  active: boolean;
 }
+
+export interface WorktreeSummary {
+  id: string;
+  name: string;
+  branch: string | null;
+  head: string | null;
+  state: WorktreeSummaryState;
+  active: boolean;
+  repoRelativeLabel: string | null;
+}
+
+export interface WorktreeListResponse {
+  projectSlug: string;
+  status: WorktreeListStatus;
+  root: WorktreeRootSummary;
+  worktrees: WorktreeSummary[];
+}
+
+export type Worktree = WorktreeSummary;
 
 export type CopilotCliState = "idle" | "running" | "waiting";
 
@@ -149,6 +197,7 @@ export interface PerProjectWorkspaceState {
   fileTree: FileNode[];
   directoryLoadErrors?: Record<string, string>;
   loadedDirectories?: string[];
+  activeWorktreeId?: string | null;
   activeWorktree?: string | null;
   worktreesSectionCollapsed?: boolean;
   copilotStatus?: CopilotCliState;

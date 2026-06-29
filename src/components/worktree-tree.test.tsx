@@ -28,8 +28,11 @@ const mockUseWorktrees = vi.fn(() => ({
 }));
 
 vi.mock("@/hooks/use-worktrees", () => ({
-  useWorktrees: (slug: string | undefined, options?: { pollingEnabled?: boolean }) =>
-    mockUseWorktrees(slug, options),
+  useWorktrees: (
+    slug: string | undefined,
+    activeWorktreeId?: string | null,
+    options?: { pollingEnabled?: boolean },
+  ) => mockUseWorktrees(slug, activeWorktreeId, options),
 }));
 
 vi.mock("@/lib/workspace-context", () => ({
@@ -37,6 +40,8 @@ vi.mock("@/lib/workspace-context", () => ({
     activeWorktree: mockActiveWorktree,
     fileTreeSyncFallbackActive: mockFallbackActive,
     worktreesSectionCollapsed: mockCollapsed,
+    activeWorktreeId: mockActiveWorktree,
+    setActiveWorktreeId: mockSetActiveWorktree,
     setActiveWorktree: mockSetActiveWorktree,
     toggleWorktreesSection: mockToggleWorktreesSection,
   }),
@@ -62,7 +67,7 @@ describe("WorktreeTree", () => {
     render(<WorktreeTree slug="demo" />);
 
     expect(screen.getByText("feat-login")).toBeInTheDocument();
-    expect(mockUseWorktrees).toHaveBeenCalledWith("demo", { pollingEnabled: false });
+    expect(mockUseWorktrees).toHaveBeenCalledWith("demo", null, { pollingEnabled: false });
     expect(screen.getByText("fix-bug")).toBeInTheDocument();
     // Branch shown only when different from name
     expect(screen.getByText("fix/bug-123")).toBeInTheDocument();
@@ -75,7 +80,7 @@ describe("WorktreeTree", () => {
 
     render(<WorktreeTree slug="demo" />);
 
-    expect(mockUseWorktrees).toHaveBeenCalledWith("demo", { pollingEnabled: true });
+    expect(mockUseWorktrees).toHaveBeenCalledWith("demo", null, { pollingEnabled: true });
   });
 
   it("T19: clicking worktree calls setActiveWorktree", async () => {
@@ -160,14 +165,14 @@ describe("WorktreeTree", () => {
     expect(screen.queryByText("src")).not.toBeInTheDocument();
   });
 
-  it("T20: renders nothing visible when worktree list is empty", () => {
+  it("T20: renders the root selector when the worktree list is empty", () => {
     mockWorktrees = [];
 
     render(<WorktreeTree slug="demo" />);
 
-    // Component is mounted but hidden
-    expect(screen.getByTestId("worktree-tree-empty")).toBeInTheDocument();
-    expect(screen.queryByText("Worktrees")).not.toBeInTheDocument();
+    expect(screen.getByTestId("worktree-tree")).toBeInTheDocument();
+    expect(screen.getByText("Worktrees")).toBeInTheDocument();
+    expect(screen.getByText("Project root")).toBeInTheDocument();
   });
 
   it("T21: collapse/expand toggle calls toggleWorktreesSection", async () => {

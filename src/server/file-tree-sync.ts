@@ -124,8 +124,7 @@ function normalizedSlug(slug: string): string | null {
 
 export function normalizeFileTreeSyncWorktree(worktree: string | null | undefined): string | null {
   if (worktree === null || worktree === undefined) return null;
-  const relativeWorktree = normalizeHttpWorktree(worktree);
-  return `.trees/${relativeWorktree}`;
+  return normalizeHttpWorktree(worktree);
 }
 
 export async function resolveFileTreeSyncScope(

@@ -7,13 +7,23 @@ vi.mock("@/lib/registry", () => ({
 
 vi.mock("fs/promises");
 
+vi.mock("@/lib/worktree-utils", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/worktree-utils")>();
+  return {
+    ...actual,
+    resolveWorktreeRoot: vi.fn(),
+  };
+});
+
 import fs from "fs/promises";
 import { resolveProjectPath } from "@/lib/registry";
+import { resolveWorktreeRoot, WorktreeResolutionError } from "@/lib/worktree-utils";
 import { GET, PUT } from "./route";
 import { NextRequest } from "next/server";
 
 const mockFs = vi.mocked(fs);
 const mockResolveProjectPath = vi.mocked(resolveProjectPath);
+const mockResolveWorktreeRoot = vi.mocked(resolveWorktreeRoot);
 
 function makeGetRequest(params: Record<string, string>): NextRequest {
   const url = new URL("http://localhost:3000/api/files/content");
@@ -56,8 +66,17 @@ function makePutRequest(body: Record<string, unknown>): NextRequest {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   mockResolveProjectPath.mockResolvedValue("/workspaces/test-project");
+  mockResolveWorktreeRoot.mockImplementation(async (_slug, worktree) => {
+    if (worktree === "../bad") {
+      throw new WorktreeResolutionError("INVALID_WORKTREE", "Invalid 'worktree' parameter", 400);
+    }
+    if (worktree === "missing") {
+      throw new WorktreeResolutionError("WORKTREE_NOT_FOUND", "Worktree not found", 404);
+    }
+    return worktree ? "/workspaces/test-project/.trees/feat" : "/workspaces/test-project";
+  });
   mockFs.realpath.mockImplementation(async (target) => String(target));
   mockFs.stat.mockResolvedValue(stat("directory") as never);
 });

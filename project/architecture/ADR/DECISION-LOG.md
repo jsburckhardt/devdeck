@@ -18,12 +18,12 @@ This file is the single registry of all architectural decisions and core-compone
 | ID | Title | Status | Date |
 |----|-------|--------|------|
 | CORE-COMPONENT-0002 | Commit Standards | Adopted (updated) | 2026-06-25 |
-| CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (amended) | 2026-06-27 |
+| CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (amended) | 2026-06-29 |
 | CORE-COMPONENT-0004 | Theming | Adopted (updated) | 2026-05-21 |
 | CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2026-06-15 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
-| CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-06-11 |
-| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-06-15 |
+| CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-06-29 |
+| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-06-29 |
 | CORE-COMPONENT-0009 | Engineering Harness | Adopted (updated) | 2026-06-25 |
 
 ## Decisions
@@ -294,3 +294,16 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 260 | Prohibit default terminal project-sidebar Copilot status updates | CORE-COMPONENT-0003 | 2026-06-27 |
 | 261 | Prohibit reconnects after default terminal close code 1008 | CORE-COMPONENT-0003 | 2026-06-27 |
 | 262 | Send fixed unsupported-context error frame without echoing supplied parameters | CORE-COMPONENT-0003 | 2026-06-27 |
+| 263 | Add `/api/terminal/workspace` as the only explicit project/worktree-scoped terminal WebSocket endpoint | CORE-COMPONENT-0003 | 2026-06-29 |
+| 264 | Require workspace terminal auth/origin validation before slug or worktree resolution and before PTY spawn | CORE-COMPONENT-0003 | 2026-06-29 |
+| 265 | Require workspace terminal context changes to close the old PTY, clear scrollback, reconnect, and show visible restart context text | CORE-COMPONENT-0003 | 2026-06-29 |
+| 266 | Split the expanded project sidebar into upper Open Projects navigation and lower Selected Project detail regions | CORE-COMPONENT-0007 | 2026-06-29 |
+| 267 | Hide selected-project detail controls in collapsed sidebar mode without leaving hidden focusable controls, while exposing compact active context labels | CORE-COMPONENT-0007 | 2026-06-29 |
+| 268 | Source selected-project detail from the active `/project/[slug]` route and render no-selection, loading, ready, unavailable, and error states | CORE-COMPONENT-0008 | 2026-06-29 |
+| 269 | Add `GET /api/projects/[slug]` returning sanitized project detail and repo origin status without credentials or absolute paths | CORE-COMPONENT-0008 | 2026-06-29 |
+| 270 | Supersede Decision #93: `GET /api/worktrees` returns `WorktreeListResponse` with status, root, and safe-ID summaries instead of a bare array | CORE-COMPONENT-0008 | 2026-06-29 |
+| 271 | Supersede Decisions #90, #104, #107, and #118-#120: client workspace context stores safe `activeWorktreeId` values resolved from porcelain, not `.trees/<name>` paths | CORE-COMPONENT-0008 | 2026-06-29 |
+| 272 | Require safe worktree IDs to derive from canonical resolved porcelain paths using SHA-256 with collision extension and `WORKTREE_ID_CONFLICT` on unresolved collisions | CORE-COMPONENT-0008 | 2026-06-29 |
+| 273 | Support porcelain-reported worktrees outside `.trees/` while never returning absolute paths to clients | CORE-COMPONENT-0008 | 2026-06-29 |
+| 274 | Supersede Decision #114: render worktree context selection in the Selected Project detail region, not inside project tab rows | CORE-COMPONENT-0008 | 2026-06-29 |
+| 275 | Migrate legacy in-memory `.trees/<name>` worktree state to matching safe IDs when possible, otherwise reset to project root with a non-fatal notice | CORE-COMPONENT-0008 | 2026-06-29 |

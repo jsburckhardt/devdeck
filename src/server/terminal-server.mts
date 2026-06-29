@@ -2,6 +2,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { spawn, type IPty } from "node-pty";
 import { timingSafeEqual } from "crypto";
 import type { IncomingMessage } from "http";
+import { resolveWorktreeRoot, WorktreeResolutionError } from "../lib/worktree-utils";
 
 const MAX_CONTROL_MESSAGE_BYTES = 1024;
 
@@ -105,6 +106,14 @@ function extractToken(req: IncomingMessage): string | null {
   return parseCookieToken(req.headers.cookie);
 }
 
+function requestUrl(req: IncomingMessage): URL | null {
+  try {
+    return new URL(req.url ?? "", `http://${req.headers.host ?? "localhost"}`);
+  } catch {
+    return null;
+  }
+}
+
 function parseCookieToken(cookieHeader: string | undefined): string | null {
   if (!cookieHeader) return null;
   const match = cookieHeader.match(/(?:^|;\s*)devdeck_token=([^;]*)/);
@@ -112,21 +121,11 @@ function parseCookieToken(cookieHeader: string | undefined): string | null {
 }
 
 function extractSlug(req: IncomingMessage): string | null {
-  try {
-    const url = new URL(req.url ?? "", `http://${req.headers.host ?? "localhost"}`);
-    return url.searchParams.get("slug");
-  } catch {
-    return null;
-  }
+  return requestUrl(req)?.searchParams.get("slug") ?? null;
 }
 
 function extractWorktree(req: IncomingMessage): string | null {
-  try {
-    const url = new URL(req.url ?? "", `http://${req.headers.host ?? "localhost"}`);
-    return url.searchParams.get("worktree");
-  } catch {
-    return null;
-  }
+  return requestUrl(req)?.searchParams.get("worktree") ?? null;
 }
 
 function extractDimensions(req: IncomingMessage): { cols: number; rows: number } {
@@ -140,6 +139,29 @@ function extractDimensions(req: IncomingMessage): { cols: number; rows: number }
   } catch {
     return { cols: 80, rows: 24 };
   }
+}
+
+function isWorkspaceTerminalRequest(req: IncomingMessage): boolean {
+  return requestUrl(req)?.pathname === "/api/terminal/workspace";
+}
+
+function hasValidWorkspaceOrigin(req: IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === req.headers.host;
+  } catch {
+    return false;
+  }
+}
+
+function sendWorkspaceContextError(ws: WebSocket): void {
+  try {
+    ws.send(JSON.stringify({ type: "error", message: "Invalid workspace terminal context." }));
+  } catch {
+    // send failed
+  }
+  ws.close(1008, "Invalid workspace terminal context");
 }
 
 function validateToken(provided: string | null, expected: string | null): boolean {
@@ -411,6 +433,60 @@ export function createTerminalServer(options?: TerminalServerOptions): TerminalS
     if (!validateToken(providedToken, effectiveToken)) {
       console.log("Rejected unauthenticated WebSocket connection");
       ws.close(4401, "Unauthorized");
+      return;
+    }
+
+    const isWorkspaceTerminal = isWorkspaceTerminalRequest(req);
+    if (isWorkspaceTerminal) {
+      void (async () => {
+        if (!hasValidWorkspaceOrigin(req)) {
+          console.log("Rejected workspace terminal origin");
+          sendWorkspaceContextError(ws);
+          return;
+        }
+
+        const url = requestUrl(req);
+        const slug = url?.searchParams.get("slug")?.trim() ?? "";
+        const worktree = url?.searchParams.has("worktree")
+          ? (url.searchParams.get("worktree") ?? "")
+          : null;
+
+        if (!slug || worktree === "") {
+          console.log("Rejected invalid workspace terminal context");
+          sendWorkspaceContextError(ws);
+          return;
+        }
+
+        let workspaceCwd: string;
+        try {
+          workspaceCwd = await resolveWorktreeRoot(slug, worktree);
+        } catch (error) {
+          if (error instanceof WorktreeResolutionError) {
+            console.log("Rejected unresolved workspace terminal context");
+          } else {
+            console.log("Rejected workspace terminal context");
+          }
+          sendWorkspaceContextError(ws);
+          return;
+        }
+
+        const dimensions = extractDimensions(req);
+        await handleConnection(
+          ws,
+          slug,
+          workspaceCwd,
+          shell,
+          shellArgs,
+          sanitizedEnv,
+          activePtys,
+          copilotStatusByProject,
+          copilotStatusSubscribers,
+          dimensions,
+        ).catch((err) => {
+          console.error("Workspace terminal connection setup failed:", err);
+          if (ws.readyState === WebSocket.OPEN) ws.close(1011, "Terminal setup failed");
+        });
+      })();
       return;
     }
 

@@ -33,6 +33,7 @@ interface WorkspaceState {
   fileTreeError: string | null;
   directoryLoading: Set<string>;
   directoryErrors: Map<string, string>;
+  activeWorktreeId: string | null;
   activeWorktree: string | null;
   worktreesSectionCollapsed: boolean;
   fileTreeSyncStatus: FileTreeSyncStatus;
@@ -53,6 +54,7 @@ interface WorkspaceContextValue extends WorkspaceState {
   refreshFileTree: (explicitSlug?: string) => Promise<void>;
   loadDirectoryChildren: (path: string, explicitSlug?: string) => Promise<void>;
   fileTreeRefreshing: boolean;
+  setActiveWorktreeId: (id: string | null) => void;
   setActiveWorktree: (name: string | null) => void;
   toggleWorktreesSection: () => void;
   retryFileTreeSync: () => void;
@@ -227,7 +229,7 @@ function scopedStateFromCache(
     states.set(key, value);
   }
 
-  states.set(scopeKey(cachedState.activeWorktree), {
+  states.set(scopeKey(cachedState.activeWorktreeId ?? cachedState.activeWorktree), {
     selectedFile: cachedState.selectedFile,
     expandedFolders: cachedState.expandedFolders,
     fileTree: cachedState.fileTree,
@@ -270,7 +272,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
     () => new Map(Object.entries(cachedStateRef.current?.directoryLoadErrors ?? {})),
   );
   const [activeWorktree, setActiveWorktreeState] = useState<string | null>(
-    cachedStateRef.current?.activeWorktree ?? null,
+    cachedStateRef.current?.activeWorktreeId ?? cachedStateRef.current?.activeWorktree ?? null,
   );
   const [worktreesSectionCollapsed, setWorktreesSectionCollapsed] = useState(
     cachedStateRef.current?.worktreesSectionCollapsed ?? false,
@@ -282,7 +284,9 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
   const [fileTreeSyncRetryNonce, setFileTreeSyncRetryNonce] = useState(0);
 
   const currentSlugRef = useRef<string | undefined>(slug);
-  const currentWorktreeRef = useRef<string | null>(cachedStateRef.current?.activeWorktree ?? null);
+  const currentWorktreeRef = useRef<string | null>(
+    cachedStateRef.current?.activeWorktreeId ?? cachedStateRef.current?.activeWorktree ?? null,
+  );
   const rootRefreshCountRef = useRef(0);
   const inFlightFileTreeRequests = useRef<Map<string, Promise<void>>>(new Map());
   const invalidationGenerationRef = useRef(0);
@@ -299,6 +303,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
     showTerminal,
     fileTree,
     directoryErrors,
+    activeWorktreeId: activeWorktree,
     activeWorktree,
     worktreesSectionCollapsed,
     fileTreeSyncStatus,
@@ -316,6 +321,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       showTerminal,
       fileTree,
       directoryErrors,
+      activeWorktreeId: activeWorktree,
       activeWorktree,
       worktreesSectionCollapsed,
       fileTreeSyncStatus,
@@ -363,6 +369,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       expandedFolders: nextExpandedFolders,
       fileTree: nextFileTree,
       directoryErrors: nextDirectoryErrors,
+      activeWorktreeId: worktree,
       activeWorktree: worktree,
     };
 
@@ -390,6 +397,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
         directoryLoadErrors: Object.fromEntries(s.directoryErrors),
         loadedDirectories: collectLoadedDirectories(s.fileTree),
         activeWorktree: currentWorktreeRef.current,
+        activeWorktreeId: currentWorktreeRef.current,
         worktreesSectionCollapsed: s.worktreesSectionCollapsed,
         worktreeFileTreeStates,
       });
@@ -622,6 +630,8 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
     [restoreVisibleScope, saveVisibleScope],
   );
 
+  const setActiveWorktreeId = setActiveWorktree;
+
   const toggleWorktreesSection = useCallback(() => {
     setWorktreesSectionCollapsed((prev) => !prev);
   }, []);
@@ -754,6 +764,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       directoryLoading,
       directoryErrors,
       fileTreeRefreshing,
+      activeWorktreeId: activeWorktree,
       activeWorktree,
       worktreesSectionCollapsed,
       fileTreeSyncStatus,
@@ -770,6 +781,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       setFileTreeLoading,
       refreshFileTree,
       loadDirectoryChildren,
+      setActiveWorktreeId,
       setActiveWorktree,
       toggleWorktreesSection,
       retryFileTreeSync,
@@ -807,6 +819,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
       setFileTreeLoading,
       refreshFileTree,
       loadDirectoryChildren,
+      setActiveWorktreeId,
       setActiveWorktree,
       toggleWorktreesSection,
       retryFileTreeSync,

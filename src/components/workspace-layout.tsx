@@ -193,7 +193,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     toggleExplorer,
     toggleFileViewer,
     toggleTerminal,
-    activeWorktree,
+    activeWorktreeId,
   } = useWorkspace();
 
   const explorerPanelRef = useRef<PanelImperativeHandle>(null);
@@ -206,7 +206,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
 
   useFileTreeSync({
     slug: project.slug,
-    worktree: activeWorktree,
+    worktree: activeWorktreeId,
     retryNonce: fileTreeSyncRetryNonce,
     onStatusChange: updateFileTreeSyncState,
     onFallbackChange: setFileTreeSyncFallbackActive,
@@ -249,7 +249,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     return () => {
       cancelled = true;
     };
-  }, [activeWorktree, project.slug, loadRootFileTree]);
+  }, [activeWorktreeId, project.slug, loadRootFileTree]);
 
   useEffect(() => {
     if (!fileTreeSyncFallbackActive) return;
@@ -285,7 +285,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
       stopPolling();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [activeWorktree, fileTreeSyncFallbackActive, project.slug, refreshFileTree]);
+  }, [activeWorktreeId, fileTreeSyncFallbackActive, project.slug, refreshFileTree]);
 
   const handleRetry = useCallback(() => {
     void loadRootFileTree(project.slug);
@@ -333,7 +333,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     if (visiblePanels.length === 1) {
       visiblePanels[0].resize("100%");
     }
-  }, [activeWorktree, project.slug, showExplorer, showFileViewer, showTerminal]);
+  }, [activeWorktreeId, project.slug, showExplorer, showFileViewer, showTerminal]);
 
   const normalizedProjectSlug = project.slug.trim();
   const safeProjectName = (project.name ?? "").trim() || normalizedProjectSlug;
@@ -471,7 +471,15 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
           className="min-h-0 min-w-0 overflow-hidden"
         >
           <ErrorBoundary>
-            <TerminalPanel />
+            <TerminalPanel
+              workspace={{
+                slug: project.slug,
+                worktreeId: activeWorktreeId,
+                label: activeWorktreeId
+                  ? `Worktree ${activeWorktreeId.slice(0, 8)}`
+                  : "Project root",
+              }}
+            />
           </ErrorBoundary>
         </Panel>
       </Group>

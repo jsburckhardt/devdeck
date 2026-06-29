@@ -15,6 +15,10 @@ export type TerminalStatus =
 export interface UseTerminalOptions {
   wsUrl?: string;
   theme?: ITheme;
+  workspace?: {
+    slug: string;
+    worktreeId?: string | null;
+  };
 }
 
 export type TerminalMode = "unknown" | "tmux" | "shell";
@@ -231,13 +235,16 @@ function normalizeContainerSize(
   };
 }
 
-function buildWsUrl(cols?: number, rows?: number): string {
-  if (typeof window === "undefined") return "ws://localhost:8001/api/terminal";
+function buildWsUrl(workspace?: UseTerminalOptions["workspace"]): string {
+  const endpoint = workspace ? "/api/terminal/workspace" : "/api/terminal";
+  if (typeof window === "undefined") return `ws://localhost:8001${endpoint}`;
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const base = `${proto}//${window.location.host}/api/terminal`;
+  const base = `${proto}//${window.location.host}${endpoint}`;
   const params = new URLSearchParams();
-  if (cols != null) params.set("cols", String(cols));
-  if (rows != null) params.set("rows", String(rows));
+  if (workspace) {
+    params.set("slug", workspace.slug);
+    if (workspace.worktreeId) params.set("worktree", workspace.worktreeId);
+  }
   const qs = params.toString();
   return qs ? `${base}?${qs}` : base;
 }
@@ -252,7 +259,7 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
   const [copilotStatus, setCopilotStatus] = useState<CopilotCliState>("idle");
   const statusRef = useRef<TerminalStatus>("disconnected");
 
-  const baseWsUrl = options?.wsUrl ?? buildWsUrl();
+  const baseWsUrl = options?.wsUrl ?? buildWsUrl(options?.workspace);
 
   const generationRef = useRef(0);
   const intentionalCloseRef = useRef(false);

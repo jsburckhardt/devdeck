@@ -2,7 +2,7 @@
 
 ## Status
 
-Adopted (updated) - 2026-06-11
+Adopted (updated) - 2026-06-29
 
 ## Purpose
 
@@ -19,6 +19,7 @@ Define the top-level IDE shell structure that all DevDeck pages share. The shell
 - Mount animation conventions
 - Responsive behavior contract
 - Collapsible project sidebar width and transition contract
+- Project sidebar vertical split between open-project navigation and selected-project detail
 
 ## Definition
 
@@ -56,11 +57,18 @@ Define the top-level IDE shell structure that all DevDeck pages share. The shell
 - The project badge MUST use the `languageColor(project.language)` background only for the idle first-letter badge
 - The project badge MUST replace the first-letter content with a visible Copilot-style bot head icon when Copilot status is `"running"` or `"waiting"`
 - The sidebar MUST NOT participate in the `react-resizable-panels` layout — it is a static-width element
+- The expanded project sidebar MUST be split vertically into an upper `Open Projects` navigation region and a lower `Selected Project` detail region separated by a visible divider or heading
+- The upper region MUST preserve Home, open project entries, close controls, active-state styling, Copilot badge behavior, native titles, and collapse behavior
+- The lower selected-project detail region MUST follow keyboard focus order after open project buttons/close controls and before the sidebar collapse toggle
+- The lower selected-project detail region MUST render deterministic no-selection, loading, ready, unavailable, and error states
+- Collapsed sidebar mode MUST hide the full selected-project detail controls and MUST NOT leave hidden focusable controls offscreen
+- Collapsed sidebar mode MUST expose the selected workspace context through compact active-project button text, title, or aria-label without adding tooltip dependencies
+- Selected workspace context changes MUST update visible text and a polite live region without duplicate announcements
 
 ### Interfaces
 - **ShellLayout:** The top-level page component composing Header + PanelGroup
 - **Header:** Fixed-height bar with app branding and toolbar actions (theme toggle)
-- **ProjectSidebar:** Collapsible fixed-width vertical strip rendered on project pages as a left-edge sibling of the panel workspace (see CORE-COMPONENT-0008)
+- **ProjectSidebar:** Collapsible fixed-width vertical strip rendered on project pages as a left-edge sibling of the panel workspace; split into open-project navigation and selected-project detail regions (see CORE-COMPONENT-0008)
 - **Panel placeholders:** Each panel renders a centered icon + label when no real content is loaded
 - **Separator:** Visible drag handle between panels with hover/active states
 - **PanelToggle:** Toggle-bar button for workspace panels; exposes `aria-label`, `aria-pressed`, and guarded disabled semantics when hiding the last visible panel is prohibited
@@ -136,6 +144,7 @@ export default function Home() {
 - [x] Test coverage requirements: WorkspaceLayout tests must assert the current-project close action is visible, trails panel toggles, and has no `aria-pressed`
 - [ ] Automated checks: ProjectSidebar tests must assert expanded `w-44`, collapsed `w-12`, persisted collapse state, and accessible toggle attributes
 - [ ] Automated checks: ProjectSidebar tests must assert active Copilot bot badges preserve `h-6 w-6` sizing and visibility in expanded and collapsed modes
+- [ ] Automated checks: ProjectSidebar tests must assert the vertical split, selected-project detail focus order, collapsed-mode hidden detail without focus traps, compact context labels, and polite context live-region updates
 
 ## Related ADRs
 

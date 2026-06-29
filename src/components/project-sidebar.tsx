@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { House, SidebarSimple, X } from "@phosphor-icons/react";
+import { ArrowClockwise, House, SidebarSimple, WarningCircle, X } from "@phosphor-icons/react";
 import { WorktreeTree } from "@/components/worktree-tree";
 import { projectRoute, useOpenProjects } from "@/lib/open-projects-context";
-import type { CopilotCliState } from "@/lib/types";
+import { useWorkspace } from "@/lib/workspace-context";
+import type { CopilotCliState, Project, ProjectDetailResponse } from "@/lib/types";
 import { languageColor } from "@/lib/utils";
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "devdeck-sidebar-collapsed";
@@ -66,13 +67,245 @@ function persistCollapsedState(collapsed: boolean) {
   }
 }
 
+function activeSlugFromPathname(pathname: string): string | null {
+  const prefix = "/project/";
+  if (!pathname.startsWith(prefix)) return null;
+  const slug = pathname.slice(prefix.length).split("/")[0];
+  return slug ? decodeURIComponent(slug) : null;
+}
+
+function contextLabel(activeWorktreeId: string | null): string {
+  return activeWorktreeId ? `Worktree ${activeWorktreeId.slice(0, 8)}` : "Project root";
+}
+
+function repoStatusText(detail: ProjectDetailResponse): string {
+  if (detail.repoUrlDisplay) return detail.repoUrlDisplay;
+  switch (detail.repoUrlStatus) {
+    case "no-origin":
+      return "No origin remote";
+    case "not-git":
+      return "Not a git repository";
+    case "git-unavailable":
+      return "Git unavailable";
+    case "unavailable":
+      return "Project path unavailable";
+    case "invalid":
+      return "Origin remote unavailable";
+    case "available":
+    default:
+      return "Repository unavailable";
+  }
+}
+
+function useProjectSidebarWorkspace() {
+  try {
+    return useWorkspace();
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("useWorkspace must be used")) {
+      return { activeWorktreeId: null };
+    }
+    throw error;
+  }
+}
+
+function SelectedProjectDetail({
+  activeSlug,
+  activeWorktreeId,
+  fallbackProject,
+}: {
+  activeSlug: string | null;
+  activeWorktreeId: string | null;
+  fallbackProject: Project | undefined;
+}) {
+  const [detail, setDetail] = useState<ProjectDetailResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [retryNonce, setRetryNonce] = useState(0);
+  const activeContext = contextLabel(activeWorktreeId);
+
+  useEffect(() => {
+    if (!activeSlug) {
+      return;
+    }
+
+    const controller = new AbortController();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch lifecycle state is reset when the selected slug changes
+    setLoading(!fallbackProject);
+    setError(null);
+
+    fetch(`/api/projects/${encodeURIComponent(activeSlug)}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return (await res.json()) as ProjectDetailResponse;
+      })
+      .then((data) => {
+        if (!controller.signal.aborted) {
+          setDetail(data);
+          setLoading(false);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!controller.signal.aborted) {
+          setDetail(null);
+          setError(err instanceof Error ? err.message : String(err));
+          setLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [activeSlug, fallbackProject, retryNonce]);
+
+  if (!activeSlug) {
+    return (
+      <section
+        data-testid="selected-project-detail"
+        aria-label="Selected Project"
+        className="border-t border-border px-3 py-2 text-xs text-muted-foreground"
+      >
+        <h2 className="mb-2 font-medium uppercase tracking-wide">Selected Project</h2>
+        <p data-testid="selected-project-no-selection">No project selected</p>
+      </section>
+    );
+  }
+
+  if (loading) {
+    return (
+      <section
+        data-testid="selected-project-detail"
+        aria-label="Selected Project"
+        className="border-t border-border px-3 py-2 text-xs text-muted-foreground"
+      >
+        <h2 className="mb-2 font-medium uppercase tracking-wide">Selected Project</h2>
+        <p role="status" aria-live="polite">
+          Loading selected project…
+        </p>
+      </section>
+    );
+  }
+
+  if (error) {
+    return (
+      <section
+        data-testid="selected-project-detail"
+        aria-label="Selected Project"
+        className="border-t border-border px-3 py-2 text-xs"
+      >
+        <h2 className="mb-2 font-medium uppercase tracking-wide text-muted-foreground">
+          Selected Project
+        </h2>
+        <div className="flex items-start gap-2 text-destructive">
+          <WarningCircle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <div className="min-w-0">
+            <p>Unable to load selected project</p>
+            <p className="truncate text-[10px] text-muted-foreground">{error}</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setRetryNonce((nonce) => nonce + 1)}
+          className="mt-2 inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-[10px] text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          aria-label="Retry selected project detail"
+        >
+          <ArrowClockwise size={12} aria-hidden="true" />
+          Retry
+        </button>
+      </section>
+    );
+  }
+
+  const display =
+    detail ??
+    ({
+      slug: activeSlug,
+      name: fallbackProject?.name ?? activeSlug,
+      description: fallbackProject?.description,
+      language: fallbackProject?.language,
+      available: fallbackProject?.available !== false,
+      repoUrl: null,
+      repoUrlDisplay: null,
+      repoUrlStatus: fallbackProject?.available === false ? "unavailable" : "invalid",
+    } satisfies ProjectDetailResponse);
+
+  if (!display.available) {
+    return (
+      <section
+        data-testid="selected-project-detail"
+        aria-label="Selected Project"
+        className="border-t border-border px-3 py-2 text-xs"
+      >
+        <h2 className="mb-2 font-medium uppercase tracking-wide text-muted-foreground">
+          Selected Project
+        </h2>
+        <p className="truncate font-medium text-foreground" title={display.name}>
+          Project: {display.name}
+        </p>
+        <p className="truncate text-[10px] text-muted-foreground" title={display.slug}>
+          {display.slug}
+        </p>
+        <p className="mt-2 text-muted-foreground">Project unavailable</p>
+        <button
+          type="button"
+          onClick={() => setRetryNonce((nonce) => nonce + 1)}
+          className="mt-2 inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-[10px] text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          aria-label="Retry selected project detail"
+        >
+          <ArrowClockwise size={12} aria-hidden="true" />
+          Retry
+        </button>
+      </section>
+    );
+  }
+
+  return (
+    <section
+      data-testid="selected-project-detail"
+      aria-label="Selected Project"
+      className="border-t border-border px-2 py-2 text-xs"
+    >
+      <div className="px-1">
+        <h2 className="mb-2 font-medium uppercase tracking-wide text-muted-foreground">
+          Selected Project
+        </h2>
+        <p className="truncate font-medium text-foreground" title={display.name}>
+          Project: {display.name}
+        </p>
+        <p className="truncate text-[10px] text-muted-foreground" title={repoStatusText(display)}>
+          {repoStatusText(display)}
+        </p>
+        <p className="mt-2 text-[10px] text-muted-foreground">
+          Active context:{" "}
+          <span
+            data-testid="selected-project-active-context"
+            role="status"
+            aria-live="polite"
+            className="font-medium text-foreground"
+          >
+            {activeContext}
+          </span>
+        </p>
+      </div>
+      <div className="mt-2">
+        <WorktreeTree slug={display.slug} />
+      </div>
+    </section>
+  );
+}
+
 export function ProjectSidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const { openProjects, requestProjectClose, clearProjectCloseRequest, getCopilotStatus } =
     useOpenProjects();
+  const { activeWorktreeId } = useProjectSidebarWorkspace();
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const activeSlug = openProjects.find((project) => pathname === projectRoute(project.slug))?.slug;
+  const activeSlug = activeSlugFromPathname(pathname);
+  const selectedProject = useMemo(
+    () => openProjects.find((project) => project.slug === activeSlug),
+    [activeSlug, openProjects],
+  );
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: hydrate from localStorage after SSR to avoid mismatch
@@ -211,18 +444,18 @@ export function ProjectSidebar() {
               >
                 <X size={10} weight="bold" aria-hidden="true" />
               </button>
-              {isActive && (
-                <div
-                  data-testid="active-worktree-wrapper"
-                  className={isCollapsed ? "hidden" : undefined}
-                >
-                  <WorktreeTree slug={project.slug} />
-                </div>
-              )}
             </div>
           );
         })}
       </div>
+
+      {!isCollapsed && (
+        <SelectedProjectDetail
+          activeSlug={activeSlug}
+          activeWorktreeId={activeWorktreeId}
+          fallbackProject={selectedProject}
+        />
+      )}
 
       <div data-testid="project-sidebar-footer" className="shrink-0 pt-1">
         <button

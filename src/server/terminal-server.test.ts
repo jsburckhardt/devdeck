@@ -11,6 +11,20 @@ vi.mock("node-pty", () => ({
   spawn: (...args: unknown[]) => spawnMock(...args),
 }));
 
+vi.mock("../lib/worktree-utils", () => ({
+  resolveWorktreeRoot: vi.fn(),
+  WorktreeResolutionError: class WorktreeResolutionError extends Error {
+    constructor(
+      public readonly code: string,
+      message: string,
+      public readonly status: number,
+    ) {
+      super(message);
+      this.name = "WorktreeResolutionError";
+    }
+  },
+}));
+
 class MockPty implements Partial<IPty> {
   pid = 1234;
   onData = vi.fn();
@@ -19,6 +33,10 @@ class MockPty implements Partial<IPty> {
   resize = vi.fn();
   kill = vi.fn();
 }
+
+import { resolveWorktreeRoot, WorktreeResolutionError } from "../lib/worktree-utils";
+
+const mockResolveWorktreeRoot = vi.mocked(resolveWorktreeRoot);
 
 async function waitForListening(server: {
   wss: { once: (event: string, listener: () => void) => unknown };
@@ -49,6 +67,8 @@ describe("terminal server default endpoint", () => {
     vi.restoreAllMocks();
     spawnMock.mockReset();
     spawnMock.mockImplementation(() => new MockPty());
+    mockResolveWorktreeRoot.mockReset();
+    mockResolveWorktreeRoot.mockResolvedValue("/workspaces/demo");
     delete process.env.DEVDECK_WORKSPACE_ROOT;
   });
 
@@ -167,5 +187,89 @@ describe("terminal server default endpoint", () => {
   it("detects Copilot running status lines with whitespace and ellipsis", () => {
     expect(detectCopilotState("✦ Thinking...")).toBe("running");
     expect(detectCopilotState("\n  ⊙ Working esc cancel")).toBe("running");
+  });
+
+  it("workspace endpoint rejects unauthenticated requests before resolving context", async () => {
+    const server = createTerminalServer({ port: 0, token: "secret" });
+    await waitForListening(server);
+    const client = new WebSocket(
+      `ws://127.0.0.1:${serverPort(server)}/api/terminal/workspace?slug=demo`,
+    );
+
+    const closeEvent = await waitForClose(client);
+
+    expect(closeEvent.code).toBe(4401);
+    expect(mockResolveWorktreeRoot).not.toHaveBeenCalled();
+    expect(spawnMock).not.toHaveBeenCalled();
+
+    client.close();
+    server.cleanup();
+  });
+
+  it("workspace endpoint spawns a shell in the resolved project root", async () => {
+    const server = createTerminalServer({ port: 0, token: "secret" });
+    await waitForListening(server);
+    const client = new WebSocket(
+      `ws://127.0.0.1:${serverPort(server)}/api/terminal/workspace?token=secret&slug=demo`,
+    );
+    const setupMessage = waitForMessage(client);
+
+    await expect(setupMessage).resolves.toBe(JSON.stringify({ type: "setup", mode: "shell" }));
+    expect(mockResolveWorktreeRoot).toHaveBeenCalledWith("demo", null);
+    expect(spawnMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Array),
+      expect.objectContaining({ cwd: "/workspaces/demo" }),
+    );
+
+    client.close();
+    server.cleanup();
+  });
+
+  it("workspace endpoint spawns a shell in the resolved worktree root", async () => {
+    mockResolveWorktreeRoot.mockResolvedValue("/workspaces/demo/.trees/feature");
+    const server = createTerminalServer({ port: 0, token: "secret" });
+    await waitForListening(server);
+    const client = new WebSocket(
+      `ws://127.0.0.1:${serverPort(server)}/api/terminal/workspace?token=secret&slug=demo&worktree=0123456789abcdef`,
+    );
+    const setupMessage = waitForMessage(client);
+
+    await expect(setupMessage).resolves.toBe(JSON.stringify({ type: "setup", mode: "shell" }));
+    expect(mockResolveWorktreeRoot).toHaveBeenCalledWith("demo", "0123456789abcdef");
+    expect(spawnMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Array),
+      expect.objectContaining({ cwd: "/workspaces/demo/.trees/feature" }),
+    );
+
+    client.close();
+    server.cleanup();
+  });
+
+  it("workspace endpoint rejects empty or unknown worktree IDs with 1008", async () => {
+    const server = createTerminalServer({ port: 0, token: "secret" });
+    await waitForListening(server);
+    mockResolveWorktreeRoot.mockClear();
+    const emptyClient = new WebSocket(
+      `ws://127.0.0.1:${serverPort(server)}/api/terminal/workspace?token=secret&slug=demo&worktree=`,
+    );
+    const emptyClose = await waitForClose(emptyClient);
+    expect(emptyClose.code).toBe(1008);
+    expect(mockResolveWorktreeRoot).not.toHaveBeenCalled();
+
+    mockResolveWorktreeRoot.mockRejectedValue(
+      new WorktreeResolutionError("WORKTREE_NOT_FOUND", "Worktree not found", 404),
+    );
+    const unknownClient = new WebSocket(
+      `ws://127.0.0.1:${serverPort(server)}/api/terminal/workspace?token=secret&slug=demo&worktree=0123456789abcdef`,
+    );
+    const unknownClose = await waitForClose(unknownClient);
+    expect(unknownClose.code).toBe(1008);
+    expect(spawnMock).not.toHaveBeenCalled();
+
+    emptyClient.close();
+    unknownClient.close();
+    server.cleanup();
   });
 });

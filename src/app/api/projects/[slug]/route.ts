@@ -1,9 +1,134 @@
 import { NextRequest, NextResponse } from "next/server";
+import { execFile } from "child_process";
 import fs from "fs/promises";
-import { loadRegistry, saveRegistry, detectLanguage, readPackageJson } from "@/lib/registry";
-import type { Project } from "@/lib/types";
+import { promisify } from "util";
+import {
+  loadRegistry,
+  saveRegistry,
+  detectLanguage,
+  readPackageJson,
+  resolveProjectRecord,
+} from "@/lib/registry";
+import type { Project, ProjectDetailResponse, RepoUrlStatus } from "@/lib/types";
 
 const PROJECTS_DIR = process.env.DEVDECK_PROJECTS_DIR ?? "/workspaces";
+const execFileAsync = promisify(execFile);
+const CACHE_HEADERS = { "Cache-Control": "private, max-age=5, stale-while-revalidate=10" };
+
+function getErrorCode(error: unknown): string | undefined {
+  return typeof error === "object" && error !== null && "code" in error
+    ? String((error as { code?: unknown }).code)
+    : undefined;
+}
+
+function sanitizeRemoteUrl(rawRemote: string): { repoUrl: string; repoUrlDisplay: string } | null {
+  const remote = rawRemote.trim();
+  if (!remote) return null;
+
+  const scpLike = remote.match(/^(?:[^@/:]+@)?([^:]+):(.+)$/);
+  if (scpLike && !remote.includes("://")) {
+    const host = scpLike[1]?.trim();
+    const repoPath = scpLike[2]?.trim().replace(/^\/+/, "");
+    if (!host || !repoPath || host.includes("@")) return null;
+    return {
+      repoUrl: `ssh://${host}/${repoPath}`,
+      repoUrlDisplay: `${host}/${repoPath}`,
+    };
+  }
+
+  try {
+    const url = new URL(remote);
+    if (!["https:", "http:", "ssh:", "git:"].includes(url.protocol)) return null;
+    url.username = "";
+    url.password = "";
+    const pathname = url.pathname.replace(/^\/+/, "");
+    return {
+      repoUrl: url.toString(),
+      repoUrlDisplay: `${url.host}${pathname ? `/${pathname}` : ""}`,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function repoUrlStatus(projectPath: string): Promise<{
+  repoUrl: string | null;
+  repoUrlDisplay: string | null;
+  repoUrlStatus: RepoUrlStatus;
+}> {
+  try {
+    const { stdout } = await execFileAsync("git", ["config", "--get", "remote.origin.url"], {
+      cwd: projectPath,
+    });
+    const sanitized = sanitizeRemoteUrl(stdout);
+    if (!sanitized) {
+      return { repoUrl: null, repoUrlDisplay: null, repoUrlStatus: "invalid" };
+    }
+    return { ...sanitized, repoUrlStatus: "available" };
+  } catch (error) {
+    if (getErrorCode(error) === "ENOENT") {
+      return { repoUrl: null, repoUrlDisplay: null, repoUrlStatus: "git-unavailable" };
+    }
+
+    const hasGitMetadata = await fs
+      .access(`${projectPath}/.git`)
+      .then(() => true)
+      .catch(() => false);
+    return {
+      repoUrl: null,
+      repoUrlDisplay: null,
+      repoUrlStatus: hasGitMetadata ? "no-origin" : "not-git",
+    };
+  }
+}
+
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ slug: string }> },
+) {
+  try {
+    const { slug } = await params;
+    const record = await resolveProjectRecord(slug);
+    if (!record) {
+      return NextResponse.json(
+        { error: "Project not found", code: "PROJECT_NOT_FOUND" },
+        { status: 404 },
+      );
+    }
+
+    if (!record.exists) {
+      const body: ProjectDetailResponse = {
+        slug: record.slug,
+        name: record.name ?? record.slug,
+        ...(record.description ? { description: record.description } : {}),
+        available: false,
+        repoUrl: null,
+        repoUrlDisplay: null,
+        repoUrlStatus: "unavailable",
+      };
+      return NextResponse.json(body, { headers: CACHE_HEADERS });
+    }
+
+    const pkg = await readPackageJson(record.path);
+    const language = await detectLanguage(record.path);
+    const repo = await repoUrlStatus(record.path);
+    const body: ProjectDetailResponse = {
+      slug: record.slug,
+      name: record.name ?? pkg.name ?? record.slug,
+      description: record.description ?? pkg.description ?? `A ${language} project`,
+      language,
+      available: true,
+      ...repo,
+    };
+
+    return NextResponse.json(body, { headers: CACHE_HEADERS });
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Failed to load project", code: "PROJECT_DETAIL_FAILED", details: String(error) },
+      { status: 500 },
+    );
+  }
+}
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {

@@ -51,6 +51,55 @@ export async function resolveProjectPath(slug: string): Promise<string> {
   return path.resolve(getProjectsDir(), sanitized);
 }
 
+export interface ResolvedProjectRecord {
+  slug: string;
+  path: string;
+  source: "auto" | "manual";
+  name?: string;
+  description?: string;
+  hidden?: boolean;
+  exists: boolean;
+}
+
+async function directoryExists(projectPath: string): Promise<boolean> {
+  try {
+    const stat = await fs.stat(projectPath);
+    return stat.isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+export async function resolveProjectRecord(slug: string): Promise<ResolvedProjectRecord | null> {
+  const normalizedSlug = slug.trim();
+  if (!normalizedSlug || /[^a-zA-Z0-9_-]/.test(normalizedSlug)) return null;
+
+  const registry = await loadRegistry();
+  const entry = registry.projects.find((project) => project.slug === normalizedSlug);
+  if (entry) {
+    if (entry.hidden) return null;
+    return {
+      slug: entry.slug,
+      path: entry.path,
+      source: entry.source,
+      name: entry.name,
+      description: entry.description,
+      hidden: entry.hidden,
+      exists: await directoryExists(entry.path),
+    };
+  }
+
+  const projectPath = path.resolve(getProjectsDir(), normalizedSlug);
+  if (!(await directoryExists(projectPath))) return null;
+
+  return {
+    slug: normalizedSlug,
+    path: projectPath,
+    source: "auto",
+    exists: true,
+  };
+}
+
 export async function detectLanguage(projectPath: string): Promise<string> {
   try {
     const files = await fs.readdir(projectPath);

@@ -91,6 +91,20 @@ describe("useTerminal", () => {
     expect(ws.url).not.toContain("worktree=");
   });
 
+  it("builds a workspace websocket URL with slug and safe worktree ID", async () => {
+    renderHook(() =>
+      useTerminal({
+        workspace: { slug: "demo", worktreeId: "0123456789abcdef" },
+      }),
+    );
+
+    await waitFor(() => expect(mockWebSocketInstances.length).toBeGreaterThan(0));
+    const ws = mockWebSocketInstances[0];
+    expect(ws.url).toContain("/api/terminal/workspace");
+    expect(ws.url).toContain("slug=demo");
+    expect(ws.url).toContain("worktree=0123456789abcdef");
+  });
+
   it("treats close code 1008 as an unsupported-context failure without reconnecting", async () => {
     const { result } = renderHook(() => useTerminal());
     await waitFor(() => expect(mockWebSocketInstances.length).toBeGreaterThan(0));

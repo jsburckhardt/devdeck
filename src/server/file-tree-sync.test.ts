@@ -113,10 +113,10 @@ describe("file-tree sync watcher helper", () => {
     expect(second.ok).toBe(true);
     expect(watchers).toHaveLength(1);
     expect(getFileTreeSyncRegistrySnapshotForTests()).toMatchObject([
-      { scope: { slug: "demo", worktree: ".trees/feature" }, subscriberCount: 2 },
+      { scope: { slug: "demo", worktree: "feature" }, subscriberCount: 2 },
     ]);
 
-    watchers[0].emit("add", "/repo/demo/.trees/feature/src/index.ts");
+    watchers[0].emit("add", "/repo/demo/feature/src/index.ts");
     vi.advanceTimersByTime(FILE_TREE_SYNC_DEBOUNCE_MS);
 
     expect(firstEvents).toHaveLength(1);

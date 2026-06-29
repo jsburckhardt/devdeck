@@ -1,54 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
-import { execFile } from "child_process";
-import { promisify } from "util";
-import path from "path";
-import { resolveProjectPath } from "@/lib/registry";
-import type { Worktree } from "@/lib/types";
+import {
+  buildWorktreeListResponse,
+  readGitWorktreePorcelain,
+  WorktreeResolutionError,
+} from "@/lib/worktree-utils";
+import { resolveProjectRecord } from "@/lib/registry";
+import type { WorktreeListResponse, WorktreeListStatus } from "@/lib/types";
 
-const execFileAsync = promisify(execFile);
+const CACHE_HEADERS = { "Cache-Control": "private, max-age=5, stale-while-revalidate=10" };
 
-function parseWorktreePorcelain(output: string, projectRoot: string): Worktree[] {
-  const treesDir = path.join(projectRoot, ".trees");
-  const blocks = output.split("\n\n").filter((b) => b.trim());
-  const worktrees: Worktree[] = [];
+function getErrorCode(error: unknown): string | undefined {
+  return typeof error === "object" && error !== null && "code" in error
+    ? String((error as { code?: unknown }).code)
+    : undefined;
+}
 
-  for (const block of blocks) {
-    const lines = block.split("\n");
-    let worktreePath = "";
-    let branch = "";
-
-    for (const line of lines) {
-      if (line.startsWith("worktree ")) {
-        worktreePath = line.slice("worktree ".length);
-      } else if (line.startsWith("branch ")) {
-        branch = line.slice("branch ".length).replace(/^refs\/heads\//, "");
-      } else if (line.trim() === "detached") {
-        branch = "(detached)";
-      }
-    }
-
-    if (!worktreePath) continue;
-
-    // Only include entries within the project's .trees/ directory
-    const relative = path.relative(treesDir, worktreePath);
-    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) continue;
-
-    // Name is the relative path from .trees/ (typically a single segment)
-    const name = relative;
-    if (!name) continue;
-
-    worktrees.push({
-      name,
-      branch: branch || name,
-    });
-  }
-
-  return worktrees;
+function emptyResponse(
+  projectSlug: string,
+  status: WorktreeListStatus,
+  activeWorktreeId: string | null,
+): WorktreeListResponse {
+  return {
+    projectSlug,
+    status,
+    root: {
+      id: null,
+      name: "Project root",
+      active: activeWorktreeId === null,
+    },
+    worktrees: [],
+  };
 }
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
-  const slug = searchParams.get("slug");
+  const slug = searchParams.get("slug")?.trim();
+  const activeWorktreeId = searchParams.get("activeWorktree") || null;
 
   if (!slug) {
     return NextResponse.json(
@@ -57,28 +44,41 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  let root: string;
-  try {
-    root = await resolveProjectPath(slug);
-  } catch {
+  const record = await resolveProjectRecord(slug);
+  if (!record) {
     return NextResponse.json(
       { error: "Project not found", code: "PROJECT_NOT_FOUND" },
       { status: 404 },
     );
   }
 
+  if (!record.exists) {
+    return NextResponse.json(emptyResponse(record.slug, "project-unavailable", activeWorktreeId), {
+      headers: CACHE_HEADERS,
+    });
+  }
+
   try {
-    const { stdout } = await execFileAsync("git", ["worktree", "list", "--porcelain"], {
-      cwd: root,
+    const porcelain = await readGitWorktreePorcelain(record.path);
+    const response = await buildWorktreeListResponse({
+      activeWorktreeId,
+      porcelain,
+      projectRoot: record.path,
+      projectSlug: record.slug,
     });
-    const worktrees = parseWorktreePorcelain(stdout, root);
-    return NextResponse.json(worktrees, {
-      headers: { "Cache-Control": "private, max-age=5, stale-while-revalidate=10" },
-    });
-  } catch {
-    // Git not available, not a git repo, or .trees/ absent — return empty array
-    return NextResponse.json([], {
-      headers: { "Cache-Control": "private, max-age=5, stale-while-revalidate=10" },
+    return NextResponse.json(response, { headers: CACHE_HEADERS });
+  } catch (error) {
+    if (error instanceof WorktreeResolutionError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.status },
+      );
+    }
+
+    const status: WorktreeListStatus =
+      getErrorCode(error) === "ENOENT" ? "git-unavailable" : "not-git";
+    return NextResponse.json(emptyResponse(record.slug, status, activeWorktreeId), {
+      headers: CACHE_HEADERS,
     });
   }
 }

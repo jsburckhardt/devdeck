@@ -11,18 +11,28 @@ vi.mock("child_process", () => ({
   execFile: vi.fn(),
 }));
 
+vi.mock("@/lib/worktree-utils", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/worktree-utils")>();
+  return {
+    ...actual,
+    resolveWorktreeRoot: vi.fn(),
+  };
+});
+
 vi.mock("util", () => ({
   promisify: (fn: unknown) => fn,
 }));
 
 import fs from "fs/promises";
 import { resolveProjectPath } from "@/lib/registry";
+import { resolveWorktreeRoot, WorktreeResolutionError } from "@/lib/worktree-utils";
 import { execFile } from "child_process";
 import { GET } from "./route";
 import { NextRequest } from "next/server";
 
 const mockFs = vi.mocked(fs);
 const mockResolveProjectPath = vi.mocked(resolveProjectPath);
+const mockResolveWorktreeRoot = vi.mocked(resolveWorktreeRoot);
 const mockExecFile = vi.mocked(execFile);
 
 function makeRequest(params: Record<string, string>): NextRequest {
@@ -36,6 +46,15 @@ function makeRequest(params: Record<string, string>): NextRequest {
 beforeEach(() => {
   vi.clearAllMocks();
   mockResolveProjectPath.mockResolvedValue("/workspaces/test-project");
+  mockResolveWorktreeRoot.mockImplementation(async (_slug, worktree) => {
+    if (worktree === "../bad") {
+      throw new WorktreeResolutionError("INVALID_WORKTREE", "Invalid 'worktree' parameter", 400);
+    }
+    if (worktree === "missing") {
+      throw new WorktreeResolutionError("WORKTREE_NOT_FOUND", "Worktree not found", 404);
+    }
+    return worktree ? "/workspaces/test-project/.trees/feat" : "/workspaces/test-project";
+  });
   mockFs.realpath.mockImplementation(async (target) => String(target));
   mockFs.stat.mockResolvedValue({ isDirectory: () => true } as never);
 });
@@ -70,9 +89,6 @@ describe("GET /api/files/diff", () => {
     expect(invalid.status).toBe(400);
     await expect(invalid.json()).resolves.toMatchObject({ code: "INVALID_WORKTREE" });
 
-    mockFs.realpath
-      .mockResolvedValueOnce("/workspaces/test-project" as never)
-      .mockRejectedValueOnce(Object.assign(new Error("missing"), { code: "ENOENT" }) as never);
     const missing = await GET(makeRequest({ slug: "test", path: "a.ts", worktree: "missing" }));
     expect(missing.status).toBe(404);
     await expect(missing.json()).resolves.toMatchObject({ code: "WORKTREE_NOT_FOUND" });

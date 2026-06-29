@@ -18,13 +18,23 @@ vi.mock("child_process", () => ({
   ),
 }));
 
+vi.mock("@/lib/worktree-utils", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/worktree-utils")>();
+  return {
+    ...actual,
+    resolveWorktreeRoot: vi.fn(),
+  };
+});
+
 import fs from "fs/promises";
 import { NextRequest } from "next/server";
 import { resolveProjectPath } from "@/lib/registry";
+import { resolveWorktreeRoot, WorktreeResolutionError } from "@/lib/worktree-utils";
 import { GET } from "./route";
 
 const mockFs = vi.mocked(fs);
 const mockResolveProjectPath = vi.mocked(resolveProjectPath);
+const mockResolveWorktreeRoot = vi.mocked(resolveWorktreeRoot);
 
 type StatKind =
   | "file"
@@ -64,6 +74,15 @@ function request(slug?: string, relativePath?: string, worktree?: string): NextR
 beforeEach(() => {
   vi.resetAllMocks();
   mockResolveProjectPath.mockResolvedValue("/workspaces/test-project");
+  mockResolveWorktreeRoot.mockImplementation(async (_slug, worktree) => {
+    if (worktree === "../bad") {
+      throw new WorktreeResolutionError("INVALID_WORKTREE", "Invalid 'worktree' parameter", 400);
+    }
+    if (worktree === "missing") {
+      throw new WorktreeResolutionError("WORKTREE_NOT_FOUND", "Worktree not found", 404);
+    }
+    return worktree ? "/workspaces/test-project/.trees/feat" : "/workspaces/test-project";
+  });
   mockFs.access.mockResolvedValue(undefined);
   mockFs.realpath.mockImplementation(async (target) => String(target));
   mockFs.stat.mockResolvedValue(stat("directory") as never);
@@ -109,9 +128,6 @@ describe("GET /api/files", () => {
     expect(invalid.status).toBe(400);
     await expect(invalid.json()).resolves.toMatchObject({ code: "INVALID_WORKTREE" });
 
-    mockFs.realpath
-      .mockResolvedValueOnce("/workspaces/test-project" as never)
-      .mockRejectedValueOnce(Object.assign(new Error("missing"), { code: "ENOENT" }) as never);
     const missing = await GET(request("test", undefined, "missing"));
     expect(missing.status).toBe(404);
     await expect(missing.json()).resolves.toMatchObject({ code: "WORKTREE_NOT_FOUND" });
