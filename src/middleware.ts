@@ -10,6 +10,10 @@ function constantTimeEqual(a: string, b: string): boolean {
   return result === 0;
 }
 
+function isTerminalEndpoint(pathname: string): boolean {
+  return pathname === "/api/terminal" || pathname.startsWith("/api/terminal/");
+}
+
 export function middleware(request: NextRequest) {
   const token = process.env.DEVDECK_TOKEN;
 
@@ -19,7 +23,7 @@ export function middleware(request: NextRequest) {
   }
 
   // Skip WebSocket terminal endpoint — terminal server handles its own auth
-  if (request.nextUrl.pathname === "/api/terminal") {
+  if (isTerminalEndpoint(request.nextUrl.pathname)) {
     return NextResponse.next();
   }
 

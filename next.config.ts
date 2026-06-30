@@ -21,7 +21,11 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/api/terminal",
-        destination: `http://127.0.0.1:${terminalPort}`,
+        destination: `http://127.0.0.1:${terminalPort}/api/terminal`,
+      },
+      {
+        source: "/api/terminal/:path*",
+        destination: `http://127.0.0.1:${terminalPort}/api/terminal/:path*`,
       },
     ];
   },
