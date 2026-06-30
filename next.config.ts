@@ -20,12 +20,12 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
-        source: "/api/terminal",
-        destination: `http://127.0.0.1:${terminalPort}/api/terminal`,
+        source: "/api/terminal/workspace",
+        destination: `http://127.0.0.1:${terminalPort}/api/terminal/workspace`,
       },
       {
-        source: "/api/terminal/:path*",
-        destination: `http://127.0.0.1:${terminalPort}/api/terminal/:path*`,
+        source: "/api/terminal",
+        destination: `http://127.0.0.1:${terminalPort}/api/terminal`,
       },
     ];
   },

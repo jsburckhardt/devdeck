@@ -226,6 +226,33 @@ describe("terminal server default endpoint", () => {
     server.cleanup();
   });
 
+  it("default endpoint still rejects slug while workspace endpoint accepts it", async () => {
+    const server = createTerminalServer({ port: 0, token: "secret" });
+    await waitForListening(server);
+
+    const defaultClient = new WebSocket(
+      `ws://127.0.0.1:${serverPort(server)}/api/terminal?token=secret&slug=demo`,
+    );
+    const defaultClose = await waitForClose(defaultClient);
+    expect(defaultClose.code).toBe(1008);
+    expect(spawnMock).not.toHaveBeenCalled();
+
+    const workspaceClient = new WebSocket(
+      `ws://127.0.0.1:${serverPort(server)}/api/terminal/workspace?token=secret&slug=demo`,
+    );
+    const setupMessage = waitForMessage(workspaceClient);
+    await expect(setupMessage).resolves.toBe(JSON.stringify({ type: "setup", mode: "shell" }));
+    expect(spawnMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Array),
+      expect.objectContaining({ cwd: "/workspaces/demo" }),
+    );
+
+    defaultClient.close();
+    workspaceClient.close();
+    server.cleanup();
+  });
+
   it("workspace endpoint spawns a shell in the resolved worktree root", async () => {
     mockResolveWorktreeRoot.mockResolvedValue("/workspaces/demo/.trees/feature");
     const server = createTerminalServer({ port: 0, token: "secret" });
