@@ -1,27 +1,30 @@
 import { test, expect, type Page } from "@playwright/test";
+import { ensureProject, openAuthed, expectTerminalConnected } from "./helpers";
 
-const TOKEN = process.env.DEVDECK_TOKEN ?? "e2e-test-token";
+const TERMINAL_PROJECT_SLUG = "terminal-target";
 
 async function openFirstProjectTerminal(page: Page) {
-  // Navigate with token to authenticate
-  await page.goto(`/?token=${TOKEN}`);
-
-  await page.waitForLoadState("domcontentloaded");
+  await ensureProject(TERMINAL_PROJECT_SLUG, {
+    description: "Deterministic Playwright fixture for terminal flows",
+  });
+  await openAuthed(page);
 
   // Wait for projects to load and click the first one
   await page.waitForSelector('[data-testid="project-card"]', { timeout: 10000 });
-  await page.click('[data-testid="project-card"]:first-child');
+  await page.getByRole("button", { name: new RegExp(TERMINAL_PROJECT_SLUG) }).click();
 
   // Wait for workspace to load and terminal panel to appear
   await page.waitForSelector('[data-testid="terminal-panel"]', { timeout: 10000 });
 
   // Check terminal connected
-  await expect(page.locator('[data-testid="terminal-panel"]').getByText("Connected")).toBeVisible({
-    timeout: 15000,
-  });
+  await expectTerminalConnected(page);
 }
 
 async function expectNoTerminalHorizontalOverflow(page: Page) {
+  await expect(page.locator('[data-testid="terminal-container"] .xterm')).toBeVisible({
+    timeout: 15000,
+  });
+
   await expect
     .poll(
       async () =>
@@ -46,7 +49,7 @@ async function expectNoTerminalHorizontalOverflow(page: Page) {
               : [];
           });
         }),
-      { timeout: 5000 },
+      { timeout: 15000 },
     )
     .toEqual([]);
 }
@@ -54,10 +57,16 @@ async function expectNoTerminalHorizontalOverflow(page: Page) {
 async function expectTerminalLine(page: Page, expectedLine: string) {
   await expect
     .poll(
-      async () =>
-        page
+      async () => {
+        const rows = await page
           .locator('[data-testid="terminal-container"] .xterm-rows > div')
-          .evaluateAll((rows) => rows.map((row) => row.textContent?.trim() ?? "")),
+          .evaluateAll((rows) => rows.map((row) => row.textContent?.trim() ?? ""));
+
+        // xterm can wrap very narrow/mobile rows between characters. Check both
+        // row-preserving text and a compact row join so the assertion still
+        // proves the terminal emitted the marker without depending on wrapping.
+        return `${rows.join("\n")}\n${rows.join("")}`;
+      },
       { timeout: 5000 },
     )
     .toContain(expectedLine);

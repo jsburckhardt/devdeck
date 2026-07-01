@@ -1,35 +1,19 @@
 import { test, expect, type Page } from "@playwright/test";
 import fs from "fs/promises";
-import path from "path";
+import { ensureProject, openAuthed, projectRoot, writeFixtureFile } from "./helpers";
 
-const TOKEN = process.env.DEVDECK_TOKEN ?? "e2e-test-token";
 const PROJECT_SLUG = "layout-target";
-const fixtureRoot = path.join(process.cwd(), "e2e", "fixtures", "projects", PROJECT_SLUG);
-
-async function writeFile(filePath: string, content: string) {
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, content, "utf-8");
-}
+const fixtureRoot = projectRoot(PROJECT_SLUG);
 
 async function ensureFixtureProject() {
-  const packageJson = JSON.stringify(
-    {
-      name: PROJECT_SLUG,
-      description: "Deterministic Playwright fixture for workspace layout geometry",
-      version: "1.0.0",
-      private: true,
-    },
-    null,
-    2,
-  );
-
-  await writeFile(path.join(fixtureRoot, "package.json"), packageJson + "\n");
-  await writeFile(path.join(fixtureRoot, "README.md"), "# Layout Target\n");
-  await writeFile(path.join(fixtureRoot, "src", "index.ts"), "export const layoutTarget = true;\n");
+  await ensureProject(PROJECT_SLUG, {
+    description: "Deterministic Playwright fixture for workspace layout geometry",
+  });
+  await writeFixtureFile(PROJECT_SLUG, "src/index.ts", "export const layoutTarget = true;\n");
 }
 
 async function openLayoutTarget(page: Page) {
-  await page.goto(`/project/${PROJECT_SLUG}?token=${TOKEN}`);
+  await openAuthed(page, `/project/${PROJECT_SLUG}`);
   await page.waitForSelector('[data-testid="terminal-panel"]', { timeout: 15000 });
   await expect(page.locator('[data-testid="terminal-panel"]').getByText("Connected")).toBeVisible({
     timeout: 15000,

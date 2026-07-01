@@ -61,6 +61,12 @@ verbs:
     json: true
     source: package.json
 
+  - name: format_check
+    command: "npm run format:check"
+    description: Check code formatting with Prettier
+    json: true
+    source: package.json
+
   - name: test
     command: "npm run test [-- <vitest args...>]"
     description: Run vitest test suite, optionally forwarding targeted Vitest args after --
@@ -81,6 +87,69 @@ verbs:
         targetCount: "count of forwarded Vitest args; 0 for full-suite runs"
         truncated: "true when any sanitized label was capped; false otherwise"
 
+  - name: e2e
+    command: "npm run e2e [-- <playwright args...>]"
+    description: Run Playwright browser E2E suite with harness-owned loopback ports and isolated fixtures
+    json: true
+    source: package.json
+    passthrough:
+      delimiter: "--"
+      no_args_command: "npm run e2e"
+      targeted_command: "npm run e2e -- <playwright args...>"
+      json_command:
+        full_suite: "npm run e2e"
+        targeted_summary: "npm run e2e -- <N target(s)>"
+      harness_json_scope: "recognized before passthrough delimiter only"
+      safety: "arguments forwarded through shell arrays; no eval"
+      metadata:
+        targeted: "false for full-suite runs; true when Playwright args are forwarded"
+        targets: "array of sanitized string labels only; [] for full-suite runs"
+        targetCount: "count of forwarded Playwright args; 0 for full-suite runs"
+        truncated: "true when any sanitized label was capped; false otherwise"
+    runtime:
+      bind_host: "127.0.0.1"
+      web_port_range: "42000-42999"
+      terminal_port_range: "43000-43999"
+      max_candidates: 50
+      fixed_port_conflict_verdict: degraded
+      reuse_existing_server: false
+      fixture_scratch: ".harness/run/e2e-<run-id>/"
+      checked_in_fixtures: "e2e/fixtures/ are immutable seeds copied into scratch"
+      cleanup: "release only harness-owned locks and scratch data on pass, fail, interrupt, timeout, or degraded"
+    metadata_policy:
+      shape: "metadata.e2e contains the canonical sanitized E2E object; selected fields may also appear at metadata top level for compatibility"
+      test_counts:
+        path: "metadata.e2e.testCounts"
+        fields: [passed, failed, skipped, timedOut, interrupted]
+      allowed:
+        [
+          e2e,
+          targeted,
+          targets,
+          targetCount,
+          truncated,
+          playwrightProjects,
+          testCounts,
+          webPort,
+          terminalPort,
+          fixtureRunId,
+          durationMs,
+          artifactPaths,
+        ]
+      forbidden:
+        [
+          raw stdout/stderr,
+          browser console logs,
+          response bodies,
+          screenshots/traces/videos inline,
+          tokens,
+          cookies,
+          query strings,
+          environment variables,
+          credential URLs,
+          external absolute paths,
+        ]
+
   - name: build
     command: "npm run build"
     description: Build the Next.js application
@@ -96,7 +165,7 @@ verbs:
 
   - name: verify
     command: null
-    description: Run lint → format:check → build → test → smoke and write evidence
+    description: Run lint → format:check → build → test → smoke → e2e and write evidence
     json: true
     source: .harness/contract.yml
     steps:
@@ -110,6 +179,8 @@ verbs:
         command: "npm run test"
       - name: smoke
         command: "shared smoke implementation (auto loopback port)"
+      - name: e2e
+        command: "shared E2E implementation (auto loopback web/terminal ports)"
     evidence_dir: .harness/evidence/
     step_timeout_seconds: 300
     smoke:
@@ -130,6 +201,42 @@ verbs:
             durationMs,
             cleanup,
             reason,
+          ]
+    e2e:
+      shared_implementation: true
+      sequence_position: after smoke
+      continue_on_failure: true
+      evidence_metadata:
+        shape: "step metadata contains metadata.e2e as the canonical sanitized E2E object"
+        test_counts:
+          path: "metadata.e2e.testCounts"
+          fields: [passed, failed, skipped, timedOut, interrupted]
+        allowed:
+          [
+            e2e,
+            targeted,
+            targets,
+            targetCount,
+            truncated,
+            playwrightProjects,
+            testCounts,
+            webPort,
+            terminalPort,
+            fixtureRunId,
+            durationMs,
+            artifactPaths,
+          ]
+        forbidden:
+          [
+            raw stdout/stderr,
+            tokens,
+            cookies,
+            query strings,
+            environment variables,
+            response bodies,
+            browser console logs,
+            screenshots/traces/videos inline,
+            external absolute paths,
           ]
 
   - name: smoke
@@ -254,6 +361,7 @@ detection:
           format,
           "format:check",
           test,
+          e2e,
           "test:watch",
           "test:coverage",
         ]
@@ -282,7 +390,7 @@ detection:
 
     - file: .harness/contract.yml
       detected: true
-      verify_steps: [lint, format_check, build, test, smoke]
+      verify_steps: [lint, format_check, build, test, smoke, e2e]
 
     - file: .devcontainer/devcontainer.json
       detected: true
@@ -291,6 +399,24 @@ detection:
     - pattern: ".github/workflows/*.yml"
       detected: true
       files: [ci.yml]
+
+ci:
+  workflow: .github/workflows/ci.yml
+  source_of_truth: "non-browser gates; browser E2E is local-only"
+  job_timeout_minutes: 60
+  verification_timeout_minutes: 45
+  setup_sequence:
+    - name: npm ci
+      timeout_minutes: null
+    - name: ./harness lint
+    - name: ./harness format_check
+    - name: ./harness build
+    - name: ./harness test
+    - name: ./harness smoke
+  browser_e2e:
+    ci_enabled: false
+    local_commands: ["./harness e2e", "./harness verify"]
+    reason: "GitHub-hosted runner browser provisioning is unreliable for this repository"
 
 evidence:
   directory: .harness/evidence/
@@ -306,7 +432,7 @@ evidence:
         verdict,
         timestamp,
         sanitized summary,
-        sanitized smoke/test metadata,
+        sanitized smoke/test/E2E metadata,
       ]
     forbidden:
       [
@@ -326,7 +452,13 @@ runtime:
   directory: .harness/run/
   retention: local-only (gitignored)
   content_policy:
-    allowed: [secret-free smoke ownership metadata, runtime scratch data, and test fixture metadata]
+    allowed:
+      [
+        secret-free smoke/E2E ownership metadata,
+        E2E scratch fixture data,
+        runtime scratch data,
+        and test fixture metadata,
+      ]
     forbidden: [secrets, tokens, raw logs, credential URLs]
 
 friction:

@@ -145,7 +145,9 @@ $(_bold "Verbs:")
   doctor          Check local prerequisites and project health
   install         Install dependencies from package-lock.json
   lint            Run ESLint on the codebase
+  format_check    Check code formatting with Prettier
   test            Run vitest test suite; pass targets after --
+  e2e             Run Playwright browser E2E suite; pass args after --
   build           Build the Next.js application
   smoke           Start the built app and probe loopback HTTP readiness
   boot            Start the development server
@@ -160,8 +162,10 @@ $(_bold "Options:")
 
 $(_bold "Examples:")
   ./harness install
+  ./harness format_check
   ./harness test -- src/server/start-dev.test.ts
   ./harness test -- --json src/server/start-dev.test.ts
+  ./harness e2e -- e2e/terminal.spec.ts --project=chromium
   ./harness smoke
   ./harness smoke --port auto
   ./harness smoke --port 41042 --json
@@ -186,7 +190,7 @@ cmd_orient() {
   if $JSON_MODE; then
     local surfaces
     surfaces=$(cat <<'ORIENT_JSON'
-{"verb":"orient","verdict":"pass","command":null,"steps":[],"evidence":null,"message":"Detected project surfaces for DevDeck","timestamp":"__TS__","commands":{"install":{"command":"npm ci"},"lint":{"command":"npm run lint"},"test":{"command":"npm run test [-- <targets>]","supportsTargets":true,"passthrough":"./harness test -- <vitest args...>","json":"./harness test --json -- <vitest args...>"},"build":{"command":"npm run build"},"smoke":{"command":"npm run start -- --hostname 127.0.0.1 --port <selectedPort>","usage":"./harness smoke [--port auto|PORT] [--json]","portModeDefault":"auto","autoRange":"41000-41999"},"boot":{"command":"npx tsx src/server/start-dev.mts"},"verify":{"sequence":["lint","format_check","build","test","smoke"]}},"surfaces":{"package_json":{"detected":true,"scripts":["dev","build","analyze","start","terminal","dev:all","lint","format","format:check","test","test:watch","test:coverage"]},"justfile":{"detected":true,"recipes":["dev","dev-next","dev-terminal","build","start","test","test-watch","test-coverage","lint","format","format-check","check","install","clean","reinstall","info"]},"harness_contract":{"detected":true,"verbs":["help","orient","doctor","install","lint","test","build","boot","smoke","verify","status","clean","friction add","friction list"],"verify_steps":["lint","format_check","build","test","smoke"]},"devcontainer":{"detected":true},"ci_workflows":{"detected":true,"files":["ci.yml"]}}}
+{"verb":"orient","verdict":"pass","command":null,"steps":[],"evidence":null,"message":"Detected project surfaces for DevDeck","timestamp":"__TS__","commands":{"install":{"command":"npm ci"},"lint":{"command":"npm run lint"},"format_check":{"command":"npm run format:check"},"test":{"command":"npm run test [-- <targets>]","supportsTargets":true,"passthrough":"./harness test -- <vitest args...>","json":"./harness test --json -- <vitest args...>"},"e2e":{"command":"npm run e2e [-- <playwright args>]","supportsTargets":true,"passthrough":"./harness e2e -- <playwright args...>","json":"./harness e2e --json -- <playwright args...>","runner":"Playwright","webPortRange":"42000-42999","terminalPortRange":"43000-43999","fixtureIsolation":".harness/run/e2e-<run-id>/"},"build":{"command":"npm run build"},"smoke":{"command":"npm run start -- --hostname 127.0.0.1 --port <selectedPort>","usage":"./harness smoke [--port auto|PORT] [--json]","portModeDefault":"auto","autoRange":"41000-41999"},"boot":{"command":"npx tsx src/server/start-dev.mts"},"verify":{"sequence":["lint","format_check","build","test","smoke","e2e"]}},"surfaces":{"package_json":{"detected":true,"scripts":["dev","build","analyze","start","terminal","dev:all","lint","format","format:check","test","e2e","test:watch","test:coverage"]},"justfile":{"detected":true,"recipes":["dev","dev-next","dev-terminal","build","start","test","test-watch","test-coverage","lint","format","format-check","check","install","clean","reinstall","info"]},"harness_contract":{"detected":true,"verbs":["help","orient","doctor","install","lint","format_check","test","e2e","build","boot","smoke","verify","status","clean","friction add","friction list"],"verify_steps":["lint","format_check","build","test","smoke","e2e"]},"devcontainer":{"detected":true},"ci_workflows":{"detected":true,"files":["ci.yml"]}}}
 ORIENT_JSON
 )
     local ts
@@ -205,7 +209,7 @@ ORIENT_JSON
   echo "├─────────────────────────────────────────────────────────────┤"
   echo "│ package.json          │ $(_green "detected") │ 12 scripts                    │"
   echo "│ justfile              │ $(_green "detected") │ 16 recipes                    │"
-  echo "│ harness contract      │ $(_green "detected") │ 5 verify steps                │"
+  echo "│ harness contract      │ $(_green "detected") │ 6 verify steps                │"
   echo "│ devcontainer.json     │ $(_green "detected") │ node, just, tmux, gh          │"
   echo "│ CI workflows          │ $(_green "detected") │ ci.yml                        │"
   echo "└─────────────────────────────────────────────────────────────┘"
@@ -215,13 +219,16 @@ ORIENT_JSON
   echo ""
   printf "  %-20s %s\n" "install" "npm ci"
   printf "  %-20s %s\n" "lint"   "npm run lint"
+  printf "  %-20s %s\n" "format_check" "npm run format:check"
   printf "  %-20s %s\n" "test"   "npm run test"
   printf "  %-20s %s\n" "test -- <args>" "npm run test -- <args...>"
+  printf "  %-20s %s\n" "e2e"    "npm run e2e"
+  printf "  %-20s %s\n" "e2e -- <args>" "npm run e2e -- <args...>"
   printf "  %-20s %s\n" "build"  "npm run build"
   printf "  %-20s %s\n" "smoke"  "npm run start -- --hostname 127.0.0.1 --port <auto|PORT>"
   printf "  %-20s %s\n" "boot"   "npx tsx src/server/start-dev.mts"
   printf "  %-20s %s\n" "clean"  "rm -rf .next node_modules"
-  printf "  %-20s %s\n" "verify" "lint → format:check → build → test → smoke"
+  printf "  %-20s %s\n" "verify" "lint → format:check → build → test → smoke → e2e"
   echo ""
 
   echo "Verdict: $(_verdict_label "$verdict")"
@@ -400,6 +407,12 @@ cmd_lint() {
   _run_wrapped "lint" "Run ESLint on the codebase" "$NPM_BIN" run lint
 }
 
+# ── Verb: format_check ────────────────────────────────────────
+cmd_format_check() {
+  _parse_json_only_args "$@"
+  _run_wrapped "format_check" "Check code formatting with Prettier" "$NPM_BIN" run format:check
+}
+
 # ── Sanitized metadata helpers ─────────────────────────────────
 _sanitize_label() {
   local s="$1"
@@ -541,6 +554,535 @@ cmd_test() {
   fi
 
   _verdict_exit "$verdict"
+}
+
+# ── Shared E2E implementation ──────────────────────────────────
+E2E_WEB_PORT=""
+E2E_TERMINAL_PORT=""
+E2E_WEB_LOCK_DIR=""
+E2E_TERMINAL_LOCK_DIR=""
+E2E_WEB_LOCK_OWNED=false
+E2E_TERMINAL_LOCK_OWNED=false
+E2E_RUN_ID=""
+E2E_SCRATCH_DIR=""
+E2E_PROJECTS_DIR=""
+E2E_DATA_DIR=""
+E2E_ARTIFACT_DIR=""
+E2E_VERDICT="unknown"
+E2E_EXIT_CODE=3
+E2E_DURATION_MS=0
+E2E_METADATA_JSON="{}"
+E2E_MESSAGE=""
+E2E_REASON="not_started"
+E2E_CANDIDATE_ATTEMPTS=0
+E2E_TARGETS_JSON='{"targeted":false,"targets":[],"targetCount":0,"truncated":false}'
+E2E_PLAYWRIGHT_PROJECTS_JSON='["chromium"]'
+E2E_TEST_COUNTS_JSON='{"passed":0,"failed":0,"skipped":0,"timedOut":0,"interrupted":0}'
+
+_e2e_usage() {
+  cat <<'EOF'
+Usage: ./harness e2e [--json] [-- <playwright args...>]
+
+Options:
+  --json            Output machine-readable JSON
+  --                Forward following arguments verbatim to Playwright
+
+Environment:
+  DEVDECK_E2E_WEB_PORT       Fixed web port, otherwise auto-select 42000-42999
+  DEVDECK_E2E_TERMINAL_PORT  Fixed terminal port, otherwise auto-select 43000-43999
+EOF
+}
+
+_e2e_fail_usage() {
+  local reason="$1"
+  if $JSON_MODE; then
+    _json_result_meta "e2e" "fail" "" "$reason. Usage: ./harness e2e [--json] [-- <playwright args...>]" "" '{"reason":"invalid_usage"}'
+  else
+    echo ""
+    _e2e_usage
+    echo ""
+    echo "Verdict: $(_verdict_label "fail") — $reason"
+  fi
+  return 1
+}
+
+_e2e_runtime_init() {
+  _smoke_runtime_init
+}
+
+_e2e_lock_dir_for() {
+  local role="$1" port="$2"
+  printf '%s/e2e-%s-%s-%s.lock' "$RUN_DIR" "$SMOKE_REPO_ID" "$role" "$port"
+}
+
+_e2e_write_owner_metadata() {
+  local lock_dir="$1" role="$2" port="$3"
+  local metadata_file="$lock_dir/owner.json"
+  local tmp_file="$metadata_file.$$"
+  local timestamp
+  timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"version":1,"kind":"devdeck-harness-e2e","repoIdentity":"%s","role":"%s","port":%s,"parentPid":%s,"fixtureRunId":"%s","timestamp":"%s"}\n' \
+    "$(_json_escape "$SMOKE_REPO_ID")" \
+    "$(_json_escape "$role")" \
+    "$port" \
+    "$$" \
+    "$(_json_escape "$E2E_RUN_ID")" \
+    "$(_json_escape "$timestamp")" > "$tmp_file"
+  mv -f -- "$tmp_file" "$metadata_file"
+}
+
+_e2e_release_lock() {
+  local role="$1"
+  local lock_dir=""
+  if [[ "$role" == "web" ]]; then
+    lock_dir="$E2E_WEB_LOCK_DIR"
+    if [[ "$E2E_WEB_LOCK_OWNED" != "true" ]]; then return 0; fi
+    E2E_WEB_LOCK_OWNED=false
+    E2E_WEB_LOCK_DIR=""
+  else
+    lock_dir="$E2E_TERMINAL_LOCK_DIR"
+    if [[ "$E2E_TERMINAL_LOCK_OWNED" != "true" ]]; then return 0; fi
+    E2E_TERMINAL_LOCK_OWNED=false
+    E2E_TERMINAL_LOCK_DIR=""
+  fi
+  case "$lock_dir" in
+    "$RUN_DIR"/e2e-"$SMOKE_REPO_ID"-*.lock) rm -rf -- "$lock_dir" ;;
+  esac
+}
+
+_e2e_cleanup() {
+  _e2e_release_lock "web" || true
+  _e2e_release_lock "terminal" || true
+  if [[ -n "$E2E_SCRATCH_DIR" ]]; then
+    case "$E2E_SCRATCH_DIR" in
+      "$RUN_DIR"/e2e-*) rm -rf -- "$E2E_SCRATCH_DIR" ;;
+    esac
+  fi
+  E2E_SCRATCH_DIR=""
+}
+
+_e2e_signal_exit() {
+  _e2e_cleanup
+  exit 1
+}
+
+_e2e_acquire_lock() {
+  local role="$1" port="$2"
+  local lock_dir
+  _e2e_runtime_init || return 1
+  lock_dir="$(_e2e_lock_dir_for "$role" "$port")"
+  if ! mkdir "$lock_dir" 2>/dev/null; then
+    return 1
+  fi
+  if [[ "$role" == "web" ]]; then
+    E2E_WEB_LOCK_DIR="$lock_dir"
+    E2E_WEB_LOCK_OWNED=true
+  else
+    E2E_TERMINAL_LOCK_DIR="$lock_dir"
+    E2E_TERMINAL_LOCK_OWNED=true
+  fi
+  _e2e_write_owner_metadata "$lock_dir" "$role" "$port"
+}
+
+_e2e_try_port() {
+  local role="$1" port="$2"
+  if _smoke_port_listening "$port"; then
+    return 1
+  fi
+  if ! _e2e_acquire_lock "$role" "$port"; then
+    return 1
+  fi
+  if _smoke_port_listening "$port"; then
+    _e2e_release_lock "$role"
+    return 1
+  fi
+  return 0
+}
+
+_e2e_json_array_from_args() {
+  local items="" raw
+  for raw in "$@"; do
+    _sanitize_label "$raw"
+    if [[ -n "$items" ]]; then items+=","; fi
+    items+="\"$(_json_escape "$SANITIZED_LABEL")\""
+  done
+  printf '[%s]' "$items"
+}
+
+_e2e_playwright_projects_json() {
+  local projects=()
+  local expect_project_value=false
+  local raw
+  for raw in "$@"; do
+    if $expect_project_value; then
+      projects+=("$raw")
+      expect_project_value=false
+      continue
+    fi
+    case "$raw" in
+      --project=*) projects+=("${raw#--project=}") ;;
+      --project) expect_project_value=true ;;
+    esac
+  done
+  if [[ ${#projects[@]} -eq 0 ]]; then
+    projects=("chromium")
+  fi
+  _e2e_json_array_from_args "${projects[@]}"
+}
+
+_e2e_command_label() {
+  local count="$1"
+  if [[ "$count" -gt 0 ]]; then
+    printf 'npm run e2e -- <%d target(s)>' "$count"
+  else
+    printf 'npm run e2e'
+  fi
+}
+
+_e2e_script_available() {
+  node -e '
+const fs = require("node:fs");
+const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+process.exit(pkg.scripts && typeof pkg.scripts.e2e === "string" ? 0 : 1);
+' >/dev/null 2>&1
+}
+
+_e2e_playwright_available() {
+  [[ "${HARNESS_E2E_FORCE_NO_PLAYWRIGHT:-}" == "1" ]] && return 1
+  [[ -x "$HARNESS_DIR/node_modules/.bin/playwright" || -d "$HARNESS_DIR/node_modules/@playwright/test" ]]
+}
+
+_e2e_setup_scratch() {
+  mkdir -p "$RUN_DIR"
+  local seed_dir="$HARNESS_DIR/e2e/fixtures"
+  E2E_RUN_ID="e2e-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+  E2E_SCRATCH_DIR="$RUN_DIR/$E2E_RUN_ID"
+  mkdir -p "$E2E_SCRATCH_DIR"
+  if [[ -d "$seed_dir" ]]; then
+    cp -R "$seed_dir/." "$E2E_SCRATCH_DIR/"
+  fi
+  E2E_PROJECTS_DIR="$E2E_SCRATCH_DIR/projects"
+  E2E_DATA_DIR="$E2E_SCRATCH_DIR/.devdeck-data"
+  E2E_ARTIFACT_DIR="$E2E_SCRATCH_DIR/test-results"
+  mkdir -p "$E2E_PROJECTS_DIR" "$E2E_DATA_DIR" "$E2E_ARTIFACT_DIR"
+}
+
+_e2e_report_path() {
+  if [[ -n "$E2E_ARTIFACT_DIR" ]]; then
+    printf '%s/playwright-results.json' "$E2E_ARTIFACT_DIR"
+  else
+    printf '%s/.harness/run/playwright-artifacts-%s/playwright-results.json' "$HARNESS_DIR" "$$"
+  fi
+}
+
+_e2e_test_counts_json() {
+  local report_path
+  report_path="$(_e2e_report_path)"
+  node -e '
+const fs = require("node:fs");
+const reportPath = process.argv[1];
+const counts = { passed: 0, failed: 0, skipped: 0, timedOut: 0, interrupted: 0 };
+const bump = (status) => {
+  if (status === "passed") counts.passed += 1;
+  else if (status === "failed") counts.failed += 1;
+  else if (status === "skipped") counts.skipped += 1;
+  else if (status === "timedOut") counts.timedOut += 1;
+  else if (status === "interrupted") counts.interrupted += 1;
+};
+const visitSuite = (suite) => {
+  for (const spec of suite.specs || []) {
+    for (const test of spec.tests || []) {
+      const results = Array.isArray(test.results) ? test.results : [];
+      const final = results.length > 0 ? results[results.length - 1].status : undefined;
+      if (final) {
+        bump(final);
+      } else if (test.status === "skipped") {
+        counts.skipped += 1;
+      }
+    }
+  }
+  for (const child of suite.suites || []) visitSuite(child);
+};
+try {
+  const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+  for (const suite of report.suites || []) visitSuite(suite);
+} catch {
+  // Missing or malformed reports produce zero counts rather than leaking raw diagnostics.
+}
+process.stdout.write(JSON.stringify(counts));
+' "$report_path" 2>/dev/null || printf '{"passed":0,"failed":0,"skipped":0,"timedOut":0,"interrupted":0}'
+}
+
+_e2e_metadata() {
+  local reason="$1"
+  local targets_base="${E2E_TARGETS_JSON%?}"
+  local nested_targets="${targets_base#\{}"
+  local reason_field=""
+  if [[ "$E2E_VERDICT" != "pass" ]]; then
+    reason_field=",\"reason\":\"$(_json_escape "$reason")\""
+  fi
+  local fields
+  fields="\"playwrightProjects\":$E2E_PLAYWRIGHT_PROJECTS_JSON,\"testCounts\":$E2E_TEST_COUNTS_JSON,\"webHost\":\"127.0.0.1\",\"webPort\":${E2E_WEB_PORT:-null},\"terminalHost\":\"127.0.0.1\",\"terminalPort\":${E2E_TERMINAL_PORT:-null},\"fixtureRunId\":\"$(_json_escape "$E2E_RUN_ID")\",\"durationMs\":$E2E_DURATION_MS,\"artifactPaths\":[]$reason_field"
+  printf '%s,%s,"e2e":{%s,%s}}' \
+    "$targets_base" \
+    "$fields" \
+    "$nested_targets" \
+    "$fields"
+}
+
+_e2e_verify_metadata() {
+  local reason_field=""
+  if [[ "$E2E_VERDICT" != "pass" ]]; then
+    reason_field=",\"reason\":\"$(_json_escape "$E2E_REASON")\""
+  fi
+  local targets_base="${E2E_TARGETS_JSON%?}"
+  local nested_targets="${targets_base#\{}"
+  local fields
+  fields="\"playwrightProjects\":$E2E_PLAYWRIGHT_PROJECTS_JSON,\"testCounts\":$E2E_TEST_COUNTS_JSON,\"webPort\":${E2E_WEB_PORT:-null},\"terminalPort\":${E2E_TERMINAL_PORT:-null},\"fixtureRunId\":\"$(_json_escape "$E2E_RUN_ID")\",\"durationMs\":$E2E_DURATION_MS,\"artifactPaths\":[]$reason_field"
+  printf '%s,%s,"e2e":{%s,%s}}' \
+    "$targets_base" \
+    "$fields" \
+    "$nested_targets" \
+    "$fields"
+}
+
+_e2e_allocate_ports() {
+  local fixed_web="${DEVDECK_E2E_WEB_PORT:-}"
+  local fixed_terminal="${DEVDECK_E2E_TERMINAL_PORT:-}"
+  local web_start terminal_start max_attempts attempt web_port terminal_port
+  E2E_CANDIDATE_ATTEMPTS=0
+
+  if [[ -n "$fixed_web" && ! "$fixed_web" =~ ^[0-9]+$ ]]; then
+    E2E_REASON="invalid_web_port"
+    return 1
+  fi
+  if [[ -n "$fixed_terminal" && ! "$fixed_terminal" =~ ^[0-9]+$ ]]; then
+    E2E_REASON="invalid_terminal_port"
+    return 1
+  fi
+  if [[ -n "$fixed_web" ]] && ! _valid_tcp_port "$fixed_web"; then
+    E2E_REASON="invalid_web_port"
+    return 1
+  fi
+  if [[ -n "$fixed_terminal" ]] && ! _valid_tcp_port "$fixed_terminal"; then
+    E2E_REASON="invalid_terminal_port"
+    return 1
+  fi
+
+  web_start="$(_bounded_int "${HARNESS_E2E_WEB_AUTO_START:-42000}" 42000 42999)"
+  terminal_start="$(_bounded_int "${HARNESS_E2E_TERMINAL_AUTO_START:-43000}" 43000 43999)"
+  if (( web_start < 42000 || web_start > 42999 )); then web_start=42000; fi
+  if (( terminal_start < 43000 || terminal_start > 43999 )); then terminal_start=43000; fi
+  max_attempts="$(_bounded_int "${HARNESS_E2E_AUTO_MAX_ATTEMPTS:-50}" 50 50)"
+
+  for (( attempt=0; attempt<max_attempts; attempt++ )); do
+    web_port="${fixed_web:-$((web_start + attempt))}"
+    terminal_port="${fixed_terminal:-$((terminal_start + attempt))}"
+    if [[ -z "$fixed_web" ]] && (( web_port > 42999 )); then break; fi
+    if [[ -z "$fixed_terminal" ]] && (( terminal_port > 43999 )); then break; fi
+    E2E_CANDIDATE_ATTEMPTS=$((E2E_CANDIDATE_ATTEMPTS + 1))
+
+    if ! _e2e_try_port "web" "$web_port"; then
+      _e2e_release_lock "web"
+      _e2e_release_lock "terminal"
+      if [[ -n "$fixed_web" ]]; then
+        E2E_WEB_PORT="$web_port"
+        E2E_TERMINAL_PORT="$terminal_port"
+        E2E_REASON="fixed_web_port_in_use"
+        return 2
+      fi
+      continue
+    fi
+    if ! _e2e_try_port "terminal" "$terminal_port"; then
+      _e2e_release_lock "web"
+      _e2e_release_lock "terminal"
+      if [[ -n "$fixed_terminal" ]]; then
+        E2E_WEB_PORT="$web_port"
+        E2E_TERMINAL_PORT="$terminal_port"
+        E2E_REASON="fixed_terminal_port_in_use"
+        return 2
+      fi
+      continue
+    fi
+
+    E2E_WEB_PORT="$web_port"
+    E2E_TERMINAL_PORT="$terminal_port"
+    E2E_REASON="ports_reserved"
+    return 0
+  done
+
+  E2E_WEB_PORT="${fixed_web:-$web_start}"
+  E2E_TERMINAL_PORT="${fixed_terminal:-$terminal_start}"
+  E2E_REASON="auto_port_exhausted"
+  return 2
+}
+
+_e2e_run() {
+  local command_label="$1"
+  shift
+  local passthrough=("$@")
+  local start_time end_time
+  start_time=$(date +%s%N 2>/dev/null || date +%s)
+  E2E_VERDICT="unknown"
+  E2E_EXIT_CODE=3
+  E2E_DURATION_MS=0
+  E2E_MESSAGE=""
+  E2E_REASON="unknown"
+  E2E_WEB_PORT=""
+  E2E_TERMINAL_PORT=""
+  E2E_RUN_ID=""
+  E2E_SCRATCH_DIR=""
+  E2E_PROJECTS_DIR=""
+  E2E_DATA_DIR=""
+  E2E_ARTIFACT_DIR=""
+  E2E_TARGETS_JSON="$(_targets_metadata_json "${passthrough[@]}")"
+  E2E_PLAYWRIGHT_PROJECTS_JSON="$(_e2e_playwright_projects_json "${passthrough[@]}")"
+  E2E_TEST_COUNTS_JSON='{"passed":0,"failed":0,"skipped":0,"timedOut":0,"interrupted":0}'
+
+  trap _e2e_cleanup EXIT
+  trap _e2e_signal_exit INT TERM
+
+  if ! command -v "$NPM_BIN" >/dev/null 2>&1; then
+    E2E_REASON="missing_npm"
+    E2E_VERDICT="unknown"
+    E2E_EXIT_CODE=3
+  elif ! _e2e_script_available; then
+    E2E_REASON="missing_e2e_script"
+    E2E_VERDICT="unknown"
+    E2E_EXIT_CODE=3
+  elif ! _e2e_playwright_available; then
+    E2E_REASON="missing_playwright"
+    E2E_VERDICT="unknown"
+    E2E_EXIT_CODE=3
+  else
+    _e2e_setup_scratch
+    set +e
+    _e2e_allocate_ports
+    local allocate_rc=$?
+    set -e
+    if [[ "$allocate_rc" -eq 1 ]]; then
+      E2E_VERDICT="fail"
+      E2E_EXIT_CODE=1
+    elif [[ "$allocate_rc" -eq 2 ]]; then
+      E2E_VERDICT="degraded"
+      E2E_EXIT_CODE=2
+    else
+      local cmd=("$NPM_BIN" run e2e)
+      if [[ ${#passthrough[@]} -gt 0 ]]; then
+        cmd+=(-- "${passthrough[@]}")
+      fi
+      local e2e_timeout
+      e2e_timeout="$(_bounded_int "${HARNESS_E2E_TIMEOUT_SECONDS:-600}" 600 1800)"
+      local run_env=(
+        env
+        DEVDECK_PROJECTS_DIR="$E2E_PROJECTS_DIR"
+        DEVDECK_DATA_DIR="$E2E_DATA_DIR"
+        DEVDECK_E2E_ARTIFACT_DIR="$E2E_ARTIFACT_DIR"
+        DEVDECK_TOKEN="${DEVDECK_TOKEN:-devdeck-e2e-token}"
+        DEVDECK_E2E_WEB_HOST="127.0.0.1"
+        DEVDECK_E2E_WEB_PORT="$E2E_WEB_PORT"
+        DEVDECK_E2E_TERMINAL_HOST="127.0.0.1"
+        DEVDECK_E2E_TERMINAL_PORT="$E2E_TERMINAL_PORT"
+        TERMINAL_HOST="127.0.0.1"
+        TERMINAL_PORT="$E2E_TERMINAL_PORT"
+        PORT="$E2E_WEB_PORT"
+        PLAYWRIGHT_HTML_OPEN="never"
+      )
+      rm -f -- "$(_e2e_report_path)" 2>/dev/null || true
+      set +e
+      if $JSON_MODE; then
+        (cd "$HARNESS_DIR" && timeout "$e2e_timeout" "${run_env[@]}" "${cmd[@]}") >/dev/null 2>&1
+      else
+        (cd "$HARNESS_DIR" && timeout "$e2e_timeout" "${run_env[@]}" "${cmd[@]}")
+      fi
+      local run_rc=$?
+      set -e
+      E2E_EXIT_CODE="$run_rc"
+      if [[ "$run_rc" -eq 0 ]]; then
+        E2E_VERDICT="pass"
+        E2E_REASON="completed"
+      elif [[ "$run_rc" -eq 124 ]]; then
+        E2E_VERDICT="fail"
+        E2E_REASON="timeout"
+      else
+        E2E_VERDICT="fail"
+        E2E_REASON="playwright_failed"
+      fi
+      E2E_TEST_COUNTS_JSON="$(_e2e_test_counts_json)"
+    fi
+  fi
+
+  end_time=$(date +%s%N 2>/dev/null || date +%s)
+  if [[ ${#start_time} -gt 10 ]]; then
+    E2E_DURATION_MS=$(( (end_time - start_time) / 1000000 ))
+  else
+    E2E_DURATION_MS=$(( (end_time - start_time) * 1000 ))
+  fi
+
+  case "$E2E_VERDICT" in
+    pass) E2E_MESSAGE="E2E pass" ;;
+    degraded) E2E_MESSAGE="E2E degraded: $E2E_REASON" ;;
+    fail) E2E_MESSAGE="E2E failed: $E2E_REASON" ;;
+    *) E2E_MESSAGE="E2E unknown: $E2E_REASON" ;;
+  esac
+  E2E_METADATA_JSON="$(_e2e_metadata "$E2E_REASON")"
+  _e2e_cleanup
+  trap - EXIT INT TERM
+  set +e
+  return "$E2E_EXIT_CODE"
+}
+
+# ── Verb: e2e ──────────────────────────────────────────────────
+cmd_e2e() {
+  local passthrough=()
+  local saw_delimiter=false
+
+  while [[ $# -gt 0 ]]; do
+    if $saw_delimiter; then
+      passthrough+=("$1")
+      shift
+      continue
+    fi
+    case "$1" in
+      --json)
+        JSON_MODE=true
+        ;;
+      --)
+        saw_delimiter=true
+        ;;
+      --*)
+        _e2e_fail_usage "Unknown harness e2e flag before --: $1"
+        return $?
+        ;;
+      *)
+        _e2e_fail_usage "Playwright arguments must follow --"
+        return $?
+        ;;
+    esac
+    shift
+  done
+
+  local command_label
+  command_label="$(_e2e_command_label "${#passthrough[@]}")"
+  set +e
+  _e2e_run "$command_label" "${passthrough[@]}"
+  local e2e_rc=$?
+  set -e
+
+  local steps_json
+  steps_json="{\"name\":\"e2e\",\"verdict\":\"$E2E_VERDICT\",\"exitCode\":$E2E_EXIT_CODE,\"durationMs\":$E2E_DURATION_MS,\"metadata\":$E2E_METADATA_JSON}"
+  if $JSON_MODE; then
+    _json_result_steps_meta "e2e" "$E2E_VERDICT" "$steps_json" "" "$E2E_MESSAGE" "$E2E_METADATA_JSON" "$command_label"
+  else
+    echo ""
+    echo "Verb: $(_bold "e2e") — Playwright browser E2E"
+    echo "Command: $(_cyan "$command_label")"
+    echo "Ports: web=${E2E_WEB_PORT:-unselected} terminal=${E2E_TERMINAL_PORT:-unselected}"
+    echo "Verdict: $(_verdict_label "$E2E_VERDICT") — $E2E_MESSAGE"
+  fi
+
+  : "$e2e_rc"
+  _verdict_exit "$E2E_VERDICT"
 }
 
 # ── Verb: build ────────────────────────────────────────────────
@@ -1457,6 +1999,30 @@ cmd_verify() {
   step_results+=("{\"name\":\"smoke\",\"verdict\":\"$SMOKE_VERDICT\",\"exitCode\":$SMOKE_EXIT_CODE,\"durationMs\":$SMOKE_DURATION_MS,\"description\":\"Start the built app and verify it responds to HTTP\",\"metadata\":$verify_smoke_metadata}")
   _aggregate_verdict "$SMOKE_VERDICT"
 
+  if ! $JSON_MODE; then
+    printf "  %-15s " "e2e"
+  fi
+
+  set +e
+  local saved_json_mode="$JSON_MODE"
+  JSON_MODE=true
+  _e2e_run "npm run e2e"
+  local e2e_rc=$?
+  JSON_MODE="$saved_json_mode"
+  set -e
+  : "$e2e_rc"
+  local verify_e2e_metadata
+  verify_e2e_metadata="$(_e2e_verify_metadata)"
+
+  if ! $JSON_MODE; then
+    printf "%s (%dms)\n" "$(_verdict_label "$E2E_VERDICT")" "$E2E_DURATION_MS"
+  fi
+
+  if [[ -n "$steps_json" ]]; then steps_json+=","; fi
+  steps_json+="{\"name\":\"e2e\",\"verdict\":\"$E2E_VERDICT\",\"exitCode\":$E2E_EXIT_CODE,\"durationMs\":$E2E_DURATION_MS,\"metadata\":$verify_e2e_metadata}"
+  step_results+=("{\"name\":\"e2e\",\"verdict\":\"$E2E_VERDICT\",\"exitCode\":$E2E_EXIT_CODE,\"durationMs\":$E2E_DURATION_MS,\"description\":\"Run Playwright browser E2E through isolated harness runtime\",\"metadata\":$verify_e2e_metadata}")
+  _aggregate_verdict "$E2E_VERDICT"
+
   # Write evidence
   local ts
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -1755,8 +2321,14 @@ case "$VERB" in
   lint)
     cmd_lint "$@"
     ;;
+  format_check)
+    cmd_format_check "$@"
+    ;;
   test)
     cmd_test "$@"
+    ;;
+  e2e)
+    cmd_e2e "$@"
     ;;
   build)
     cmd_build "$@"

@@ -8,8 +8,10 @@ The `./harness` CLI is the preferred operating surface for DevDeck. It wraps exi
 ./harness help      # List all verbs
 ./harness install   # Install dependencies from package-lock.json
 ./harness doctor    # Check prerequisites
+./harness format_check  # Check formatting with Prettier
 ./harness verify    # Run full verification
 ./harness smoke     # Smoke an existing production build
+./harness e2e       # Run Playwright browser E2E workflows
 ./harness orient    # See project surface map
 ```
 
@@ -22,11 +24,13 @@ The `./harness` CLI is the preferred operating surface for DevDeck. It wraps exi
 | `doctor` | Check prerequisites (node, npm, git, just, tmux) | — |
 | `install` | Install dependencies from package-lock.json | `npm ci` |
 | `lint` | Run ESLint | `npm run lint` |
+| `format_check` | Check code formatting with Prettier | `npm run format:check` |
 | `test` | Run vitest suite; pass targets after `--` | `npm run test [-- <vitest args...>]` |
+| `e2e` | Run Playwright browser E2E; pass args after `--` | `npm run e2e [-- <playwright args...>]` |
 | `build` | Build Next.js app | `npm run build` |
 | `smoke` | Smoke an existing production build on loopback | `npm run start -- --hostname 127.0.0.1 --port <selectedPort>` |
 | `boot` | Start dev server | `npx tsx src/server/start-dev.mts` |
-| `verify` | Full verification with evidence | lint → format:check → build → test → smoke |
+| `verify` | Full verification with evidence | lint → format:check → build → test → smoke → e2e |
 | `status` | Report harness config and evidence | — |
 | `clean` | Remove .next and node_modules | `rm -rf .next node_modules` |
 | `friction add` | Record an inference friction entry | — |
@@ -50,7 +54,10 @@ Most verbs support `--json` for machine-readable output:
 ```bash
 ./harness doctor --json
 ./harness install --json
+./harness format_check --json
 ./harness test --json -- src/server/start-dev.test.ts
+./harness e2e --json
+./harness e2e --json -- e2e/terminal.spec.ts --project=chromium
 ./harness smoke --json
 ./harness verify --json
 ./harness status --json
@@ -71,7 +78,7 @@ JSON schema:
 
 ## Verification & Evidence
 
-`./harness verify` runs the full pipeline: lint → format:check → build → test → smoke.
+`./harness verify` runs the full pipeline: lint → format:check → build → test → smoke → e2e.
 
 - All steps run even if earlier ones fail (continue-on-failure)
 - Each step has a 5-minute timeout
@@ -79,6 +86,7 @@ JSON schema:
 - Evidence contains only: command name, exit code, duration, verdict, timestamp, summary
 - Evidence **never** includes secrets, tokens, env vars, or raw logs
 - Verify reuses the same smoke implementation as `./harness smoke` and embeds only the stable smoke evidence metadata: `portMode`, `selectedPort`, `httpStatus`, `timeoutSeconds`, and `pollIntervalMs`.
+- Verify reuses the same E2E implementation as `./harness e2e` and embeds only sanitized E2E metadata under `metadata.e2e`: targeting summary, Playwright projects, `testCounts`, selected ports, fixture run ID, duration, and safe repo-relative artifact paths.
 
 ## Targeted Tests
 
@@ -99,6 +107,31 @@ full-suite runs emit `command: "npm run test"`, `targeted: false`,
 `command: "npm run test -- <N target(s)>"`, `targeted: true`, `targets` as an
 array of sanitized string labels, `targetCount`, and a top-level `truncated`
 flag.
+
+## Browser E2E
+
+`./harness e2e [--json] [-- <playwright args...>]` runs Playwright through the repository harness:
+
+```bash
+./harness e2e
+./harness e2e --json
+./harness e2e -- e2e/terminal.spec.ts --project=chromium
+./harness e2e --json -- --reporter=json e2e/file-tree-lazy.spec.ts
+```
+
+- Harness-owned `--json` is recognized only before `--`.
+- Every Playwright argument after `--` is forwarded verbatim through shell arrays; no `eval` or string-built commands are used.
+- Canonical E2E metadata is emitted under `metadata.e2e`; selected fields may also appear directly under `metadata` for compatibility.
+- Full-suite `metadata.e2e` uses `targeted: false`, `targets: []`, `targetCount: 0`, and `truncated: false`.
+- Targeted `metadata.e2e` reports sanitized target labels without changing the forwarded Playwright arguments.
+- `metadata.e2e.testCounts` reports nested `passed`, `failed`, `skipped`, `timedOut`, and `interrupted` counts parsed from the sanitized Playwright JSON reporter output.
+- E2E runs allocate loopback-only web ports from `42000-42999` and terminal ports from `43000-43999`.
+- Fixed `DEVDECK_E2E_WEB_PORT` / `DEVDECK_E2E_TERMINAL_PORT` conflicts return `degraded`; unrelated listeners are never killed or reused.
+- Fixture state is copied or generated under `.harness/run/e2e-<run-id>/`; checked-in `e2e/fixtures/` files are immutable seeds.
+- Playwright reports/artifacts are scoped to the same per-run scratch directory through `DEVDECK_E2E_ARTIFACT_DIR`; persistent harness evidence records only sanitized metadata and may use an empty `artifactPaths` array.
+- Cleanup releases only harness-owned locks and scratch state on pass, fail, timeout, interrupt, or degraded paths.
+
+Smoke and E2E are intentionally different: `./harness smoke` proves an existing production build answers a root HTTP readiness probe; `./harness e2e` proves representative browser workflows through Playwright.
 
 ## Smoke
 
@@ -132,13 +165,17 @@ Smoke does not run `build`; use `./harness build` first or `./harness verify` fo
 
 Harness JSON and evidence exclude raw stdout/stderr, response bodies, redirect
 locations, tokens, cookies, query strings, environment variables, credential URLs,
-and external absolute paths. Standalone smoke JSON may include richer sanitized
-lifecycle metadata, but verify smoke evidence is intentionally limited to
-`portMode`, `selectedPort`, `httpStatus`, `timeoutSeconds`, and `pollIntervalMs`.
-Test target metadata converts repo-absolute paths to repo-relative paths,
+browser console logs, inline screenshots/traces/videos, and external absolute paths.
+Standalone smoke/E2E JSON may include richer sanitized lifecycle metadata, but
+verify evidence is intentionally limited to stable smoke/E2E metadata. Canonical
+browser metadata lives at `metadata.e2e`, including nested `testCounts`; Test and
+E2E target metadata converts repo-absolute paths to repo-relative paths,
 redacts outside-repo absolute paths, strips query/control characters, caps labels
 at 200 characters, sets top-level `truncated: true` when any label was capped,
 and includes `targeted`/`targetCount` summary fields.
+
+Direct `npx playwright` diagnostics are allowed only when harness E2E output is too
+coarse for local debugging; agents must record that bypass as friction.
 
 ## Friction
 
@@ -152,6 +189,24 @@ Friction records capture inferences — things the harness should prove but curr
 Each record answers: **"What did the agent have to infer that the harness should have proved?"**
 
 Records are stored in `.harness/friction.jsonl` as single JSON lines.
+
+## CI Verification
+
+Pull-request CI intentionally excludes Playwright/browser E2E because the
+GitHub-hosted runner cannot reliably provision browser runtimes for this
+repository. Browser E2E remains a local verification gate through
+`./harness e2e` and `./harness verify`.
+
+CI runs the non-browser gates:
+
+1. `npm ci`
+2. `./harness lint`
+3. `./harness format_check`
+4. `./harness build`
+5. `./harness test`
+6. `./harness smoke`
+
+The workflow caps verification at 45 minutes and the whole job at 60 minutes.
 
 ## Clean Command Safety
 
@@ -178,6 +233,6 @@ Records are stored in `.harness/friction.jsonl` as single JSON lines.
 | `./harness` | CLI entrypoint |
 | `.harness/contract.yml` | Machine-readable contract |
 | `.harness/evidence/` | Verification evidence (gitignored) |
-| `.harness/run/` | Local smoke ownership locks and test scratch metadata (gitignored) |
+| `.harness/run/` | Local smoke/E2E ownership locks and E2E scratch metadata (gitignored) |
 | `.harness/friction.jsonl` | Inference friction log |
 | `.harness/README.md` | This file |
