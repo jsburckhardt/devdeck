@@ -1,5 +1,5 @@
 # CI workflow for DevDeck
-# Runs the repository harness verification contract.
+# Runs the repository CI verification contract.
 # Source of truth for step definitions: .harness/contract.yml
 
 name: CI
@@ -31,12 +31,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Playwright Chromium
-        timeout-minutes: 10
-        env:
-          DEBIAN_FRONTEND: noninteractive
-        run: npx playwright install --with-deps chromium
-
-      - name: Verify
+      - name: Verify non-browser gates
         timeout-minutes: 45
-        run: ./harness verify
+        run: |
+          ./harness lint
+          npm run format:check
+          ./harness build
+          ./harness test
+          ./harness smoke

@@ -27,7 +27,7 @@ eslint.config.mjs                                           — ESLint configura
 .github/agents/rpiv-implementer.agent.md              — RPIV implementer agent (code, tests, verification)
 .github/agents/rpiv-planner.agent.md                  — RPIV planner agent (ADRs, core-components, action plans, task breakdown, test plans)
 .github/agents/rpiv-research.agent.md                 — RPIV research agent (exploration, scope classification)
-.github/workflows/ci.yml                              — GitHub Actions CI workflow (installs Playwright Chromium, then runs `./harness verify` on PRs)
+.github/workflows/ci.yml                              — GitHub Actions CI workflow (runs non-browser gates on PRs; Playwright E2E remains local-only)
 docs/README.md                                              — Application documentation index
 project/README.md                                             — Project documentation index
 project/architecture/README.md                                 — Architecture documentation index

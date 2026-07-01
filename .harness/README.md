@@ -186,18 +186,23 @@ Each record answers: **"What did the agent have to infer that the harness should
 
 Records are stored in `.harness/friction.jsonl` as single JSON lines.
 
-## CI Browser Setup
+## CI Verification
 
-Pull-request CI keeps `./harness verify` as the single verification gate:
+Pull-request CI intentionally excludes Playwright/browser E2E because the
+GitHub-hosted runner cannot reliably provision browser runtimes for this
+repository. Browser E2E remains a local verification gate through
+`./harness e2e` and `./harness verify`.
+
+CI runs the non-browser gates:
 
 1. `npm ci`
-2. `npx playwright install --with-deps chromium`
-3. `./harness verify`
+2. `./harness lint`
+3. `npm run format:check`
+4. `./harness build`
+5. `./harness test`
+6. `./harness smoke`
 
-The Playwright browser setup step is noninteractive and timeout-bounded so CI
-cannot hang indefinitely before the harness runs. The current workflow caps
-browser provisioning at 10 minutes, verification at 45 minutes, and the whole
-job at 60 minutes.
+The workflow caps verification at 45 minutes and the whole job at 60 minutes.
 
 ## Clean Command Safety
 

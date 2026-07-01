@@ -9,7 +9,7 @@ Implemented all planned tasks T1–T6:
 - Updated `./harness verify` sequence to `lint → format_check → build → test → smoke → e2e`.
 - Updated Playwright config to consume harness env, bind loopback hosts, disable server reuse, and keep artifacts under safe repo-relative paths.
 - Expanded Playwright coverage for auth, project registry, file tree, file viewer/edit/save/conflict, terminal, and layout/accessibility-oriented controls.
-- Updated CI to install Playwright Chromium dependencies before `./harness verify`.
+- Updated CI to run non-browser gates only; Playwright/browser E2E remains local-only.
 - Updated harness/user/agent documentation and `.harness/contract.yml`.
 
 ## Files Changed
@@ -63,11 +63,12 @@ Implemented all planned tasks T1–T6:
 - `./harness e2e --json` — pass with `metadata.e2e.testCounts: { passed: 15, failed: 0, skipped: 0, timedOut: 0, interrupted: 0 }`.
 - `./harness verify --json` — pass; verify evidence includes the same canonical `metadata.e2e.testCounts` shape.
 
-## CI Browser Provisioning Fix
+## CI Browser E2E Removal Fix
 
-- Fixed the PR CI workflow hang by bounding Playwright browser provisioning.
-- `.github/workflows/ci.yml` now runs browser setup with `DEBIAN_FRONTEND=noninteractive`, a 10-minute step timeout, a 45-minute verify timeout, and a 60-minute job timeout.
-- Updated `.harness/contract.yml`, `.harness/README.md`, CORE-COMPONENT-0009, and DECISION-LOG Decision #276 to document the noninteractive timeout-bounded CI browser setup contract.
+- Removed Playwright browser installation and browser E2E from PR CI because GitHub-hosted runners could not provision Chromium reliably for this repository.
+- `.github/workflows/ci.yml` now runs `./harness lint`, `npm run format:check`, `./harness build`, `./harness test`, and `./harness smoke` only.
+- Browser E2E remains local-only through `./harness e2e` and `./harness verify`.
+- Updated `.harness/contract.yml`, `.harness/README.md`, CORE-COMPONENT-0009, and DECISION-LOG Decision #277 to document the CI/local verification split.
 
 ## Known Limitations
 

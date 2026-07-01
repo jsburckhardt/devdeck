@@ -396,22 +396,22 @@ detection:
 
 ci:
   workflow: .github/workflows/ci.yml
-  source_of_truth: "./harness verify"
+  source_of_truth: "non-browser gates; browser E2E is local-only"
   job_timeout_minutes: 60
+  verification_timeout_minutes: 45
   setup_sequence:
     - name: npm ci
       timeout_minutes: null
-    - name: Install Playwright Chromium
-      command: "npx playwright install --with-deps chromium"
-      timeout_minutes: 10
-      env:
-        DEBIAN_FRONTEND: noninteractive
-    - name: ./harness verify
-      timeout_minutes: 45
-  browser_setup:
-    bounded: true
-    chromium_install_command: "npx playwright install --with-deps chromium"
-    noninteractive_env: "DEBIAN_FRONTEND=noninteractive"
+    - name: ./harness lint
+    - name: npm run format:check
+      reason: "no standalone harness format_check verb exists"
+    - name: ./harness build
+    - name: ./harness test
+    - name: ./harness smoke
+  browser_e2e:
+    ci_enabled: false
+    local_commands: ["./harness e2e", "./harness verify"]
+    reason: "GitHub-hosted runner browser provisioning is unreliable for this repository"
 
 evidence:
   directory: .harness/evidence/

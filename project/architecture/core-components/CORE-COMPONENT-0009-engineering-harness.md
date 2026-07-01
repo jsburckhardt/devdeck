@@ -10,7 +10,7 @@ Provide a single, repo-local CLI (`./harness`) as the preferred operating surfac
 
 ## Scope
 
-Cross-cutting: affects all pipeline agents (Research, Plan, Implement, Verify), the justdoit orchestrator, CI workflows, and human developer workflows. The harness is the repository verification source of truth and wraps existing project tools such as npm scripts, Playwright, and the justfile. This scope includes harness command parsing, dependency installation, smoke-test lifecycle management, Vitest and Playwright target passthrough, browser E2E runtime ownership, fixture isolation, discovery metadata, local evidence, local runtime metadata, CI browser setup expectations, and documentation for supported harness workflows.
+Cross-cutting: affects all pipeline agents (Research, Plan, Implement, Verify), the justdoit orchestrator, CI workflows, and human developer workflows. The harness is the repository verification source of truth and wraps existing project tools such as npm scripts, Playwright, and the justfile. This scope includes harness command parsing, dependency installation, smoke-test lifecycle management, Vitest and Playwright target passthrough, browser E2E runtime ownership, fixture isolation, discovery metadata, local evidence, local runtime metadata, the CI/local verification split, and documentation for supported harness workflows.
 
 ## Definition
 
@@ -46,7 +46,7 @@ Cross-cutting: affects all pipeline agents (Research, Plan, Implement, Verify), 
 - Browser E2E runtime MUST create per-invocation fixture scratch space under `.harness/run/`, copy or synthesize mutable fixture data there, set `DEVDECK_PROJECTS_DIR`, `DEVDECK_DATA_DIR`, `DEVDECK_TOKEN`, and selected port env vars for the run, and preserve checked-in `e2e/fixtures/` as immutable seeds.
 - Browser E2E cleanup MUST terminate only harness-owned child processes, release only harness-owned locks, and remove only harness-owned scratch fixture data on pass, fail, timeout, interrupt, and degraded paths.
 - `./harness e2e` MUST map missing `npm`/`e2e` script/Playwright command capability to `unknown`, Playwright test failures and missing browser runtime to `fail`, and safe port/resource exhaustion to `degraded`.
-- CI MUST install or provision Playwright Chromium/browser system dependencies before running `./harness verify`; browser provisioning MUST be noninteractive and timeout-bounded; `./harness verify` remains the CI verification source of truth.
+- CI MUST NOT install Playwright browsers or run browser E2E. CI MUST run the non-browser gates (`./harness lint`, `npm run format:check`, `./harness build`, `./harness test`, and `./harness smoke`). Browser E2E remains local-only through `./harness e2e` and `./harness verify`.
 - Evidence files are written to `.harness/evidence/` and MUST NOT contain secrets, tokens, or raw logs.
 - Harness JSON output and evidence metadata MUST sanitize smoke, test, and E2E fields by excluding raw stdout/stderr, response bodies, redirect locations, environment variables, tokens, cookies, credential-bearing URLs, query strings, inline screenshots/traces/videos, and absolute paths outside the repository.
 - Browser E2E JSON/evidence metadata MAY include sanitized targeting state, Playwright project names, `metadata.e2e.testCounts`, selected loopback ports, duration, fixture run identifiers, and safe repo-relative artifact paths; it MUST NOT embed raw Playwright reports, browser console logs, network bodies, cookies, tokens, or screenshots/traces/videos.
@@ -66,7 +66,7 @@ Cross-cutting: affects all pipeline agents (Research, Plan, Implement, Verify), 
 - `.harness/friction.jsonl` — JSONL friction log.
 - `.harness/evidence/` — Verification evidence directory (gitignored).
 - `.harness/run/` — Local runtime ownership metadata, E2E port locks, and E2E scratch fixture data directory (gitignored).
-- `.github/workflows/ci.yml` — CI source of truth that provisions Playwright browsers and then runs `./harness verify`.
+- `.github/workflows/ci.yml` — CI source of truth for non-browser gates; browser E2E remains local-only.
 - `.harness/README.md` — Human-readable usage guide.
 
 ### Expectations
@@ -89,7 +89,7 @@ Cross-cutting: affects all pipeline agents (Research, Plan, Implement, Verify), 
 
 DevDeck previously had multiple command surfaces (npm scripts, justfile, and a separate verification.yml) with no single source of truth. Git history shows 29+ fix commits from agents and reviewers inferring incorrect commands. The harness eliminates this friction by providing a documented, testable, machine-readable command contract.
 
-Browser E2E coverage is promoted into the harness because root HTTP readiness and Vitest do not prove that a real browser can authenticate, open projects, use terminal/file workflows, and render accessible states. Keeping Playwright behind `./harness e2e` and `./harness verify` preserves one command surface while making CI and local verification exercise the same browser gate.
+Browser E2E coverage is promoted into the harness because root HTTP readiness and Vitest do not prove that a real browser can authenticate, open projects, use terminal/file workflows, and render accessible states. Keeping Playwright behind `./harness e2e` and local `./harness verify` preserves one command surface for browser validation while CI stays limited to gates that do not require provisioning browser runtimes on GitHub-hosted runners.
 
 ## Usage Examples
 
@@ -150,7 +150,7 @@ Browser E2E coverage is promoted into the harness because root HTTP readiness an
 - **RPIV stage selectors:** MUST use `rpiv-research`, `rpiv-planner`, `rpiv-implementer`, and `rpiv-verifier` for subagent dispatch.
 - **JustDoIt orchestrator:** MUST run `./harness help`, instruct subagents to use `./harness` verbs, inject the harness friction ritual into every stage prompt, and answer the harness friction question before completing.
 - **Human developers:** SHOULD use `./harness verify` before pushing and `./harness e2e -- <targets...>` for focused browser regressions.
-- **CI:** MUST provision Playwright Chromium/browser dependencies before `./harness verify` so pull-request checks exercise the same browser-backed verification contract as local agents. Browser provisioning MUST be noninteractive and timeout-bounded so CI cannot hang before the harness runs.
+- **CI:** MUST run non-browser gates only: `./harness lint`, `npm run format:check`, `./harness build`, `./harness test`, and `./harness smoke`. CI MUST NOT install Playwright browsers or run browser E2E.
 - **Harness maintainers:** MUST update `./harness help`, `./harness orient --json`, `./harness status`, `.harness/contract.yml`, `.harness/README.md`, `LLM.txt`, and agent-facing guidance when harness verbs or passthrough contracts change.
 - **Playwright maintainers:** MUST keep `playwright.config.ts` aligned with harness-owned loopback hosts, non-reuse server policy, fixture isolation env vars, and safe artifact locations.
 
@@ -159,7 +159,7 @@ Browser E2E coverage is promoted into the harness because root HTTP readiness an
 - Repos without a harness: agents fall back to auto-detecting applicable verification commands from project files.
 - Debugging: direct commands are allowed when the harness abstracts away needed diagnostic detail; record as friction.
 - Dependency maintenance: direct `npm install` or `npm install --package-lock-only` is allowed when intentionally changing dependency constraints or regenerating `package-lock.json`; normal dependency restoration should use `./harness install`.
-- CI environments: CI pipelines should run `./harness verify`; direct commands require updating `.harness/contract.yml` to avoid drift.
+- CI environments: CI pipelines run non-browser gates only because browser provisioning is unreliable on the GitHub-hosted runner. Browser E2E remains local-only through `./harness e2e` and `./harness verify`.
 - Bootstrap: new projects may not have a harness until the harness-cli-it skill runs.
 - Smoke does not build the application; callers MUST run `./harness build` first or use `./harness verify` for build-before-smoke sequencing.
 - Token-protected HTTP environments may cause unauthenticated smoke to fail; smoke MUST NOT add tokens, cookies, or query strings to make the probe pass.
@@ -180,9 +180,9 @@ Browser E2E coverage is promoted into the harness because root HTTP readiness an
 - [ ] Automated checks: `./harness e2e` parser, passthrough, JSON, evidence, port ownership, fixture isolation, cleanup, and sanitization tests
 - [ ] Automated checks: `./harness verify` evidence proves E2E runs after smoke with continue-on-failure aggregation
 - [ ] Automated checks: Playwright config rejects unrelated fixed-port reuse and binds harness servers to loopback
-- [ ] Automated checks: CI provisions Playwright Chromium/browser dependencies before `./harness verify` with a noninteractive, timeout-bounded setup step
+- [ ] Automated checks: CI runs non-browser gates only and omits Playwright browser installation/E2E
 - [ ] Test coverage requirements: Representative Playwright flows cover auth, project registry, terminal, file tree, file preview/edit/save, layout toggles, and accessibility selectors
-- [ ] Verification: CI and local handoff use `./harness verify --json` to produce a browser-backed verdict and sanitized evidence
+- [ ] Verification: Local handoff uses `./harness verify --json` to produce a browser-backed verdict and sanitized evidence; CI uses non-browser gates only
 
 ## Related ADRs
 

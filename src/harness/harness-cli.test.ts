@@ -1195,16 +1195,26 @@ describe("harness e2e", () => {
     expect(config.match(/reuseExistingServer:\s*false/g)).toHaveLength(2);
   });
 
-  it("asserts CI provisions Playwright Chromium before harness verify", () => {
+  it("asserts CI runs non-browser gates and leaves Playwright E2E local-only", () => {
     const workflow = readFileSync(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
     const npmCiIndex = workflow.indexOf("npm ci");
-    const playwrightIndex = workflow.indexOf("npx playwright install --with-deps chromium");
-    const verifyIndex = workflow.indexOf("./harness verify");
+    const lintIndex = workflow.indexOf("./harness lint");
+    const formatIndex = workflow.indexOf("npm run format:check");
+    const buildIndex = workflow.indexOf("./harness build");
+    const testIndex = workflow.indexOf("./harness test");
+    const smokeIndex = workflow.indexOf("./harness smoke");
 
     expect(npmCiIndex).toBeGreaterThanOrEqual(0);
-    expect(playwrightIndex).toBeGreaterThan(npmCiIndex);
-    expect(verifyIndex).toBeGreaterThan(playwrightIndex);
-    expect(workflow.match(/\.\/harness verify/g)).toHaveLength(1);
+    expect(lintIndex).toBeGreaterThan(npmCiIndex);
+    expect(formatIndex).toBeGreaterThan(lintIndex);
+    expect(buildIndex).toBeGreaterThan(formatIndex);
+    expect(testIndex).toBeGreaterThan(buildIndex);
+    expect(smokeIndex).toBeGreaterThan(testIndex);
+    expect(workflow).toContain("timeout-minutes: 60");
+    expect(workflow).toContain("timeout-minutes: 45");
+    expect(workflow).not.toContain("playwright install");
+    expect(workflow).not.toContain("./harness e2e");
+    expect(workflow).not.toContain("./harness verify");
   });
 });
 
