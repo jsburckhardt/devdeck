@@ -307,3 +307,4 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 273 | Adopt Playwright as DevDeck's browser E2E test runner | CORE-COMPONENT-0006 | 2026-06-30 |
 | 274 | Require browser E2E coverage for representative user-visible workflows | CORE-COMPONENT-0006 | 2026-06-30 |
 | 275 | Use accessibility-oriented selectors in Playwright browser E2E tests | CORE-COMPONENT-0006 | 2026-06-30 |
+| 276 | Bound CI Playwright browser provisioning with noninteractive setup timeouts | CORE-COMPONENT-0009 | 2026-07-01 |

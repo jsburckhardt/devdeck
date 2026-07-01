@@ -63,6 +63,12 @@ Implemented all planned tasks T1–T6:
 - `./harness e2e --json` — pass with `metadata.e2e.testCounts: { passed: 15, failed: 0, skipped: 0, timedOut: 0, interrupted: 0 }`.
 - `./harness verify --json` — pass; verify evidence includes the same canonical `metadata.e2e.testCounts` shape.
 
+## CI Browser Provisioning Fix
+
+- Fixed the PR CI workflow hang by bounding Playwright browser provisioning.
+- `.github/workflows/ci.yml` now runs browser setup with `DEBIAN_FRONTEND=noninteractive`, a 10-minute step timeout, a 45-minute verify timeout, and a 60-minute job timeout.
+- Updated `.harness/contract.yml`, `.harness/README.md`, CORE-COMPONENT-0009, and DECISION-LOG Decision #276 to document the noninteractive timeout-bounded CI browser setup contract.
+
 ## Known Limitations
 
 - The harness still does not expose a standalone `format_check` verb, so formatting diagnostics required a raw command.

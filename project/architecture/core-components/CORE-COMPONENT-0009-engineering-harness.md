@@ -46,7 +46,7 @@ Cross-cutting: affects all pipeline agents (Research, Plan, Implement, Verify), 
 - Browser E2E runtime MUST create per-invocation fixture scratch space under `.harness/run/`, copy or synthesize mutable fixture data there, set `DEVDECK_PROJECTS_DIR`, `DEVDECK_DATA_DIR`, `DEVDECK_TOKEN`, and selected port env vars for the run, and preserve checked-in `e2e/fixtures/` as immutable seeds.
 - Browser E2E cleanup MUST terminate only harness-owned child processes, release only harness-owned locks, and remove only harness-owned scratch fixture data on pass, fail, timeout, interrupt, and degraded paths.
 - `./harness e2e` MUST map missing `npm`/`e2e` script/Playwright command capability to `unknown`, Playwright test failures and missing browser runtime to `fail`, and safe port/resource exhaustion to `degraded`.
-- CI MUST install or provision Playwright Chromium/browser system dependencies before running `./harness verify`; `./harness verify` remains the CI verification source of truth.
+- CI MUST install or provision Playwright Chromium/browser system dependencies before running `./harness verify`; browser provisioning MUST be noninteractive and timeout-bounded; `./harness verify` remains the CI verification source of truth.
 - Evidence files are written to `.harness/evidence/` and MUST NOT contain secrets, tokens, or raw logs.
 - Harness JSON output and evidence metadata MUST sanitize smoke, test, and E2E fields by excluding raw stdout/stderr, response bodies, redirect locations, environment variables, tokens, cookies, credential-bearing URLs, query strings, inline screenshots/traces/videos, and absolute paths outside the repository.
 - Browser E2E JSON/evidence metadata MAY include sanitized targeting state, Playwright project names, `metadata.e2e.testCounts`, selected loopback ports, duration, fixture run identifiers, and safe repo-relative artifact paths; it MUST NOT embed raw Playwright reports, browser console logs, network bodies, cookies, tokens, or screenshots/traces/videos.
@@ -150,7 +150,7 @@ Browser E2E coverage is promoted into the harness because root HTTP readiness an
 - **RPIV stage selectors:** MUST use `rpiv-research`, `rpiv-planner`, `rpiv-implementer`, and `rpiv-verifier` for subagent dispatch.
 - **JustDoIt orchestrator:** MUST run `./harness help`, instruct subagents to use `./harness` verbs, inject the harness friction ritual into every stage prompt, and answer the harness friction question before completing.
 - **Human developers:** SHOULD use `./harness verify` before pushing and `./harness e2e -- <targets...>` for focused browser regressions.
-- **CI:** MUST provision Playwright Chromium/browser dependencies before `./harness verify` so pull-request checks exercise the same browser-backed verification contract as local agents.
+- **CI:** MUST provision Playwright Chromium/browser dependencies before `./harness verify` so pull-request checks exercise the same browser-backed verification contract as local agents. Browser provisioning MUST be noninteractive and timeout-bounded so CI cannot hang before the harness runs.
 - **Harness maintainers:** MUST update `./harness help`, `./harness orient --json`, `./harness status`, `.harness/contract.yml`, `.harness/README.md`, `LLM.txt`, and agent-facing guidance when harness verbs or passthrough contracts change.
 - **Playwright maintainers:** MUST keep `playwright.config.ts` aligned with harness-owned loopback hosts, non-reuse server policy, fixture isolation env vars, and safe artifact locations.
 
@@ -180,7 +180,7 @@ Browser E2E coverage is promoted into the harness because root HTTP readiness an
 - [ ] Automated checks: `./harness e2e` parser, passthrough, JSON, evidence, port ownership, fixture isolation, cleanup, and sanitization tests
 - [ ] Automated checks: `./harness verify` evidence proves E2E runs after smoke with continue-on-failure aggregation
 - [ ] Automated checks: Playwright config rejects unrelated fixed-port reuse and binds harness servers to loopback
-- [ ] Automated checks: CI provisions Playwright Chromium/browser dependencies before `./harness verify`
+- [ ] Automated checks: CI provisions Playwright Chromium/browser dependencies before `./harness verify` with a noninteractive, timeout-bounded setup step
 - [ ] Test coverage requirements: Representative Playwright flows cover auth, project registry, terminal, file tree, file preview/edit/save, layout toggles, and accessibility selectors
 - [ ] Verification: CI and local handoff use `./harness verify --json` to produce a browser-backed verdict and sanitized evidence
 

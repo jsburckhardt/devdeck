@@ -186,6 +186,19 @@ Each record answers: **"What did the agent have to infer that the harness should
 
 Records are stored in `.harness/friction.jsonl` as single JSON lines.
 
+## CI Browser Setup
+
+Pull-request CI keeps `./harness verify` as the single verification gate:
+
+1. `npm ci`
+2. `npx playwright install --with-deps chromium`
+3. `./harness verify`
+
+The Playwright browser setup step is noninteractive and timeout-bounded so CI
+cannot hang indefinitely before the harness runs. The current workflow caps
+browser provisioning at 10 minutes, verification at 45 minutes, and the whole
+job at 60 minutes.
+
 ## Clean Command Safety
 
 `./harness clean` is destructive. It:

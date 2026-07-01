@@ -394,6 +394,25 @@ detection:
       detected: true
       files: [ci.yml]
 
+ci:
+  workflow: .github/workflows/ci.yml
+  source_of_truth: "./harness verify"
+  job_timeout_minutes: 60
+  setup_sequence:
+    - name: npm ci
+      timeout_minutes: null
+    - name: Install Playwright Chromium
+      command: "npx playwright install --with-deps chromium"
+      timeout_minutes: 10
+      env:
+        DEBIAN_FRONTEND: noninteractive
+    - name: ./harness verify
+      timeout_minutes: 45
+  browser_setup:
+    bounded: true
+    chromium_install_command: "npx playwright install --with-deps chromium"
+    noninteractive_env: "DEBIAN_FRONTEND=noninteractive"
+
 evidence:
   directory: .harness/evidence/
   format: JSON
