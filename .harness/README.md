@@ -8,6 +8,7 @@ The `./harness` CLI is the preferred operating surface for DevDeck. It wraps exi
 ./harness help      # List all verbs
 ./harness install   # Install dependencies from package-lock.json
 ./harness doctor    # Check prerequisites
+./harness format_check  # Check formatting with Prettier
 ./harness verify    # Run full verification
 ./harness smoke     # Smoke an existing production build
 ./harness e2e       # Run Playwright browser E2E workflows
@@ -23,6 +24,7 @@ The `./harness` CLI is the preferred operating surface for DevDeck. It wraps exi
 | `doctor` | Check prerequisites (node, npm, git, just, tmux) | — |
 | `install` | Install dependencies from package-lock.json | `npm ci` |
 | `lint` | Run ESLint | `npm run lint` |
+| `format_check` | Check code formatting with Prettier | `npm run format:check` |
 | `test` | Run vitest suite; pass targets after `--` | `npm run test [-- <vitest args...>]` |
 | `e2e` | Run Playwright browser E2E; pass args after `--` | `npm run e2e [-- <playwright args...>]` |
 | `build` | Build Next.js app | `npm run build` |
@@ -52,6 +54,7 @@ Most verbs support `--json` for machine-readable output:
 ```bash
 ./harness doctor --json
 ./harness install --json
+./harness format_check --json
 ./harness test --json -- src/server/start-dev.test.ts
 ./harness e2e --json
 ./harness e2e --json -- e2e/terminal.spec.ts --project=chromium
@@ -197,7 +200,7 @@ CI runs the non-browser gates:
 
 1. `npm ci`
 2. `./harness lint`
-3. `npm run format:check`
+3. `./harness format_check`
 4. `./harness build`
 5. `./harness test`
 6. `./harness smoke`

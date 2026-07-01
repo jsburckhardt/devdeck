@@ -35,7 +35,7 @@ jobs:
         timeout-minutes: 45
         run: |
           ./harness lint
-          npm run format:check
+          ./harness format_check
           ./harness build
           ./harness test
           ./harness smoke

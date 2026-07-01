@@ -36,6 +36,7 @@ DevDeck uses a repo-local `./harness` CLI as the preferred operating surface. Bo
 ./harness install   # Install dependencies from package-lock.json
 ./harness orient    # Understand project surfaces
 ./harness doctor    # Check prerequisites
+./harness format_check # Check formatting with Prettier
 ./harness verify    # Run full verification
 ./harness smoke     # Smoke an existing production build
 ./harness test -- <vitest args...>  # Run targeted Vitest checks
@@ -44,7 +45,7 @@ DevDeck uses a repo-local `./harness` CLI as the preferred operating surface. Bo
 
 ### Policy
 
-- **Prefer `./harness`** over direct `npm run` or `just` commands for all supported verbs, including `./harness smoke`, `./harness test -- <args>`, and `./harness e2e -- <args>`.
+- **Prefer `./harness`** over direct `npm run` or `just` commands for all supported verbs, including `./harness format_check`, `./harness smoke`, `./harness test -- <args>`, and `./harness e2e -- <args>`.
 - **Direct commands are allowed** when the harness lacks a verb, the harness explains a degraded path, or deeper diagnosis requires raw command output.
 - **Record friction** when bypassing the harness: `./harness friction add "<what you had to infer>"`
 - **Key question:** "What did the agent have to infer that the harness should have proved?"

@@ -309,3 +309,4 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 275 | Use accessibility-oriented selectors in Playwright browser E2E tests | CORE-COMPONENT-0006 | 2026-06-30 |
 | 276 | Bound CI Playwright browser provisioning with setup timeouts | CORE-COMPONENT-0009 | 2026-07-01 |
 | 277 | Supersede CI browser provisioning: keep Playwright E2E local-only and remove browser setup from CI | CORE-COMPONENT-0009 | 2026-07-01 |
+| 278 | Expose `./harness format_check` and require CI to use harness verbs for every non-browser gate | CORE-COMPONENT-0009 | 2026-07-01 |

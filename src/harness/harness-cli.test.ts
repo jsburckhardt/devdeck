@@ -498,6 +498,26 @@ describe("harness parser and targeted test passthrough", () => {
     expect(records.some((record) => record.event === "ci")).toBe(true);
   });
 
+  it("checks formatting through the harness format_check verb", () => {
+    const recordPath = path.join(testDir, "npm-record.jsonl");
+    const fakeNpm = createFakeNpm();
+
+    const result = runHarness(["format_check", "--json"], {
+      HARNESS_NPM_BIN: fakeNpm,
+      FAKE_NPM_RECORD: recordPath,
+    });
+
+    expect(result.status).toBe(0);
+    const json = parseJson(result);
+    expect(json.verdict).toBe("pass");
+    expect(json.steps[0].name).toBe("format_check");
+
+    const records = readRecords(recordPath);
+    expect(
+      records.filter((record) => record.args).map((record) => record.args.join(" ")),
+    ).toContain("run format:check");
+  });
+
   it("reports full-suite test JSON metadata as non-targeted", () => {
     const recordPath = path.join(testDir, "npm-record.jsonl");
     const fakeNpm = createFakeNpm();
@@ -1199,7 +1219,7 @@ describe("harness e2e", () => {
     const workflow = readFileSync(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
     const npmCiIndex = workflow.indexOf("npm ci");
     const lintIndex = workflow.indexOf("./harness lint");
-    const formatIndex = workflow.indexOf("npm run format:check");
+    const formatIndex = workflow.indexOf("./harness format_check");
     const buildIndex = workflow.indexOf("./harness build");
     const testIndex = workflow.indexOf("./harness test");
     const smokeIndex = workflow.indexOf("./harness smoke");
@@ -1213,6 +1233,7 @@ describe("harness e2e", () => {
     expect(workflow).toContain("timeout-minutes: 60");
     expect(workflow).toContain("timeout-minutes: 45");
     expect(workflow).not.toContain("playwright install");
+    expect(workflow).not.toContain("npm run format:check");
     expect(workflow).not.toContain("./harness e2e");
     expect(workflow).not.toContain("./harness verify");
   });
@@ -1372,6 +1393,7 @@ describe("harness discovery output", () => {
     const help = runHarness(["help"]);
     expect(help.status).toBe(0);
     expect(String(help.stdout)).toContain("install");
+    expect(String(help.stdout)).toContain("format_check");
     expect(String(help.stdout)).toContain("smoke --port auto");
     expect(String(help.stdout)).toContain("test -- src/server/start-dev.test.ts");
     expect(String(help.stdout)).toContain("e2e -- e2e/terminal.spec.ts");
@@ -1380,6 +1402,7 @@ describe("harness discovery output", () => {
     expect(orient.status).toBe(0);
     expect(String(orient.stdout)).toContain("test -- <args>");
     expect(String(orient.stdout)).toContain("install");
+    expect(String(orient.stdout)).toContain("format_check");
     expect(String(orient.stdout)).toContain("smoke");
     expect(String(orient.stdout)).toContain("e2e -- <args>");
   });
@@ -1395,6 +1418,7 @@ describe("harness discovery output", () => {
       "doctor",
       "install",
       "lint",
+      "format_check",
       "test",
       "e2e",
       "build",
@@ -1418,6 +1442,7 @@ describe("harness discovery output", () => {
       "npm run start -- --hostname 127.0.0.1 --port <selectedPort>",
     );
     expect(json.commands.install.command).toBe("npm ci");
+    expect(json.commands.format_check.command).toBe("npm run format:check");
     expect(json.commands.smoke.portModeDefault).toBe("auto");
     expect(json.commands.smoke.defaultPortMode).toBeUndefined();
     expect(json.commands.test.command).toBe("npm run test [-- <targets>]");

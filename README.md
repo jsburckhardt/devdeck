@@ -30,6 +30,7 @@ just dev
 ```bash
 ./harness help    # Show all supported harness commands
 ./harness install # Install dependencies from package-lock.json
+./harness format_check # Check formatting with Prettier
 just dev          # Start dev server with Turbopack
 just test         # Run tests
 just lint         # Run ESLint

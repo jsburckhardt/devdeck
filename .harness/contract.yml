@@ -61,6 +61,12 @@ verbs:
     json: true
     source: package.json
 
+  - name: format_check
+    command: "npm run format:check"
+    description: Check code formatting with Prettier
+    json: true
+    source: package.json
+
   - name: test
     command: "npm run test [-- <vitest args...>]"
     description: Run vitest test suite, optionally forwarding targeted Vitest args after --
@@ -403,8 +409,7 @@ ci:
     - name: npm ci
       timeout_minutes: null
     - name: ./harness lint
-    - name: npm run format:check
-      reason: "no standalone harness format_check verb exists"
+    - name: ./harness format_check
     - name: ./harness build
     - name: ./harness test
     - name: ./harness smoke

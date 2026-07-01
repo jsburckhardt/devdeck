@@ -2,7 +2,7 @@ AGENTS.md                                                   — Agent definition
 CONTRIBUTING.md                                             — Human contribution guide
 LLM.txt                                                     — This file; repo map for AI agents
 README.md                                                   — Project overview
-harness                                                     — Engineering harness CLI (preferred operating surface; supports install, verify, smoke, Playwright e2e, and targeted test passthrough)
+harness                                                     — Engineering harness CLI (preferred operating surface; supports install, lint, format_check, build, test, smoke, verify, Playwright e2e, and targeted passthrough)
 .harness/contract.yml                                       — Machine-readable harness command and verification contract
 .harness/README.md                                          — Harness usage documentation
 .harness/friction.jsonl                                     — Inference friction log (JSONL)

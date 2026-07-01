@@ -46,7 +46,8 @@ Cross-cutting: affects all pipeline agents (Research, Plan, Implement, Verify), 
 - Browser E2E runtime MUST create per-invocation fixture scratch space under `.harness/run/`, copy or synthesize mutable fixture data there, set `DEVDECK_PROJECTS_DIR`, `DEVDECK_DATA_DIR`, `DEVDECK_TOKEN`, and selected port env vars for the run, and preserve checked-in `e2e/fixtures/` as immutable seeds.
 - Browser E2E cleanup MUST terminate only harness-owned child processes, release only harness-owned locks, and remove only harness-owned scratch fixture data on pass, fail, timeout, interrupt, and degraded paths.
 - `./harness e2e` MUST map missing `npm`/`e2e` script/Playwright command capability to `unknown`, Playwright test failures and missing browser runtime to `fail`, and safe port/resource exhaustion to `degraded`.
-- CI MUST NOT install Playwright browsers or run browser E2E. CI MUST run the non-browser gates (`./harness lint`, `npm run format:check`, `./harness build`, `./harness test`, and `./harness smoke`). Browser E2E remains local-only through `./harness e2e` and `./harness verify`.
+- `./harness format_check [--json]` MUST be a first-class verb backed by `npm run format:check`.
+- CI MUST NOT install Playwright browsers or run browser E2E. CI MUST run the non-browser harness gates (`./harness lint`, `./harness format_check`, `./harness build`, `./harness test`, and `./harness smoke`). Browser E2E remains local-only through `./harness e2e` and `./harness verify`.
 - Evidence files are written to `.harness/evidence/` and MUST NOT contain secrets, tokens, or raw logs.
 - Harness JSON output and evidence metadata MUST sanitize smoke, test, and E2E fields by excluding raw stdout/stderr, response bodies, redirect locations, environment variables, tokens, cookies, credential-bearing URLs, query strings, inline screenshots/traces/videos, and absolute paths outside the repository.
 - Browser E2E JSON/evidence metadata MAY include sanitized targeting state, Playwright project names, `metadata.e2e.testCounts`, selected loopback ports, duration, fixture run identifiers, and safe repo-relative artifact paths; it MUST NOT embed raw Playwright reports, browser console logs, network bodies, cookies, tokens, or screenshots/traces/videos.
@@ -56,6 +57,7 @@ Cross-cutting: affects all pipeline agents (Research, Plan, Implement, Verify), 
 
 - `./harness <verb> [--json]` — CLI entrypoint supporting all required verbs.
 - `./harness install [--json]` — Lockfile-exact dependency installation wrapper.
+- `./harness format_check [--json]` — Prettier format check wrapper.
 - `./harness smoke [--port auto|PORT] [--json]` — Standalone built-app smoke verification with loopback-only probing and deterministic cleanup.
 - `./harness test [--json] [-- <vitest args...>]` — Vitest wrapper with optional targeted passthrough after `--`.
 - `./harness e2e [--json] [-- <playwright args...>]` — Playwright browser E2E wrapper with optional targeted passthrough after `--`.
@@ -150,7 +152,7 @@ Browser E2E coverage is promoted into the harness because root HTTP readiness an
 - **RPIV stage selectors:** MUST use `rpiv-research`, `rpiv-planner`, `rpiv-implementer`, and `rpiv-verifier` for subagent dispatch.
 - **JustDoIt orchestrator:** MUST run `./harness help`, instruct subagents to use `./harness` verbs, inject the harness friction ritual into every stage prompt, and answer the harness friction question before completing.
 - **Human developers:** SHOULD use `./harness verify` before pushing and `./harness e2e -- <targets...>` for focused browser regressions.
-- **CI:** MUST run non-browser gates only: `./harness lint`, `npm run format:check`, `./harness build`, `./harness test`, and `./harness smoke`. CI MUST NOT install Playwright browsers or run browser E2E.
+- **CI:** MUST run non-browser harness gates only: `./harness lint`, `./harness format_check`, `./harness build`, `./harness test`, and `./harness smoke`. CI MUST NOT install Playwright browsers or run browser E2E.
 - **Harness maintainers:** MUST update `./harness help`, `./harness orient --json`, `./harness status`, `.harness/contract.yml`, `.harness/README.md`, `LLM.txt`, and agent-facing guidance when harness verbs or passthrough contracts change.
 - **Playwright maintainers:** MUST keep `playwright.config.ts` aligned with harness-owned loopback hosts, non-reuse server policy, fixture isolation env vars, and safe artifact locations.
 

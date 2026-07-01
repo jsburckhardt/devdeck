@@ -145,6 +145,7 @@ $(_bold "Verbs:")
   doctor          Check local prerequisites and project health
   install         Install dependencies from package-lock.json
   lint            Run ESLint on the codebase
+  format_check    Check code formatting with Prettier
   test            Run vitest test suite; pass targets after --
   e2e             Run Playwright browser E2E suite; pass args after --
   build           Build the Next.js application
@@ -161,6 +162,7 @@ $(_bold "Options:")
 
 $(_bold "Examples:")
   ./harness install
+  ./harness format_check
   ./harness test -- src/server/start-dev.test.ts
   ./harness test -- --json src/server/start-dev.test.ts
   ./harness e2e -- e2e/terminal.spec.ts --project=chromium
@@ -188,7 +190,7 @@ cmd_orient() {
   if $JSON_MODE; then
     local surfaces
     surfaces=$(cat <<'ORIENT_JSON'
-{"verb":"orient","verdict":"pass","command":null,"steps":[],"evidence":null,"message":"Detected project surfaces for DevDeck","timestamp":"__TS__","commands":{"install":{"command":"npm ci"},"lint":{"command":"npm run lint"},"test":{"command":"npm run test [-- <targets>]","supportsTargets":true,"passthrough":"./harness test -- <vitest args...>","json":"./harness test --json -- <vitest args...>"},"e2e":{"command":"npm run e2e [-- <playwright args>]","supportsTargets":true,"passthrough":"./harness e2e -- <playwright args...>","json":"./harness e2e --json -- <playwright args...>","runner":"Playwright","webPortRange":"42000-42999","terminalPortRange":"43000-43999","fixtureIsolation":".harness/run/e2e-<run-id>/"},"build":{"command":"npm run build"},"smoke":{"command":"npm run start -- --hostname 127.0.0.1 --port <selectedPort>","usage":"./harness smoke [--port auto|PORT] [--json]","portModeDefault":"auto","autoRange":"41000-41999"},"boot":{"command":"npx tsx src/server/start-dev.mts"},"verify":{"sequence":["lint","format_check","build","test","smoke","e2e"]}},"surfaces":{"package_json":{"detected":true,"scripts":["dev","build","analyze","start","terminal","dev:all","lint","format","format:check","test","e2e","test:watch","test:coverage"]},"justfile":{"detected":true,"recipes":["dev","dev-next","dev-terminal","build","start","test","test-watch","test-coverage","lint","format","format-check","check","install","clean","reinstall","info"]},"harness_contract":{"detected":true,"verbs":["help","orient","doctor","install","lint","test","e2e","build","boot","smoke","verify","status","clean","friction add","friction list"],"verify_steps":["lint","format_check","build","test","smoke","e2e"]},"devcontainer":{"detected":true},"ci_workflows":{"detected":true,"files":["ci.yml"]}}}
+{"verb":"orient","verdict":"pass","command":null,"steps":[],"evidence":null,"message":"Detected project surfaces for DevDeck","timestamp":"__TS__","commands":{"install":{"command":"npm ci"},"lint":{"command":"npm run lint"},"format_check":{"command":"npm run format:check"},"test":{"command":"npm run test [-- <targets>]","supportsTargets":true,"passthrough":"./harness test -- <vitest args...>","json":"./harness test --json -- <vitest args...>"},"e2e":{"command":"npm run e2e [-- <playwright args>]","supportsTargets":true,"passthrough":"./harness e2e -- <playwright args...>","json":"./harness e2e --json -- <playwright args...>","runner":"Playwright","webPortRange":"42000-42999","terminalPortRange":"43000-43999","fixtureIsolation":".harness/run/e2e-<run-id>/"},"build":{"command":"npm run build"},"smoke":{"command":"npm run start -- --hostname 127.0.0.1 --port <selectedPort>","usage":"./harness smoke [--port auto|PORT] [--json]","portModeDefault":"auto","autoRange":"41000-41999"},"boot":{"command":"npx tsx src/server/start-dev.mts"},"verify":{"sequence":["lint","format_check","build","test","smoke","e2e"]}},"surfaces":{"package_json":{"detected":true,"scripts":["dev","build","analyze","start","terminal","dev:all","lint","format","format:check","test","e2e","test:watch","test:coverage"]},"justfile":{"detected":true,"recipes":["dev","dev-next","dev-terminal","build","start","test","test-watch","test-coverage","lint","format","format-check","check","install","clean","reinstall","info"]},"harness_contract":{"detected":true,"verbs":["help","orient","doctor","install","lint","format_check","test","e2e","build","boot","smoke","verify","status","clean","friction add","friction list"],"verify_steps":["lint","format_check","build","test","smoke","e2e"]},"devcontainer":{"detected":true},"ci_workflows":{"detected":true,"files":["ci.yml"]}}}
 ORIENT_JSON
 )
     local ts
@@ -217,6 +219,7 @@ ORIENT_JSON
   echo ""
   printf "  %-20s %s\n" "install" "npm ci"
   printf "  %-20s %s\n" "lint"   "npm run lint"
+  printf "  %-20s %s\n" "format_check" "npm run format:check"
   printf "  %-20s %s\n" "test"   "npm run test"
   printf "  %-20s %s\n" "test -- <args>" "npm run test -- <args...>"
   printf "  %-20s %s\n" "e2e"    "npm run e2e"
@@ -402,6 +405,12 @@ cmd_install() {
 cmd_lint() {
   _parse_json_only_args "$@"
   _run_wrapped "lint" "Run ESLint on the codebase" "$NPM_BIN" run lint
+}
+
+# ── Verb: format_check ────────────────────────────────────────
+cmd_format_check() {
+  _parse_json_only_args "$@"
+  _run_wrapped "format_check" "Check code formatting with Prettier" "$NPM_BIN" run format:check
 }
 
 # ── Sanitized metadata helpers ─────────────────────────────────
@@ -2302,6 +2311,9 @@ case "$VERB" in
     ;;
   lint)
     cmd_lint "$@"
+    ;;
+  format_check)
+    cmd_format_check "$@"
     ;;
   test)
     cmd_test "$@"

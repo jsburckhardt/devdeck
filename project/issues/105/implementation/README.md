@@ -37,7 +37,7 @@ Implemented all planned tasks T1–T6:
 
 - `./harness test -- src/harness/harness-cli.test.ts` — pass, 43 tests.
 - `./harness lint` — pass with pre-existing warnings only.
-- `npm run format:check` — pass; used because there is no standalone `./harness format_check` verb.
+- `./harness format_check` — pass.
 - `./harness e2e -- e2e/file-tree-lazy.spec.ts --project=chromium` — pass.
 - `./harness e2e -- e2e/terminal.spec.ts --project=chromium` — pass, 7 tests.
 - `./harness e2e -- e2e/file-viewer.spec.ts --project=chromium` — pass.
@@ -51,7 +51,7 @@ Implemented all planned tasks T1–T6:
 - Fixed `e2e/terminal.spec.ts` terminal row assertion for the mobile keyboard helper flow. The helper now checks both row-preserving xterm text and a compact row join so narrow/mobile wrapping between marker characters does not fail the test while still proving the `Up` helper sends the expected escape sequence and the terminal stays connected.
 - `./harness e2e -- e2e/terminal.spec.ts --project=chromium` — pass, 7 tests.
 - `./harness e2e --json` — pass; metadata remained sanitized with loopback ports and safe artifact paths.
-- `npm run format:check` — pass after the blocker fix; used because there is no standalone `./harness format_check` verb.
+- `./harness format_check` — pass after the blocker fix.
 
 ## Acceptance Schema Blocker Fix
 
@@ -66,17 +66,22 @@ Implemented all planned tasks T1–T6:
 ## CI Browser E2E Removal Fix
 
 - Removed Playwright browser installation and browser E2E from PR CI because GitHub-hosted runners could not provision Chromium reliably for this repository.
-- `.github/workflows/ci.yml` now runs `./harness lint`, `npm run format:check`, `./harness build`, `./harness test`, and `./harness smoke` only.
+- `.github/workflows/ci.yml` now runs `./harness lint`, `./harness format_check`, `./harness build`, `./harness test`, and `./harness smoke` only.
 - Browser E2E remains local-only through `./harness e2e` and `./harness verify`.
 - Updated `.harness/contract.yml`, `.harness/README.md`, CORE-COMPONENT-0009, and DECISION-LOG Decision #277 to document the CI/local verification split.
 
+## Harness Format Check Fix
+
+- Added first-class `./harness format_check [--json]`, backed by `npm run format:check`.
+- Updated PR CI to use `./harness format_check` instead of raw `npm run format:check`.
+- Updated `.harness/contract.yml`, `.harness/README.md`, CORE-COMPONENT-0009, and DECISION-LOG Decision #278 so the command surface and CI contract stay aligned.
+
 ## Known Limitations
 
-- The harness still does not expose a standalone `format_check` verb, so formatting diagnostics required a raw command.
 - The harness writes sanitized evidence but does not yet provide a built-in evidence-policy scanner; evidence policy was manually inspected.
 
 ## Friction Answer
 
 What did the agent have to infer that the harness should have proved?
 
-The harness lacks a standalone `format_check` verb and a built-in evidence-policy scanner, so raw Prettier checks and manual evidence inspection were required. Recorded with `./harness friction add`; blocker-fix follow-up friction entries were also recorded for raw format checks.
+The harness previously lacked a standalone `format_check` verb, so raw Prettier checks were required during earlier implementation passes; that gap is now closed by `./harness format_check`. The harness still lacks a built-in evidence-policy scanner, so evidence inspection remains manual.
