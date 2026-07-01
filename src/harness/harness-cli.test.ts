@@ -149,7 +149,10 @@ const record = (event) => {
 const exitFor = (name) => Number(process.env[name] || "0");
 const writePlaywrightReport = (exitCode) => {
   const status = exitCode === 0 ? "passed" : "failed";
-  const reportPath = path.join(process.cwd(), "test-results", "playwright-results.json");
+  const artifactDir =
+    process.env.DEVDECK_E2E_ARTIFACT_DIR ||
+    path.join(process.cwd(), ".harness", "run", "fake-playwright-artifacts-" + process.pid);
+  const reportPath = path.join(artifactDir, "playwright-results.json");
   fs.mkdirSync(path.dirname(reportPath), { recursive: true });
   fs.writeFileSync(reportPath, JSON.stringify({
     suites: [
@@ -219,6 +222,7 @@ if (script === "e2e") {
       terminalPort: process.env.DEVDECK_E2E_TERMINAL_PORT,
       projectsDir: process.env.DEVDECK_PROJECTS_DIR,
       dataDir: process.env.DEVDECK_DATA_DIR,
+      artifactDir: process.env.DEVDECK_E2E_ARTIFACT_DIR,
       tokenPresent: process.env.DEVDECK_TOKEN ? true : false,
     },
   });
@@ -1003,7 +1007,7 @@ describe("harness e2e", () => {
       webPort: webStart,
       terminalHost: "127.0.0.1",
       terminalPort: terminalStart,
-      artifactPaths: ["test-results"],
+      artifactPaths: [],
     });
     expect(json.metadata.e2e).toMatchObject({
       targeted: false,
@@ -1015,7 +1019,7 @@ describe("harness e2e", () => {
       webPort: webStart,
       terminalHost: "127.0.0.1",
       terminalPort: terminalStart,
-      artifactPaths: ["test-results"],
+      artifactPaths: [],
     });
     expect(json.metadata.fixtureRunId).toMatch(/^e2e-/);
     expect(json.metadata.e2e.fixtureRunId).toMatch(/^e2e-/);
@@ -1032,6 +1036,7 @@ describe("harness e2e", () => {
     });
     expect(e2eRecord.env.projectsDir).toContain(".harness/run/e2e-");
     expect(e2eRecord.env.dataDir).toContain(".harness/run/e2e-");
+    expect(e2eRecord.env.artifactDir).toContain(".harness/run/e2e-");
     expect(existsSync(path.dirname(e2eRecord.env.projectsDir))).toBe(false);
   });
 
@@ -1102,6 +1107,7 @@ describe("harness e2e", () => {
     ["missing npm", { HARNESS_NPM_BIN: path.join(testDir, "missing-npm") }, 3, "unknown"],
     ["missing playwright", { HARNESS_E2E_FORCE_NO_PLAYWRIGHT: "1" }, 3, "unknown"],
     ["playwright failure", { FAKE_NPM_E2E_EXIT: "1" }, 1, "fail"],
+    ["playwright timeout", { FAKE_NPM_E2E_EXIT: "124" }, 1, "fail"],
   ])("maps E2E capability and failure verdicts: %s", (_name, env, status, verdict) => {
     const fakeNpm = createFakeNpm();
     const result = runHarness(["e2e", "--json"], {
@@ -1211,7 +1217,13 @@ describe("harness e2e", () => {
     expect(config).toContain('process.env.DEVDECK_E2E_TERMINAL_HOST ?? "127.0.0.1"');
     expect(config).toContain("DEVDECK_PROJECTS_DIR");
     expect(config).toContain("DEVDECK_DATA_DIR");
+    expect(config).toContain("DEVDECK_E2E_ARTIFACT_DIR");
+    expect(config).toContain(
+      'path.join(process.cwd(), ".harness", "run", "playwright-fixtures", ".devdeck-data")',
+    );
+    expect(config).toContain("playwright-artifacts-${process.pid}");
     expect(config).not.toContain("--hostname 0.0.0.0");
+    expect(config).not.toContain('"test-results/playwright-results.json"');
     expect(config.match(/reuseExistingServer:\s*false/g)).toHaveLength(2);
   });
 
@@ -1294,7 +1306,7 @@ describe("harness verify shared smoke evidence", () => {
       testCounts: { passed: 1, failed: 0, skipped: 1, timedOut: 0, interrupted: 0 },
       webPort: expect.any(Number),
       terminalPort: expect.any(Number),
-      artifactPaths: ["test-results"],
+      artifactPaths: [],
     });
     expect(e2eStep.metadata.e2e).toMatchObject({
       targeted: false,
@@ -1304,7 +1316,7 @@ describe("harness verify shared smoke evidence", () => {
       testCounts: { passed: 1, failed: 0, skipped: 1, timedOut: 0, interrupted: 0 },
       webPort: expect.any(Number),
       terminalPort: expect.any(Number),
-      artifactPaths: ["test-results"],
+      artifactPaths: [],
     });
     expect(smokeStep.metadata.bindHost).toBeUndefined();
     expect(smokeStep.metadata.reason).toBeUndefined();

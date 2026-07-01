@@ -128,6 +128,7 @@ flag.
 - E2E runs allocate loopback-only web ports from `42000-42999` and terminal ports from `43000-43999`.
 - Fixed `DEVDECK_E2E_WEB_PORT` / `DEVDECK_E2E_TERMINAL_PORT` conflicts return `degraded`; unrelated listeners are never killed or reused.
 - Fixture state is copied or generated under `.harness/run/e2e-<run-id>/`; checked-in `e2e/fixtures/` files are immutable seeds.
+- Playwright reports/artifacts are scoped to the same per-run scratch directory through `DEVDECK_E2E_ARTIFACT_DIR`; persistent harness evidence records only sanitized metadata and may use an empty `artifactPaths` array.
 - Cleanup releases only harness-owned locks and scratch state on pass, fail, timeout, interrupt, or degraded paths.
 
 Smoke and E2E are intentionally different: `./harness smoke` proves an existing production build answers a root HTTP readiness probe; `./harness e2e` proves representative browser workflows through Playwright.

@@ -76,6 +76,13 @@ Implemented all planned tasks T1–T6:
 - Updated PR CI to use `./harness format_check` instead of raw `npm run format:check`.
 - Updated `.harness/contract.yml`, `.harness/README.md`, CORE-COMPONENT-0009, and DECISION-LOG Decision #278 so the command surface and CI contract stay aligned.
 
+## PR Review Feedback Fixes
+
+- Repaired malformed JSON in `.harness/friction.jsonl`.
+- Standardized `./harness e2e` process exits to harness verdict codes instead of raw Playwright exit codes.
+- Aligned `playwright.config.ts` fallback `DEVDECK_DATA_DIR` with E2E helper defaults for raw `npm run e2e` runs.
+- Moved Playwright reports/artifacts to per-run artifact directories via `DEVDECK_E2E_ARTIFACT_DIR` so concurrent harness E2E runs do not clobber shared `test-results` files.
+
 ## Known Limitations
 
 - The harness writes sanitized evidence but does not yet provide a built-in evidence-policy scanner; evidence policy was manually inspected.

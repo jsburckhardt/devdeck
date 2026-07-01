@@ -6,7 +6,11 @@ const E2E_PROJECTS_DIR =
   process.env.DEVDECK_PROJECTS_DIR ??
   path.join(process.cwd(), ".harness", "run", "playwright-fixtures", "projects");
 const E2E_DATA_DIR =
-  process.env.DEVDECK_DATA_DIR ?? path.join(process.cwd(), ".harness", "run", "playwright-data");
+  process.env.DEVDECK_DATA_DIR ??
+  path.join(process.cwd(), ".harness", "run", "playwright-fixtures", ".devdeck-data");
+const E2E_ARTIFACT_DIR =
+  process.env.DEVDECK_E2E_ARTIFACT_DIR ??
+  path.join(process.cwd(), ".harness", "run", `playwright-artifacts-${process.pid}`);
 const E2E_WEB_HOST = process.env.DEVDECK_E2E_WEB_HOST ?? "127.0.0.1";
 const E2E_TERMINAL_HOST = process.env.DEVDECK_E2E_TERMINAL_HOST ?? "127.0.0.1";
 const E2E_WEB_PORT = Number(process.env.DEVDECK_E2E_WEB_PORT ?? 42000);
@@ -32,8 +36,11 @@ export default defineConfig({
     trace: "retain-on-failure",
     video: "retain-on-failure",
   },
-  outputDir: "test-results/playwright-artifacts",
-  reporter: [["list"], ["json", { outputFile: "test-results/playwright-results.json" }]],
+  outputDir: path.join(E2E_ARTIFACT_DIR, "artifacts"),
+  reporter: [
+    ["list"],
+    ["json", { outputFile: path.join(E2E_ARTIFACT_DIR, "playwright-results.json") }],
+  ],
   projects: [
     {
       name: "chromium",

@@ -44,6 +44,7 @@ Cross-cutting: affects all pipeline agents (Research, Plan, Implement, Verify), 
 - Browser E2E runtime MUST reject fixed-port conflicts and bounded auto-port exhaustion without killing unrelated listeners or attaching to unrelated servers.
 - Harness-managed Playwright runs MUST set `reuseExistingServer: false` or an equivalent no-reuse mode so occupied fixed ports cannot silently attach to unrelated DevDeck or non-DevDeck processes.
 - Browser E2E runtime MUST create per-invocation fixture scratch space under `.harness/run/`, copy or synthesize mutable fixture data there, set `DEVDECK_PROJECTS_DIR`, `DEVDECK_DATA_DIR`, `DEVDECK_TOKEN`, and selected port env vars for the run, and preserve checked-in `e2e/fixtures/` as immutable seeds.
+- Browser E2E runtime MUST write Playwright reports and artifacts to per-invocation artifact directories, exposed through `DEVDECK_E2E_ARTIFACT_DIR`, so concurrent runs do not share or clobber `test-results` output.
 - Browser E2E cleanup MUST terminate only harness-owned child processes, release only harness-owned locks, and remove only harness-owned scratch fixture data on pass, fail, timeout, interrupt, and degraded paths.
 - `./harness e2e` MUST map missing `npm`/`e2e` script/Playwright command capability to `unknown`, Playwright test failures and missing browser runtime to `fail`, and safe port/resource exhaustion to `degraded`.
 - `./harness format_check [--json]` MUST be a first-class verb backed by `npm run format:check`.

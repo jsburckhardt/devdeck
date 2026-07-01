@@ -310,3 +310,4 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 276 | Bound CI Playwright browser provisioning with setup timeouts | CORE-COMPONENT-0009 | 2026-07-01 |
 | 277 | Supersede CI browser provisioning: keep Playwright E2E local-only and remove browser setup from CI | CORE-COMPONENT-0009 | 2026-07-01 |
 | 278 | Expose `./harness format_check` and require CI to use harness verbs for every non-browser gate | CORE-COMPONENT-0009 | 2026-07-01 |
+| 279 | Scope Playwright reports and artifacts to per-run E2E scratch directories | CORE-COMPONENT-0009 | 2026-07-01 |

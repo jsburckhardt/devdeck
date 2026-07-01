@@ -567,6 +567,7 @@ E2E_RUN_ID=""
 E2E_SCRATCH_DIR=""
 E2E_PROJECTS_DIR=""
 E2E_DATA_DIR=""
+E2E_ARTIFACT_DIR=""
 E2E_VERDICT="unknown"
 E2E_EXIT_CODE=3
 E2E_DURATION_MS=0
@@ -762,11 +763,16 @@ _e2e_setup_scratch() {
   fi
   E2E_PROJECTS_DIR="$E2E_SCRATCH_DIR/projects"
   E2E_DATA_DIR="$E2E_SCRATCH_DIR/.devdeck-data"
-  mkdir -p "$E2E_PROJECTS_DIR" "$E2E_DATA_DIR"
+  E2E_ARTIFACT_DIR="$E2E_SCRATCH_DIR/test-results"
+  mkdir -p "$E2E_PROJECTS_DIR" "$E2E_DATA_DIR" "$E2E_ARTIFACT_DIR"
 }
 
 _e2e_report_path() {
-  printf '%s/test-results/playwright-results.json' "$HARNESS_DIR"
+  if [[ -n "$E2E_ARTIFACT_DIR" ]]; then
+    printf '%s/playwright-results.json' "$E2E_ARTIFACT_DIR"
+  else
+    printf '%s/.harness/run/playwright-artifacts-%s/playwright-results.json' "$HARNESS_DIR" "$$"
+  fi
 }
 
 _e2e_test_counts_json() {
@@ -816,7 +822,7 @@ _e2e_metadata() {
     reason_field=",\"reason\":\"$(_json_escape "$reason")\""
   fi
   local fields
-  fields="\"playwrightProjects\":$E2E_PLAYWRIGHT_PROJECTS_JSON,\"testCounts\":$E2E_TEST_COUNTS_JSON,\"webHost\":\"127.0.0.1\",\"webPort\":${E2E_WEB_PORT:-null},\"terminalHost\":\"127.0.0.1\",\"terminalPort\":${E2E_TERMINAL_PORT:-null},\"fixtureRunId\":\"$(_json_escape "$E2E_RUN_ID")\",\"durationMs\":$E2E_DURATION_MS,\"artifactPaths\":[\"test-results\"]$reason_field"
+  fields="\"playwrightProjects\":$E2E_PLAYWRIGHT_PROJECTS_JSON,\"testCounts\":$E2E_TEST_COUNTS_JSON,\"webHost\":\"127.0.0.1\",\"webPort\":${E2E_WEB_PORT:-null},\"terminalHost\":\"127.0.0.1\",\"terminalPort\":${E2E_TERMINAL_PORT:-null},\"fixtureRunId\":\"$(_json_escape "$E2E_RUN_ID")\",\"durationMs\":$E2E_DURATION_MS,\"artifactPaths\":[]$reason_field"
   printf '%s,%s,"e2e":{%s,%s}}' \
     "$targets_base" \
     "$fields" \
@@ -832,7 +838,7 @@ _e2e_verify_metadata() {
   local targets_base="${E2E_TARGETS_JSON%?}"
   local nested_targets="${targets_base#\{}"
   local fields
-  fields="\"playwrightProjects\":$E2E_PLAYWRIGHT_PROJECTS_JSON,\"testCounts\":$E2E_TEST_COUNTS_JSON,\"webPort\":${E2E_WEB_PORT:-null},\"terminalPort\":${E2E_TERMINAL_PORT:-null},\"fixtureRunId\":\"$(_json_escape "$E2E_RUN_ID")\",\"durationMs\":$E2E_DURATION_MS,\"artifactPaths\":[\"test-results\"]$reason_field"
+  fields="\"playwrightProjects\":$E2E_PLAYWRIGHT_PROJECTS_JSON,\"testCounts\":$E2E_TEST_COUNTS_JSON,\"webPort\":${E2E_WEB_PORT:-null},\"terminalPort\":${E2E_TERMINAL_PORT:-null},\"fixtureRunId\":\"$(_json_escape "$E2E_RUN_ID")\",\"durationMs\":$E2E_DURATION_MS,\"artifactPaths\":[]$reason_field"
   printf '%s,%s,"e2e":{%s,%s}}' \
     "$targets_base" \
     "$fields" \
@@ -928,6 +934,7 @@ _e2e_run() {
   E2E_SCRATCH_DIR=""
   E2E_PROJECTS_DIR=""
   E2E_DATA_DIR=""
+  E2E_ARTIFACT_DIR=""
   E2E_TARGETS_JSON="$(_targets_metadata_json "${passthrough[@]}")"
   E2E_PLAYWRIGHT_PROJECTS_JSON="$(_e2e_playwright_projects_json "${passthrough[@]}")"
   E2E_TEST_COUNTS_JSON='{"passed":0,"failed":0,"skipped":0,"timedOut":0,"interrupted":0}'
@@ -970,6 +977,7 @@ _e2e_run() {
         env
         DEVDECK_PROJECTS_DIR="$E2E_PROJECTS_DIR"
         DEVDECK_DATA_DIR="$E2E_DATA_DIR"
+        DEVDECK_E2E_ARTIFACT_DIR="$E2E_ARTIFACT_DIR"
         DEVDECK_TOKEN="${DEVDECK_TOKEN:-devdeck-e2e-token}"
         DEVDECK_E2E_WEB_HOST="127.0.0.1"
         DEVDECK_E2E_WEB_PORT="$E2E_WEB_PORT"
@@ -1073,7 +1081,8 @@ cmd_e2e() {
     echo "Verdict: $(_verdict_label "$E2E_VERDICT") — $E2E_MESSAGE"
   fi
 
-  return "$e2e_rc"
+  : "$e2e_rc"
+  _verdict_exit "$E2E_VERDICT"
 }
 
 # ── Verb: build ────────────────────────────────────────────────
