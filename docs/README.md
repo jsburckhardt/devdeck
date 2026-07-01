@@ -7,6 +7,7 @@ DevDeck is a web-based development environment built with Next.js, featuring a r
 - **Frontend:** Next.js App Router with React 19, Tailwind CSS v4, shadcn/ui
 - **Backend:** Next.js API routes with WebSocket server for terminal communication
 - **Terminal:** xterm.js in the browser, node-pty spawning real PTY processes on the server
+- **Verification:** `./harness verify` runs lint, format check, build, Vitest, smoke readiness, and Playwright browser E2E; use `./harness e2e -- <playwright args...>` for focused browser regressions.
 
 ## Key Architectural Decisions
 

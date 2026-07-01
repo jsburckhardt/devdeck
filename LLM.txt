@@ -2,12 +2,12 @@ AGENTS.md                                                   — Agent definition
 CONTRIBUTING.md                                             — Human contribution guide
 LLM.txt                                                     — This file; repo map for AI agents
 README.md                                                   — Project overview
-harness                                                     — Engineering harness CLI (preferred operating surface; supports install, verify, smoke, and targeted test passthrough)
+harness                                                     — Engineering harness CLI (preferred operating surface; supports install, verify, smoke, Playwright e2e, and targeted test passthrough)
 .harness/contract.yml                                       — Machine-readable harness command and verification contract
 .harness/README.md                                          — Harness usage documentation
 .harness/friction.jsonl                                     — Inference friction log (JSONL)
 .harness/evidence/                                          — Verification evidence directory (gitignored)
-.harness/run/                                               — Local harness smoke ownership locks and test scratch metadata (gitignored)
+.harness/run/                                               — Local harness smoke/E2E ownership locks and E2E scratch metadata (gitignored)
 justfile                                                    — Development task runner (just)
 vitest.config.ts                                            — Vitest test configuration
 package.json                                                — Node.js dependencies and scripts
@@ -27,7 +27,7 @@ eslint.config.mjs                                           — ESLint configura
 .github/agents/rpiv-implementer.agent.md              — RPIV implementer agent (code, tests, verification)
 .github/agents/rpiv-planner.agent.md                  — RPIV planner agent (ADRs, core-components, action plans, task breakdown, test plans)
 .github/agents/rpiv-research.agent.md                 — RPIV research agent (exploration, scope classification)
-.github/workflows/ci.yml                              — GitHub Actions CI workflow (`./harness verify` on PRs)
+.github/workflows/ci.yml                              — GitHub Actions CI workflow (installs Playwright Chromium, then runs `./harness verify` on PRs)
 docs/README.md                                              — Application documentation index
 project/README.md                                             — Project documentation index
 project/architecture/README.md                                 — Architecture documentation index
@@ -79,5 +79,5 @@ src/app/api/files/events/route.test.ts                         — Vitest covera
 src/hooks/use-file-tree-sync.test.ts                            — Vitest coverage for EventSource URL construction, ready/changed/degraded handling, stale-scope rejection, retry/backoff, heartbeat timeout, no-retry classifications, manual retry, and Strict Mode cleanup
 project/architecture/ADR/ADR-0003-project-registry-persistence.md — Project registry persistence decision
 project/architecture/ADR/ADR-0004-token-authentication.md      — Token-based authentication decision
-e2e/terminal.spec.ts                                           — Playwright E2E tests for terminal with token auth
-playwright.config.ts                                           — Playwright configuration (ports, token env)
+e2e/                                                           — Playwright browser E2E specs and immutable fixture seeds; prefer `./harness e2e -- <args>` over raw Playwright
+playwright.config.ts                                           — Playwright configuration consuming harness loopback ports, token, projects/data dirs, and no-reuse web servers

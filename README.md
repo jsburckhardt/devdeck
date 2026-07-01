@@ -9,7 +9,7 @@ A web-based development environment that replicates the IDE experience with a re
 - **Framework:** Next.js (App Router, TypeScript)
 - **Terminal:** xterm.js (frontend) + node-pty (backend) via WebSocket
 - **UI:** Tailwind CSS v4, shadcn/ui, framer-motion, @phosphor-icons/react
-- **Testing:** Vitest + React Testing Library
+- **Testing:** Vitest + React Testing Library + Playwright browser E2E
 - **Task Runner:** just (justfile)
 
 ## Getting Started
@@ -34,7 +34,8 @@ just dev          # Start dev server with Turbopack
 just test         # Run tests
 just lint         # Run ESLint
 just format       # Format code with Prettier
-./harness verify  # Run lint + format:check + build + test + smoke
+./harness e2e     # Run Playwright browser E2E workflows
+./harness verify  # Run lint + format:check + build + test + smoke + e2e
 ```
 
 ## Configuration

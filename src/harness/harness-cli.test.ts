@@ -147,6 +147,38 @@ const record = (event) => {
   }
 };
 const exitFor = (name) => Number(process.env[name] || "0");
+const writePlaywrightReport = (exitCode) => {
+  const status = exitCode === 0 ? "passed" : "failed";
+  const reportPath = path.join(process.cwd(), "test-results", "playwright-results.json");
+  fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+  fs.writeFileSync(reportPath, JSON.stringify({
+    suites: [
+      {
+        title: "fake-e2e.spec.ts",
+        specs: [
+          {
+            title: "fake e2e test",
+            tests: [
+              {
+                status: exitCode === 0 ? "expected" : "unexpected",
+                results: [{ status }],
+              },
+            ],
+          },
+          {
+            title: "fake skipped e2e test",
+            tests: [
+              {
+                status: "skipped",
+                results: [{ status: "skipped" }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }) + "\\n");
+};
 
 record({ event: "invoke", args });
 
@@ -173,6 +205,36 @@ if (script === "test") {
   const forwarded = rest[0] === "--" ? rest.slice(1) : rest;
   record({ event: "test", forwarded });
   process.exit(exitFor("FAKE_NPM_TEST_EXIT"));
+}
+if (script === "e2e") {
+  const forwarded = rest[0] === "--" ? rest.slice(1) : rest;
+  const e2eExitCode = exitFor("FAKE_NPM_E2E_EXIT");
+  record({
+    event: "e2e",
+    forwarded,
+    env: {
+      webHost: process.env.DEVDECK_E2E_WEB_HOST,
+      webPort: process.env.DEVDECK_E2E_WEB_PORT,
+      terminalHost: process.env.DEVDECK_E2E_TERMINAL_HOST,
+      terminalPort: process.env.DEVDECK_E2E_TERMINAL_PORT,
+      projectsDir: process.env.DEVDECK_PROJECTS_DIR,
+      dataDir: process.env.DEVDECK_DATA_DIR,
+      tokenPresent: process.env.DEVDECK_TOKEN ? true : false,
+    },
+  });
+  if (process.env.FAKE_NPM_E2E_MUTATE_FIXTURE) {
+    fs.writeFileSync(process.env.FAKE_NPM_E2E_MUTATE_FIXTURE, "mutated");
+  }
+  if (process.env.FAKE_NPM_E2E_MUTATE_FIXTURE_REL) {
+    const target = path.join(process.env.DEVDECK_PROJECTS_DIR, process.env.FAKE_NPM_E2E_MUTATE_FIXTURE_REL);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, "mutated");
+  }
+  if (process.env.FAKE_NPM_NOISY === "1") {
+    console.error("raw e2e stdout/stderr token=super-secret DEVDECK_TOKEN=******example.test/?token=secret");
+  }
+  writePlaywrightReport(e2eExitCode);
+  process.exit(e2eExitCode);
 }
 if (script !== "start") {
   process.exit(1);
@@ -285,6 +347,7 @@ async function findConsecutivePorts(count: number) {
       for (let offset = 0; offset < count; offset += 1) {
         servers.push(await listenOn(port + offset));
       }
+
       await Promise.all(servers.map(closeServer));
       return port;
     } catch {
@@ -292,6 +355,22 @@ async function findConsecutivePorts(count: number) {
     }
   }
   throw new Error(`Unable to find ${count} consecutive free smoke ports`);
+}
+
+async function findConsecutivePortsInRange(start: number, end: number, count: number) {
+  for (let port = start; port <= end - count + 1; port += 1) {
+    const servers: net.Server[] = [];
+    try {
+      for (let offset = 0; offset < count; offset += 1) {
+        servers.push(await listenOn(port + offset));
+      }
+      await Promise.all(servers.map(closeServer));
+      return port;
+    } catch {
+      await Promise.all(servers.map(closeServer));
+    }
+  }
+  throw new Error(`Unable to find ${count} consecutive free ports in ${start}-${end}`);
 }
 
 function processIsAlive(pid: number) {
@@ -313,6 +392,15 @@ function smokeLockDir(port: number, repoIdentity = repoRealpath) {
     ".harness",
     "run",
     `smoke-${smokeRepoHash(repoIdentity)}-${port}.lock`,
+  );
+}
+
+function e2eLockDir(role: "web" | "terminal", port: number, repoIdentity = repoRealpath) {
+  return path.join(
+    repoRoot,
+    ".harness",
+    "run",
+    `e2e-${smokeRepoHash(repoIdentity)}-${role}-${port}.lock`,
   );
 }
 
@@ -618,7 +706,7 @@ describe("harness smoke", () => {
     } finally {
       await closeServer(occupied);
     }
-  });
+  }, 20_000);
 
   it("degrades after bounded auto-port exhaustion", async () => {
     ensureBuildMarker();
@@ -643,7 +731,7 @@ describe("harness smoke", () => {
       await closeServer(first);
       await closeServer(second);
     }
-  });
+  }, 20_000);
 
   it("uses race-safe locks so concurrent auto smoke runs choose distinct ports", async () => {
     ensureBuildMarker();
@@ -868,6 +956,258 @@ describe("harness smoke", () => {
   });
 });
 
+describe("harness e2e", () => {
+  it("reports full-suite E2E JSON metadata as non-targeted and uses isolated loopback runtime", async () => {
+    const recordPath = path.join(testDir, "npm-record.jsonl");
+    const fakeNpm = createFakeNpm();
+    const webStart = await findConsecutivePortsInRange(42000, 42999, 1);
+    const terminalStart = await findConsecutivePortsInRange(43000, 43999, 1);
+
+    const result = runHarness(["e2e", "--json"], {
+      HARNESS_NPM_BIN: fakeNpm,
+      HARNESS_E2E_WEB_AUTO_START: String(webStart),
+      HARNESS_E2E_TERMINAL_AUTO_START: String(terminalStart),
+      FAKE_NPM_RECORD: recordPath,
+    });
+
+    expect(result.status).toBe(0);
+    const json = parseJson(result);
+    expect(json.command).toBe("npm run e2e");
+    expect(json.metadata).toMatchObject({
+      targeted: false,
+      targets: [],
+      targetCount: 0,
+      truncated: false,
+      testCounts: { passed: 1, failed: 0, skipped: 1, timedOut: 0, interrupted: 0 },
+      webHost: "127.0.0.1",
+      webPort: webStart,
+      terminalHost: "127.0.0.1",
+      terminalPort: terminalStart,
+      artifactPaths: ["test-results"],
+    });
+    expect(json.metadata.e2e).toMatchObject({
+      targeted: false,
+      targets: [],
+      targetCount: 0,
+      truncated: false,
+      testCounts: { passed: 1, failed: 0, skipped: 1, timedOut: 0, interrupted: 0 },
+      webHost: "127.0.0.1",
+      webPort: webStart,
+      terminalHost: "127.0.0.1",
+      terminalPort: terminalStart,
+      artifactPaths: ["test-results"],
+    });
+    expect(json.metadata.fixtureRunId).toMatch(/^e2e-/);
+    expect(json.metadata.e2e.fixtureRunId).toMatch(/^e2e-/);
+    expect(json.steps[0].metadata).toEqual(json.metadata);
+
+    const e2eRecord = readRecords(recordPath).find((record) => record.event === "e2e");
+    expect(e2eRecord.forwarded).toEqual([]);
+    expect(e2eRecord.env).toMatchObject({
+      webHost: "127.0.0.1",
+      webPort: String(webStart),
+      terminalHost: "127.0.0.1",
+      terminalPort: String(terminalStart),
+      tokenPresent: true,
+    });
+    expect(e2eRecord.env.projectsDir).toContain(".harness/run/e2e-");
+    expect(e2eRecord.env.dataDir).toContain(".harness/run/e2e-");
+    expect(existsSync(path.dirname(e2eRecord.env.projectsDir))).toBe(false);
+  });
+
+  it("forwards targeted Playwright args after -- through arrays and sanitizes labels", async () => {
+    const recordPath = path.join(testDir, "npm-record.jsonl");
+    const fakeNpm = createFakeNpm();
+    const tricky = "e2e/a spec; echo should-not-run.spec.ts";
+    const credentialUrl = ["https://user:pass", "example.test/spec?token=secret"].join("@");
+
+    const result = runHarness(
+      [
+        "e2e",
+        "--json",
+        "--",
+        "e2e/terminal.spec.ts",
+        "--project=chromium",
+        "--reporter=json",
+        tricky,
+        credentialUrl,
+      ],
+      {
+        HARNESS_NPM_BIN: fakeNpm,
+        FAKE_NPM_RECORD: recordPath,
+      },
+    );
+
+    expect(result.status).toBe(0);
+    const json = parseJson(result);
+    expect(json.command).toBe("npm run e2e -- <5 target(s)>");
+    expect(json.metadata.targeted).toBe(true);
+    expect(json.metadata.targetCount).toBe(5);
+    expect(json.metadata.targets).toContain("e2e/terminal.spec.ts");
+    expect(json.metadata.targets).toContain("--reporter=json");
+    expect(json.metadata.targets).toContain(tricky);
+    expect(json.metadata.targets).toContain("[redacted-url]");
+    expect(json.metadata.playwrightProjects).toEqual(["chromium"]);
+    expect(json.metadata.e2e.targets).toEqual(json.metadata.targets);
+    expect(json.metadata.e2e.playwrightProjects).toEqual(["chromium"]);
+    expect(json.metadata.e2e.testCounts).toEqual({
+      passed: 1,
+      failed: 0,
+      skipped: 1,
+      timedOut: 0,
+      interrupted: 0,
+    });
+    expect(String(result.stdout)).not.toContain("?token=");
+
+    const e2eRecord = readRecords(recordPath).find((record) => record.event === "e2e");
+    expect(e2eRecord.forwarded).toEqual([
+      "e2e/terminal.spec.ts",
+      "--project=chromium",
+      "--reporter=json",
+      tricky,
+      credentialUrl,
+    ]);
+  });
+
+  it("rejects non-delimited Playwright arguments before they can be forwarded", () => {
+    const result = runHarness(["e2e", "--json", "e2e/terminal.spec.ts"]);
+
+    expect(result.status).toBe(1);
+    const json = parseJson(result);
+    expect(json.verdict).toBe("fail");
+    expect(json.message).toContain("must follow --");
+  });
+
+  it.each([
+    ["missing npm", { HARNESS_NPM_BIN: path.join(testDir, "missing-npm") }, 3, "unknown"],
+    ["missing playwright", { HARNESS_E2E_FORCE_NO_PLAYWRIGHT: "1" }, 3, "unknown"],
+    ["playwright failure", { FAKE_NPM_E2E_EXIT: "1" }, 1, "fail"],
+  ])("maps E2E capability and failure verdicts: %s", (_name, env, status, verdict) => {
+    const fakeNpm = createFakeNpm();
+    const result = runHarness(["e2e", "--json"], {
+      HARNESS_NPM_BIN: fakeNpm,
+      ...env,
+    });
+
+    expect(result.status).toBe(status);
+    const json = parseJson(result);
+    expect(json.verdict).toBe(verdict);
+    expect(json.metadata.e2e.testCounts).toMatchObject({
+      passed: expect.any(Number),
+      failed: expect.any(Number),
+      skipped: expect.any(Number),
+      timedOut: expect.any(Number),
+      interrupted: expect.any(Number),
+    });
+  });
+
+  it("reports fixed E2E port conflicts as degraded without killing listeners", async () => {
+    const fakeNpm = createFakeNpm();
+    const occupied = await listenOn(0);
+    const webPort = (occupied.address() as net.AddressInfo).port;
+    const terminalPort = await findConsecutivePortsInRange(43000, 43999, 1);
+
+    try {
+      const result = runHarness(["e2e", "--json"], {
+        HARNESS_NPM_BIN: fakeNpm,
+        DEVDECK_E2E_WEB_PORT: String(webPort),
+        DEVDECK_E2E_TERMINAL_PORT: String(terminalPort),
+      });
+
+      expect(result.status).toBe(2);
+      const json = parseJson(result);
+      expect(json.verdict).toBe("degraded");
+      expect(json.metadata.reason).toBe("fixed_web_port_in_use");
+      expect(json.metadata.e2e.reason).toBe("fixed_web_port_in_use");
+      expect(json.metadata.e2e.testCounts).toEqual({
+        passed: 0,
+        failed: 0,
+        skipped: 0,
+        timedOut: 0,
+        interrupted: 0,
+      });
+      await expect(canConnect(webPort)).resolves.toBe(true);
+      expect(occupied.listening).toBe(true);
+    } finally {
+      await closeServer(occupied);
+    }
+  });
+
+  it("uses E2E locks so concurrent runs choose distinct port pairs and clean scratch state", async () => {
+    const recordPath = path.join(testDir, "npm-record.jsonl");
+    const fakeNpm = createFakeNpm();
+    const webStart = await findConsecutivePortsInRange(42000, 42999, 2);
+    const terminalStart = await findConsecutivePortsInRange(43000, 43999, 2);
+    const env = {
+      HARNESS_NPM_BIN: fakeNpm,
+      HARNESS_E2E_WEB_AUTO_START: String(webStart),
+      HARNESS_E2E_TERMINAL_AUTO_START: String(terminalStart),
+      HARNESS_E2E_AUTO_MAX_ATTEMPTS: "2",
+      FAKE_NPM_RECORD: recordPath,
+    };
+
+    const first = runHarnessAsync(["e2e", "--json"], env, 20_000);
+    const second = runHarnessAsync(["e2e", "--json"], env, 20_000);
+    const results = await Promise.all([first.done, second.done]);
+
+    expect(results.map((result) => result.status).sort()).toEqual([0, 0]);
+    const json = results.map(parseAsyncJson);
+    expect(json.map((result) => result.metadata.webPort).sort()).toEqual([webStart, webStart + 1]);
+    expect(json.map((result) => result.metadata.terminalPort).sort()).toEqual([
+      terminalStart,
+      terminalStart + 1,
+    ]);
+    await expectPathGone(e2eLockDir("web", webStart));
+    await expectPathGone(e2eLockDir("web", webStart + 1));
+    await expectPathGone(e2eLockDir("terminal", terminalStart));
+    await expectPathGone(e2eLockDir("terminal", terminalStart + 1));
+  });
+
+  it("keeps checked-in E2E fixtures immutable by mutating only scratch copies", () => {
+    const seedPath = path.join(
+      repoRoot,
+      "e2e",
+      "fixtures",
+      "projects",
+      "immutable-seed",
+      "README.md",
+    );
+    const before = readFileSync(seedPath, "utf8");
+    const fakeNpm = createFakeNpm();
+
+    const result = runHarness(["e2e", "--json"], {
+      HARNESS_NPM_BIN: fakeNpm,
+      FAKE_NPM_E2E_MUTATE_FIXTURE_REL: path.join("immutable-seed", "README.md"),
+    });
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(seedPath, "utf8")).toBe(before);
+  });
+
+  it("asserts Playwright config uses loopback harness env and does not reuse servers", () => {
+    const config = readFileSync(path.join(repoRoot, "playwright.config.ts"), "utf8");
+
+    expect(config).toContain('process.env.DEVDECK_E2E_WEB_HOST ?? "127.0.0.1"');
+    expect(config).toContain('process.env.DEVDECK_E2E_TERMINAL_HOST ?? "127.0.0.1"');
+    expect(config).toContain("DEVDECK_PROJECTS_DIR");
+    expect(config).toContain("DEVDECK_DATA_DIR");
+    expect(config).not.toContain("--hostname 0.0.0.0");
+    expect(config.match(/reuseExistingServer:\s*false/g)).toHaveLength(2);
+  });
+
+  it("asserts CI provisions Playwright Chromium before harness verify", () => {
+    const workflow = readFileSync(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
+    const npmCiIndex = workflow.indexOf("npm ci");
+    const playwrightIndex = workflow.indexOf("npx playwright install --with-deps chromium");
+    const verifyIndex = workflow.indexOf("./harness verify");
+
+    expect(npmCiIndex).toBeGreaterThanOrEqual(0);
+    expect(playwrightIndex).toBeGreaterThan(npmCiIndex);
+    expect(verifyIndex).toBeGreaterThan(playwrightIndex);
+    expect(workflow.match(/\.\/harness verify/g)).toHaveLength(1);
+  });
+});
+
 describe("harness verify shared smoke evidence", () => {
   it("continues after earlier failures and records sanitized smoke evidence", async () => {
     const recordPath = path.join(testDir, "npm-record.jsonl");
@@ -890,6 +1230,7 @@ describe("harness verify shared smoke evidence", () => {
       "build",
       "test",
       "smoke",
+      "e2e",
     ]);
     const records = readRecords(recordPath).filter((record) => record.event === "invoke");
     expect(records.map((record) => record.args.slice(0, 2).join(" "))).toEqual([
@@ -898,6 +1239,7 @@ describe("harness verify shared smoke evidence", () => {
       "run build",
       "run test",
       "run start",
+      "run e2e",
     ]);
 
     const evidencePath = path.join(repoRoot, json.evidence);
@@ -912,6 +1254,27 @@ describe("harness verify shared smoke evidence", () => {
     });
     const jsonSmokeStep = json.steps.find((step: { name: string }) => step.name === "smoke");
     expect(jsonSmokeStep.metadata).toEqual(smokeStep.metadata);
+    const e2eStep = evidence.steps.find((step: { name: string }) => step.name === "e2e");
+    expect(e2eStep.metadata).toMatchObject({
+      targeted: false,
+      targets: [],
+      targetCount: 0,
+      truncated: false,
+      testCounts: { passed: 1, failed: 0, skipped: 1, timedOut: 0, interrupted: 0 },
+      webPort: expect.any(Number),
+      terminalPort: expect.any(Number),
+      artifactPaths: ["test-results"],
+    });
+    expect(e2eStep.metadata.e2e).toMatchObject({
+      targeted: false,
+      targets: [],
+      targetCount: 0,
+      truncated: false,
+      testCounts: { passed: 1, failed: 0, skipped: 1, timedOut: 0, interrupted: 0 },
+      webPort: expect.any(Number),
+      terminalPort: expect.any(Number),
+      artifactPaths: ["test-results"],
+    });
     expect(smokeStep.metadata.bindHost).toBeUndefined();
     expect(smokeStep.metadata.reason).toBeUndefined();
     expect(smokeStep.metadata.readinessAttempts).toBeUndefined();
@@ -951,6 +1314,14 @@ describe("harness verify shared smoke evidence", () => {
         pollIntervalMs: 1000,
       });
       expect(smokeStep.metadata.reason).toBeUndefined();
+      expect(json.steps.map((step: { name: string }) => step.name)).toEqual([
+        "lint",
+        "format_check",
+        "build",
+        "test",
+        "smoke",
+        "e2e",
+      ]);
     },
   );
 
@@ -993,12 +1364,14 @@ describe("harness discovery output", () => {
     expect(String(help.stdout)).toContain("install");
     expect(String(help.stdout)).toContain("smoke --port auto");
     expect(String(help.stdout)).toContain("test -- src/server/start-dev.test.ts");
+    expect(String(help.stdout)).toContain("e2e -- e2e/terminal.spec.ts");
 
     const orient = runHarness(["orient"]);
     expect(orient.status).toBe(0);
     expect(String(orient.stdout)).toContain("test -- <args>");
     expect(String(orient.stdout)).toContain("install");
     expect(String(orient.stdout)).toContain("smoke");
+    expect(String(orient.stdout)).toContain("e2e -- <args>");
   });
 
   it("exposes smoke and targeted test fields in orient JSON", () => {
@@ -1013,6 +1386,7 @@ describe("harness discovery output", () => {
       "install",
       "lint",
       "test",
+      "e2e",
       "build",
       "boot",
       "smoke",
@@ -1028,6 +1402,7 @@ describe("harness discovery output", () => {
       "build",
       "test",
       "smoke",
+      "e2e",
     ]);
     expect(json.commands.smoke.command).toBe(
       "npm run start -- --hostname 127.0.0.1 --port <selectedPort>",
@@ -1036,8 +1411,12 @@ describe("harness discovery output", () => {
     expect(json.commands.smoke.portModeDefault).toBe("auto");
     expect(json.commands.smoke.defaultPortMode).toBeUndefined();
     expect(json.commands.test.command).toBe("npm run test [-- <targets>]");
+    expect(json.commands.e2e.command).toBe("npm run e2e [-- <playwright args>]");
+    expect(json.commands.e2e.runner).toBe("Playwright");
     expect(json.commands.test.supportsTargets).toBe(true);
+    expect(json.commands.e2e.supportsTargets).toBe(true);
     expect(json.commands.smoke.usage).toBe("./harness smoke [--port auto|PORT] [--json]");
     expect(json.commands.test.passthrough).toBe("./harness test -- <vitest args...>");
+    expect(json.commands.e2e.passthrough).toBe("./harness e2e -- <playwright args...>");
   });
 });

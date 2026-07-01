@@ -21,10 +21,10 @@ This file is the single registry of all architectural decisions and core-compone
 | CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (amended) | 2026-06-27 |
 | CORE-COMPONENT-0004 | Theming | Adopted (updated) | 2026-05-21 |
 | CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2026-06-15 |
-| CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted | 2026-05-06 |
+| CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted (amended) | 2026-06-30 |
 | CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-06-11 |
 | CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-06-15 |
-| CORE-COMPONENT-0009 | Engineering Harness | Adopted (updated) | 2026-06-25 |
+| CORE-COMPONENT-0009 | Engineering Harness | Adopted (amended) | 2026-06-30 |
 
 ## Decisions
 
@@ -294,3 +294,16 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 260 | Prohibit default terminal project-sidebar Copilot status updates | CORE-COMPONENT-0003 | 2026-06-27 |
 | 261 | Prohibit reconnects after default terminal close code 1008 | CORE-COMPONENT-0003 | 2026-06-27 |
 | 262 | Send fixed unsupported-context error frame without echoing supplied parameters | CORE-COMPONENT-0003 | 2026-06-27 |
+| 263 | Expose `./harness e2e` as the first-class Playwright browser gate | CORE-COMPONENT-0009 | 2026-06-30 |
+| 264 | Run `./harness e2e` after smoke in every `./harness verify` | CORE-COMPONENT-0009 | 2026-06-30 |
+| 265 | Keep `./harness smoke` limited to built-app root HTTP readiness | CORE-COMPONENT-0009 | 2026-06-30 |
+| 266 | Forward Playwright arguments only through safe arrays after `--` | CORE-COMPONENT-0009 | 2026-06-30 |
+| 267 | Sanitize E2E JSON evidence and reference only safe artifact paths | CORE-COMPONENT-0009 | 2026-06-30 |
+| 268 | Bind E2E web and terminal servers to harness-owned loopback ports | CORE-COMPONENT-0009 | 2026-06-30 |
+| 269 | Isolate E2E fixtures in per-invocation `.harness/run` scratch directories | CORE-COMPONENT-0009 | 2026-06-30 |
+| 270 | Clean up only harness-owned E2E processes, locks, and scratch data | CORE-COMPONENT-0009 | 2026-06-30 |
+| 271 | Prohibit Playwright from reusing unrelated fixed-port servers in harness runs | CORE-COMPONENT-0009 | 2026-06-30 |
+| 272 | Require CI browser setup before running `./harness verify` | CORE-COMPONENT-0009 | 2026-06-30 |
+| 273 | Adopt Playwright as DevDeck's browser E2E test runner | CORE-COMPONENT-0006 | 2026-06-30 |
+| 274 | Require browser E2E coverage for representative user-visible workflows | CORE-COMPONENT-0006 | 2026-06-30 |
+| 275 | Use accessibility-oriented selectors in Playwright browser E2E tests | CORE-COMPONENT-0006 | 2026-06-30 |
