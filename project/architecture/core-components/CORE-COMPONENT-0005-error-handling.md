@@ -2,7 +2,7 @@
 
 ## Status
 
-Adopted (updated) - 2026-06-15
+Adopted (amended) - 2026-07-01
 
 ## Purpose
 
@@ -16,6 +16,8 @@ Define consistent error handling patterns across the application, covering WebSo
 - API route error responses
 - Toast notifications for user-facing errors
 - File-tree SSE sync connection, degraded fallback, and retry behavior
+- Workspace context, repository/worktree status, selected-detail disabled states, and project-page terminal context errors
+- Redaction of filesystem paths, credentials, query tokens, remote URL userinfo, and unsafe diagnostics in UI/API/log/snapshot surfaces
 
 ## Definition
 
@@ -36,15 +38,26 @@ Define consistent error handling patterns across the application, covering WebSo
 - Degraded file-tree sync MUST preserve existing visible tree state, start the 5000 ms fallback polling path, and expose a manual retry control
 - Manual file-tree sync retry MUST close any stale EventSource, stop fallback polling after a new `file-tree:ready`, and keep fallback polling active if retry fails recoverably
 - File-tree sync error logs MUST include status/code and project/worktree scope only; logs MUST NOT include absolute filesystem paths, auth tokens, or raw event payloads
+- Workspace context errors MUST return structured JSON `{ error: string, code: string }` with safe optional fields only; `details: String(error)` MUST NOT be returned for workspace context, repository, file, diff, sync, or terminal context failures
+- Invalid, stale, unknown, duplicate, disabled, locked, prunable, or unavailable workspace contexts MUST be treated as non-retryable until the user selects a valid context or refreshes the worktree list
+- Invalid or stale workspace contexts MUST block file-tree, file content/save/diff, file-tree sync, and project-page terminal actions; handlers MUST NOT silently fall back to project root or another checkout
+- User-facing disabled-state copy MUST name the safe cause (for example locked, prunable, missing, duplicate, unavailable, Git unavailable) and MUST avoid filesystem paths and raw command output
+- Repository remote labels shown in UI, API responses, logs, or snapshots MUST strip credentials, URL userinfo, query strings, fragments, and tokens for HTTPS, SSH, and scp-like remote forms
+- Malformed, missing, inaccessible, non-Git, or Git-unavailable repository states MUST produce sanitized status labels instead of raw Git stderr
+- Workspace context and project-page terminal logs MUST include only safe identifiers such as normalized slug, server-issued workspace context ID, code, and status; they MUST NOT include resolved `cwd`, absolute project paths, worktree paths, environment variables, auth tokens, cookies, or raw remote URLs
+- Automated snapshots and E2E artifacts that include selected-project details MUST use sanitized labels and MUST NOT include absolute paths, credential-bearing URLs, query strings, or raw terminal context errors
 
 ### Interfaces
 - **ErrorBoundary:** React component wrapping each major panel (file explorer, terminal, content viewer)
 - **useWebSocketReconnect:** Hook managing reconnection logic with exponential backoff
 - **Toast API:** `toast.error(message)` from sonner for user notifications
-- **API error format:** `{ error: string, code: string, details?: unknown }`
+- **API error format:** `{ error: string, code: string, details?: unknown }` where `details` is optional, structured, sanitized, and never raw `String(error)` for workspace-sensitive failures
 - **File-tree sync status UI:** Explorer header status element using `role="status"` and `aria-live="polite"` plus a retry button when the state is retryable/degraded
 - **File-tree sync retry action:** `retryFileTreeSync()` from `WorkspaceContext`, invoked by Explorer UI to restart the SSE stream without remounting the tree
 - **File-tree sync no-retry states:** `unauthorized`, `invalid-origin`, `invalid-slug`, `invalid-worktree`, and `invalid-parameters`
+- **Workspace context error codes:** `WORKSPACE_CONTEXT_STALE`, `WORKSPACE_CONTEXT_UNAVAILABLE`, `WORKSPACE_CONTEXT_DISABLED`, `WORKSPACE_CONTEXT_CONFLICT`, `WORKTREE_LOCKED`, `WORKTREE_PRUNABLE`, `GIT_UNAVAILABLE`, `REPOSITORY_UNAVAILABLE`, and `TERMINAL_CONTEXT_UNAVAILABLE`
+- **Repository/worktree status UI:** Selected-project detail status rows using safe labels, `role="status"` for changing states, and visible disabled-state copy for non-activatable choices
+- **Remote label sanitizer:** Shared helper that accepts raw Git remote output and returns safe display labels without credentials, userinfo, query strings, fragments, or tokens
 
 ### Expectations
 - Reconnection attempts MUST use exponential backoff: 1s, 2s, 4s
@@ -53,6 +66,8 @@ Define consistent error handling patterns across the application, covering WebSo
 - PTY process crashes MUST allow spawning a new terminal without page reload
 - File-tree sync degradation MUST announce fallback polling without clearing selection, expansion, loaded directories, or the current tree
 - File-tree sync auth/validation failures MUST tell the user what to change and avoid misleading fallback polling
+- Workspace context failures MUST preserve the visible selected context and explain how to recover without switching checkouts automatically
+- Project-page terminal context failures MUST display a scoped terminal unavailable state that can be retried after refresh or context change
 
 ## Rationale
 
@@ -92,6 +107,8 @@ return Response.json({ error: 'PTY spawn failed', code: 'PTY_ERROR' }, { status:
 - API routes should use a shared `createErrorResponse` utility
 - File-tree sync retry/degraded handling belongs in `useFileTreeSync` and must be surfaced through `WorkspaceContext` for Explorer UI
 - Explorer sync status must be inline and non-blocking; it must not replace root load errors or per-directory retry UI
+- Workspace context, repository status, remote label, file API, sync, and project-page terminal handlers should use shared sanitization utilities before returning errors, rendering labels, logging diagnostics, or writing snapshots
+- UI components should map workspace context error codes to stable, actionable copy and avoid rendering raw `Error.message` values from server or Git commands
 
 ## Exceptions
 
@@ -106,6 +123,9 @@ return Response.json({ error: 'PTY spawn failed', code: 'PTY_ERROR' }, { status:
 - [x] Test coverage requirements: WebSocket reconnection logic must have unit tests
 - [ ] Automated checks: File-tree sync hook tests must cover recoverable retry/backoff, degraded fallback entry, manual retry, and fallback stop after `file-tree:ready`
 - [ ] Automated checks: Explorer UI tests must cover `role="status"`, `aria-live`, retry button accessibility, non-retryable auth/invalid-param copy, and tree preservation while degraded
+- [ ] Automated checks: Workspace context error tests must assert stale/disabled contexts block actions, never fall back to root, and render actionable safe copy
+- [ ] Automated checks: Redaction tests must assert API errors, selected-detail UI, terminal context errors, logs, and snapshots omit absolute paths, credentials, query strings, remote URL userinfo, and raw Git stderr
+- [ ] Automated checks: Remote sanitizer tests must cover HTTPS, SSH, scp-like, malformed, no-origin, and credential-bearing remote strings
 - [ ] Test coverage requirements: `./harness verify` must pass before implementation handoff
 
 ## Related ADRs
