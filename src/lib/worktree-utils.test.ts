@@ -11,7 +11,9 @@ import fs from "fs/promises";
 import { resolveProjectPath } from "@/lib/registry";
 import {
   normalizeHttpWorktree,
+  resolveWorkspaceContextRoot,
   resolveWorktreeRoot,
+  sanitizeRemoteLabel,
   WorktreeResolutionError,
 } from "./worktree-utils";
 
@@ -106,5 +108,30 @@ describe("normalizeHttpWorktree", () => {
 
   it("throws WorktreeResolutionError for invalid values", () => {
     expect(() => normalizeHttpWorktree("../x")).toThrow(WorktreeResolutionError);
+  });
+
+  it("rejects Windows traversal separators before resolution", () => {
+    expect(() => normalizeHttpWorktree("feature\\..\\escape")).toThrow(WorktreeResolutionError);
+  });
+});
+
+describe("resolveWorkspaceContextRoot", () => {
+  it("reports empty workspaceContext as a workspaceContext parameter error", async () => {
+    await expect(resolveWorkspaceContextRoot("demo", "   ", null)).rejects.toMatchObject({
+      code: "INVALID_WORKTREE",
+      message: "Invalid 'workspaceContext' parameter",
+      status: 400,
+    });
+  });
+});
+
+describe("sanitizeRemoteLabel", () => {
+  it.each([
+    ["git@github.com:owner/repo.git?token=secret#frag", "github.com/owner/repo.git"],
+    ["user@host:path/to/repo.git?password=secret", "host/path/to/repo.git"],
+    ["user@host:path/to/repo.git#secret", "host/path/to/repo.git"],
+    ["@host:path/to/repo.git?token=secret", "path/to/repo.git"],
+  ])("strips query and fragment material from %s", (remote, expected) => {
+    expect(sanitizeRemoteLabel(remote)).toBe(expected);
   });
 });

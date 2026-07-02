@@ -94,7 +94,18 @@ export function WorktreeTree({ slug, compact = false }: WorktreeTreeProps) {
 
   const selectedChoice = (() => {
     if (activeWorkspaceContextId && activeWorkspaceContextId !== "root") {
-      return visibleChoices.find((choice) => choice.id === activeWorkspaceContextId);
+      return (
+        visibleChoices.find((choice) => choice.id === activeWorkspaceContextId) ?? {
+          id: activeWorkspaceContextId,
+          label: "Unavailable workspace",
+          kind: "worktree" as const,
+          status: "stale" as const,
+          available: false,
+          disabled: true,
+          disabledReason: "Selected workspace is no longer available.",
+          summary: "Selected workspace is unavailable",
+        }
+      );
     }
     if (activeWorktree && activeWorktree.startsWith(".trees/")) {
       const legacyName = activeWorktree.slice(".trees/".length);

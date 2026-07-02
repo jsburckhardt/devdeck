@@ -59,6 +59,7 @@ describe("terminal server default endpoint", () => {
   it.each([
     ["slug", "slug=demo"],
     ["worktree", "worktree=.trees/demo"],
+    ["workspaceContext", "workspaceContext=wt_demo"],
     ["slug and worktree", "slug=demo&worktree=.trees/demo"],
   ])("rejects %s context with a 1008 error frame before spawning a PTY", async (_label, query) => {
     const server = createTerminalServer({ port: 0, token: "secret" });

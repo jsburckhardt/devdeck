@@ -427,7 +427,7 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
         expandedFolders: nextExpandedFolders,
         fileTree: nextFileTree,
         directoryErrors: nextDirectoryErrors,
-        activeWorktree: workspaceContext,
+        activeWorktree: activeWorktree ?? currentWorktreeRef.current,
       };
 
       setSelectedFile(nextSelectedFile);
@@ -772,7 +772,13 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
     async (scope: FileTreeSyncScope) => {
       const activeSlug = currentSlugRef.current;
       const activeWorktree = currentWorktreeRef.current;
-      if (!activeSlug || scope.slug !== activeSlug || scope.worktree !== activeWorktree) {
+      const activeWorkspaceContext = currentWorkspaceContextRef.current;
+      if (
+        !activeSlug ||
+        scope.slug !== activeSlug ||
+        scope.worktree !== activeWorktree ||
+        (scope.workspaceContext ?? "root") !== activeWorkspaceContext
+      ) {
         return;
       }
 
@@ -808,10 +814,12 @@ export function WorkspaceProvider({ slug, children }: WorkspaceProviderProps) {
     async (event: FileTreeChangedEvent) => {
       const activeSlug = currentSlugRef.current;
       const activeWorktree = currentWorktreeRef.current;
+      const activeWorkspaceContext = currentWorkspaceContextRef.current;
       if (
         !activeSlug ||
         event.scope.slug !== activeSlug ||
-        event.scope.worktree !== activeWorktree
+        event.scope.worktree !== activeWorktree ||
+        (event.scope.workspaceContext ?? "root") !== activeWorkspaceContext
       ) {
         return;
       }

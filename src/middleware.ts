@@ -18,8 +18,11 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Skip WebSocket terminal endpoint — terminal server handles its own auth
-  if (request.nextUrl.pathname === "/api/terminal") {
+  // Skip WebSocket terminal endpoints — terminal server handles its own auth
+  if (
+    request.nextUrl.pathname === "/api/terminal" ||
+    request.nextUrl.pathname.startsWith("/api/terminal/")
+  ) {
     return NextResponse.next();
   }
 
@@ -37,11 +40,6 @@ export function middleware(request: NextRequest) {
     const response = NextResponse.redirect(url);
     response.cookies.set("devdeck_token", token, {
       httpOnly: true,
-      sameSite: "lax",
-      path: "/",
-      secure: request.nextUrl.protocol === "https:",
-    });
-    response.cookies.set("devdeck_token_client", token, {
       sameSite: "lax",
       path: "/",
       secure: request.nextUrl.protocol === "https:",

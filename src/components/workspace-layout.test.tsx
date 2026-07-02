@@ -83,7 +83,11 @@ describe("WorkspaceLayout terminal decoupling", () => {
       workspaceContextId: "root",
     });
     expect(mockUseFileTreeSync).toHaveBeenCalledWith(
-      expect.objectContaining({ slug: "demo", worktree: ".trees/feat" }),
+      expect.objectContaining({
+        slug: "demo",
+        worktree: ".trees/feat",
+        workspaceContext: "root",
+      }),
     );
   });
 });

@@ -436,7 +436,7 @@ export function createTerminalServer(options?: TerminalServerOptions): TerminalS
     const worktree = extractWorktree(req);
     const workspaceContext = extractWorkspaceContext(req);
     const isProjectContextRoute = requestPath === "/project" || requestPath === "/project/";
-    const hasUnsupportedContext = slug !== null || worktree !== null;
+    const hasUnsupportedContext = slug !== null || worktree !== null || workspaceContext !== null;
     if (hasUnsupportedContext && !isProjectContextRoute) {
       console.log("Rejected unsupported terminal context");
       try {

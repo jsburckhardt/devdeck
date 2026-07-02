@@ -62,7 +62,7 @@ export function normalizeHttpWorktree(worktree: string): string {
     throw new WorktreeResolutionError("INVALID_WORKTREE", "Invalid 'worktree' parameter", 400);
   }
 
-  const segments = relativeWorktree.split(/[\/]/);
+  const segments = relativeWorktree.split(/[\\/]/);
   if (segments.some((segment) => segment === ".." || segment === "")) {
     throw new WorktreeResolutionError("INVALID_WORKTREE", "Invalid 'worktree' parameter", 400);
   }
@@ -167,10 +167,11 @@ async function resolveParsedWorkspaceEntries(slug: string): Promise<ParsedWorktr
 export function sanitizeRemoteLabel(remote: string): string {
   const trimmed = remote.trim();
   if (!trimmed) return "origin";
+  const withoutQueryOrFragment = trimmed.replace(/[?#].*$/, "");
 
   try {
-    if (/^https?:\/\//i.test(trimmed)) {
-      const url = new URL(trimmed);
+    if (/^https?:\/\//i.test(withoutQueryOrFragment)) {
+      const url = new URL(withoutQueryOrFragment);
       url.username = "";
       url.password = "";
       const pathname = url.pathname === "/" ? "" : url.pathname;
@@ -180,8 +181,8 @@ export function sanitizeRemoteLabel(remote: string): string {
       );
     }
 
-    if (/^ssh:\/\//i.test(trimmed)) {
-      const url = new URL(trimmed);
+    if (/^ssh:\/\//i.test(withoutQueryOrFragment)) {
+      const url = new URL(withoutQueryOrFragment);
       url.username = "";
       const pathname = url.pathname === "/" ? "" : url.pathname;
       return (
@@ -193,16 +194,16 @@ export function sanitizeRemoteLabel(remote: string): string {
     // fall through for scp-like remotes
   }
 
-  if (/^[^@]+@[^:]+:.+$/.test(trimmed)) {
-    const match = trimmed.match(/^[^@]+@([^:]+):(.+)$/);
+  if (/^[^@]+@[^:]+:.+$/.test(withoutQueryOrFragment)) {
+    const match = withoutQueryOrFragment.match(/^[^@]+@([^:]+):(.+)$/);
     if (match) return `${match[1]}/${match[2].replace(/^\//, "")}`;
   }
 
-  if (trimmed.includes("@") && trimmed.includes(":")) {
-    return trimmed.split(":")[1] ?? "origin";
+  if (withoutQueryOrFragment.includes("@") && withoutQueryOrFragment.includes(":")) {
+    return withoutQueryOrFragment.split(":")[1] ?? "origin";
   }
 
-  return trimmed.replace(/\?.*$/, "").replace(/#.*$/, "");
+  return withoutQueryOrFragment;
 }
 
 export async function listWorkspaceContexts(slug: string): Promise<WorkspaceContextResponse> {
@@ -334,12 +335,16 @@ export async function resolveWorkspaceContextRoot(
     normalizedWorkspaceContext === "" ||
     normalizedWorkspaceContext === "root";
 
-  if (wantsLegacyWorktree && !hasExplicitLegacyWorktree) {
-    return { root: projectRoot, context: "root" };
+  if (hasExplicitWorkspaceContext && normalizedWorkspaceContext === "") {
+    throw new WorktreeResolutionError(
+      "INVALID_WORKTREE",
+      "Invalid 'workspaceContext' parameter",
+      400,
+    );
   }
 
-  if (hasExplicitWorkspaceContext && normalizedWorkspaceContext === "") {
-    throw new WorktreeResolutionError("INVALID_WORKTREE", "Invalid 'worktree' parameter", 400);
+  if (wantsLegacyWorktree && !hasExplicitLegacyWorktree) {
+    return { root: projectRoot, context: "root" };
   }
 
   if (wantsLegacyWorktree && hasExplicitLegacyWorktree && !normalizedLegacyWorktree) {

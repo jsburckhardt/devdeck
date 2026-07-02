@@ -244,15 +244,6 @@ function readBrowserToken(): string | null {
     return queryToken;
   }
 
-  const clientCookieToken = document.cookie
-    .split(";")
-    .map((entry) => entry.trim())
-    .find((entry) => entry.startsWith("devdeck_token_client="))
-    ?.slice("devdeck_token_client=".length);
-  if (clientCookieToken) {
-    return decodeURIComponent(clientCookieToken);
-  }
-
   const cookieToken = document.cookie
     .split(";")
     .map((entry) => entry.trim())

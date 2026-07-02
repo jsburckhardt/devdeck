@@ -12,16 +12,23 @@ vi.mock("sonner", () => ({
 
 const mockRefresh = vi.fn();
 const mockSetActiveWorktree = vi.fn();
+const mockSetActiveWorkspaceContext = vi.fn();
 const mockToggleWorktreesSection = vi.fn();
 
 let mockWorktrees: { name: string; branch: string }[] = [];
+let mockChoices: unknown[] = [];
+let mockResponse: unknown = null;
 let mockLoading = false;
 let mockError: string | null = null;
 let mockActiveWorktree: string | null = null;
+let mockActiveWorkspaceContextId = "root";
+let mockActiveWorkspaceContextStatus = "active";
 let mockCollapsed = false;
 let mockFallbackActive = false;
 const mockUseWorktrees = vi.fn(() => ({
   worktrees: mockWorktrees,
+  choices: mockChoices,
+  response: mockResponse,
   loading: mockLoading,
   error: mockError,
   refresh: mockRefresh,
@@ -35,8 +42,11 @@ vi.mock("@/hooks/use-worktrees", () => ({
 vi.mock("@/lib/workspace-context", () => ({
   useWorkspace: () => ({
     activeWorktree: mockActiveWorktree,
+    activeWorkspaceContextId: mockActiveWorkspaceContextId,
+    activeWorkspaceContextStatus: mockActiveWorkspaceContextStatus,
     fileTreeSyncFallbackActive: mockFallbackActive,
     worktreesSectionCollapsed: mockCollapsed,
+    setActiveWorkspaceContext: mockSetActiveWorkspaceContext,
     setActiveWorktree: mockSetActiveWorktree,
     toggleWorktreesSection: mockToggleWorktreesSection,
   }),
@@ -46,9 +56,13 @@ describe("WorktreeTree", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockWorktrees = [];
+    mockChoices = [];
+    mockResponse = null;
     mockLoading = false;
     mockError = null;
     mockActiveWorktree = null;
+    mockActiveWorkspaceContextId = "root";
+    mockActiveWorkspaceContextStatus = "active";
     mockCollapsed = false;
     mockFallbackActive = false;
   });
@@ -128,6 +142,28 @@ describe("WorktreeTree", () => {
 
     expect(mockSetActiveWorktree).not.toHaveBeenCalled();
     expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it("shows a blocked stale context instead of falling back to project root", () => {
+    mockChoices = [
+      {
+        id: "root",
+        label: "Project root",
+        kind: "root",
+        status: "active",
+        available: true,
+        disabled: false,
+      },
+    ];
+    mockActiveWorkspaceContextId = "wt_missing";
+
+    render(<WorktreeTree slug="demo" />);
+
+    expect(screen.getByText("Unavailable workspace")).toBeInTheDocument();
+    expect(screen.getByText("Selected workspace is no longer available.")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Project root", { selector: ".font-medium" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders nested worktree names as selector-style filesystem nodes", () => {
