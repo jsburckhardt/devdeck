@@ -18,12 +18,12 @@ This file is the single registry of all architectural decisions and core-compone
 | ID | Title | Status | Date |
 |----|-------|--------|------|
 | CORE-COMPONENT-0002 | Commit Standards | Adopted (updated) | 2026-06-25 |
-| CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (amended) | 2026-06-27 |
+| CORE-COMPONENT-0003 | WebSocket Terminal Communication | Adopted (amended) | 2026-07-01 |
 | CORE-COMPONENT-0004 | Theming | Adopted (updated) | 2026-05-21 |
-| CORE-COMPONENT-0005 | Error Handling | Adopted (updated) | 2026-06-15 |
+| CORE-COMPONENT-0005 | Error Handling | Adopted (amended) | 2026-07-01 |
 | CORE-COMPONENT-0006 | Development Standards (Node/TypeScript) | Adopted (amended) | 2026-06-30 |
-| CORE-COMPONENT-0007 | Shell Layout | Adopted (updated) | 2026-06-11 |
-| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (updated) | 2026-06-15 |
+| CORE-COMPONENT-0007 | Shell Layout | Adopted (amended) | 2026-07-01 |
+| CORE-COMPONENT-0008 | Multi-Project Tabs and Workspace State | Adopted (amended) | 2026-07-01 |
 | CORE-COMPONENT-0009 | Engineering Harness | Adopted (amended) | 2026-06-30 |
 
 ## Decisions
@@ -311,3 +311,18 @@ Short, actionable statements derived from ADRs and core-components. More than on
 | 277 | Supersede CI browser provisioning: keep Playwright E2E local-only and remove browser setup from CI | CORE-COMPONENT-0009 | 2026-07-01 |
 | 278 | Expose `./harness format_check` and require CI to use harness verbs for every non-browser gate | CORE-COMPONENT-0009 | 2026-07-01 |
 | 279 | Scope Playwright reports and artifacts to per-run E2E scratch directories | CORE-COMPONENT-0009 | 2026-07-01 |
+| 280 | Use `/api/terminal/project` for selected workspace terminal sessions | CORE-COMPONENT-0003 | 2026-07-01 |
+| 281 | Preserve `/api/terminal` as a host-rooted default terminal | CORE-COMPONENT-0003 | 2026-07-01 |
+| 282 | Resolve scoped terminal cwd from server-issued workspaceContext only | CORE-COMPONENT-0003 | 2026-07-01 |
+| 283 | Prohibit scoped terminal fallback to another checkout on invalid context | CORE-COMPONENT-0003 | 2026-07-01 |
+| 284 | Separate selected workspace detail from open-project navigation rows | CORE-COMPONENT-0007 | 2026-07-01 |
+| 285 | Expose collapsed selected-context summaries without hidden focusable controls | CORE-COMPONENT-0007 | 2026-07-01 |
+| 286 | Disable unavailable workspace choices from keyboard focus | CORE-COMPONENT-0007 | 2026-07-01 |
+| 287 | Use hash-derived server-issued workspaceContext IDs for Git-reported worktrees | CORE-COMPONENT-0008 | 2026-07-01 |
+| 288 | Permit Git-reported worktrees outside the project `.trees` directory | CORE-COMPONENT-0008 | 2026-07-01 |
+| 289 | Require file, diff, and sync APIs to use `workspaceContext` parameters | CORE-COMPONENT-0008 | 2026-07-01 |
+| 290 | Block stale workspace contexts instead of resetting to project root | CORE-COMPONENT-0008 | 2026-07-01 |
+| 291 | Preserve per-project UI state separately by selected workspaceContext ID | CORE-COMPONENT-0008 | 2026-07-01 |
+| 292 | Sanitize repository remotes and workspace errors before rendering or logging | CORE-COMPONENT-0005 | 2026-07-01 |
+| 293 | Return structured non-retryable errors for invalid workspace contexts | CORE-COMPONENT-0005 | 2026-07-01 |
+| 294 | Prohibit absolute filesystem paths in workspace context diagnostics | CORE-COMPONENT-0005 | 2026-07-01 |
