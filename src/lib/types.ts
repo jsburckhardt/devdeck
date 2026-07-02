@@ -23,6 +23,50 @@ export interface ProjectRegistry {
   projects: ProjectRegistryEntry[];
 }
 
+export type WorkspaceContextId = "root" | `wt_${string}`;
+
+export type WorkspaceContextStatus =
+  | "active"
+  | "locked"
+  | "prunable"
+  | "missing"
+  | "conflict"
+  | "disabled"
+  | "stale"
+  | "unavailable"
+  | "git-unavailable"
+  | "repository-unavailable"
+  | "error";
+
+export interface WorkspaceContextChoice {
+  id: WorkspaceContextId;
+  label: string;
+  kind: "root" | "worktree";
+  status: WorkspaceContextStatus;
+  available?: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
+  branch?: string | null;
+  repositoryLabel?: string;
+  remoteLabel?: string;
+  pathLabel?: string;
+  summary?: string;
+}
+
+export interface WorkspaceContextResponse {
+  root: WorkspaceContextChoice;
+  choices: WorkspaceContextChoice[];
+  repository?: {
+    label?: string;
+    remoteLabel?: string;
+    status?: string;
+    errorCode?: string;
+    message?: string;
+  };
+  selectedContextId?: WorkspaceContextId | null;
+  empty?: boolean;
+}
+
 export type FileKind =
   | "regular-file"
   | "directory"
@@ -53,6 +97,7 @@ export interface FileNode {
 export interface FileTreeSyncScope {
   slug: string;
   worktree: string | null;
+  workspaceContext?: WorkspaceContextId | null;
 }
 
 export type FileTreeSyncStatus =
@@ -150,6 +195,7 @@ export interface PerProjectWorkspaceState {
   directoryLoadErrors?: Record<string, string>;
   loadedDirectories?: string[];
   activeWorktree?: string | null;
+  activeWorkspaceContextId?: WorkspaceContextId | null;
   worktreesSectionCollapsed?: boolean;
   copilotStatus?: CopilotCliState;
   worktreeFileTreeStates?: Record<string, WorktreeFileTreeState>;

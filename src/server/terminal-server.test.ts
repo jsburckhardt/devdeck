@@ -86,6 +86,29 @@ describe("terminal server default endpoint", () => {
     server.cleanup();
   });
 
+  it("rejects project-scoped terminal requests without a slug", async () => {
+    const server = createTerminalServer({ port: 0, token: "secret" });
+    await waitForListening(server);
+    const client = new WebSocket(`ws://127.0.0.1:${serverPort(server)}/project?token=secret`);
+
+    const messages: string[] = [];
+    client.on("message", (message) => {
+      messages.push(message.toString());
+    });
+
+    const closeEvent = await waitForClose(client);
+
+    expect(closeEvent.code).toBe(1008);
+    expect(closeEvent.reason).toBe("Unsupported terminal context");
+    expect(messages).toContain(
+      JSON.stringify({ type: "error", message: "Project terminal requires a slug." }),
+    );
+    expect(spawnMock).not.toHaveBeenCalled();
+
+    client.close();
+    server.cleanup();
+  });
+
   it.each([
     ["slug", "slug=demo"],
     ["worktree", "worktree=.trees/demo"],

@@ -4,9 +4,15 @@ import { watch, type FSWatcher } from "chokidar";
 import {
   normalizeHttpWorktree,
   resolveWorktreeRoot,
+  resolveWorkspaceContextRoot,
   WorktreeResolutionError,
 } from "@/lib/worktree-utils";
-import type { FileTreeChangedEvent, FileTreeDegradedEvent, FileTreeSyncScope } from "@/lib/types";
+import type {
+  FileTreeChangedEvent,
+  FileTreeDegradedEvent,
+  FileTreeSyncScope,
+  WorkspaceContextId,
+} from "@/lib/types";
 
 export const FILE_TREE_SYNC_DEBOUNCE_MS = 250;
 export const FILE_TREE_SYNC_FORCE_FLUSH_MS = 1000;
@@ -46,6 +52,7 @@ interface FileTreeSyncLimits {
 export interface SubscribeFileTreeChangesOptions {
   slug: string;
   worktree?: string | null;
+  workspaceContext?: string | null;
   onChange: (event: FileTreeChangedEvent) => void;
   onDegraded?: (event: FileTreeDegradedEvent) => void;
   signal?: AbortSignal;
@@ -122,32 +129,56 @@ function normalizedSlug(slug: string): string | null {
   return trimmed;
 }
 
-export function normalizeFileTreeSyncWorktree(worktree: string | null | undefined): string | null {
+function normalizeWorkspaceWorktree(worktree: string | null | undefined): string | null {
   if (worktree === null || worktree === undefined) return null;
-  const relativeWorktree = normalizeHttpWorktree(worktree);
-  return `.trees/${relativeWorktree}`;
+  const trimmed = worktree.trim();
+  if (!trimmed) return null;
+  return normalizeHttpWorktree(trimmed);
+}
+
+export function normalizeFileTreeSyncWorktree(worktree: string | null | undefined): string | null {
+  const normalized = normalizeWorkspaceWorktree(worktree);
+  return normalized === null ? null : `.trees/${normalized}`;
 }
 
 export async function resolveFileTreeSyncScope(
   slug: string,
   worktree: string | null | undefined,
+  workspaceContext?: string | null | undefined,
 ): Promise<{ scope: FileTreeSyncScope; root: string }> {
   const safeSlug = normalizedSlug(slug);
   if (!safeSlug) {
     throw new WorktreeResolutionError("PROJECT_NOT_FOUND", "Invalid 'slug' parameter", 400);
   }
 
-  const scopeWorktree = normalizeFileTreeSyncWorktree(worktree);
-  const root = await resolveWorktreeRoot(safeSlug, scopeWorktree);
-  const realRoot = await fs.realpath(root);
+  const normalizedWorkspaceContext = (workspaceContext ?? "").trim();
+  const normalizedLegacyWorktree = normalizeWorkspaceWorktree(worktree);
+  const scopeWorktree =
+    normalizedLegacyWorktree === null ? null : `.trees/${normalizedLegacyWorktree}`;
+  let resolvedRoot = "";
+  if (normalizedWorkspaceContext && normalizedWorkspaceContext !== "root") {
+    resolvedRoot = (
+      await resolveWorkspaceContextRoot(safeSlug, normalizedWorkspaceContext, worktree ?? null)
+    ).root;
+  } else {
+    resolvedRoot = await resolveWorktreeRoot(safeSlug, worktree ?? null);
+  }
+  const realRoot = await fs.realpath(resolvedRoot);
+  const scope: FileTreeSyncScope = {
+    slug: safeSlug,
+    worktree: scopeWorktree,
+    ...(normalizedWorkspaceContext && normalizedWorkspaceContext !== "root"
+      ? { workspaceContext: normalizedWorkspaceContext as WorkspaceContextId }
+      : {}),
+  };
   return {
-    scope: { slug: safeSlug, worktree: scopeWorktree },
+    scope,
     root: realRoot,
   };
 }
 
-function registryKey(scope: FileTreeSyncScope, root: string): string {
-  return JSON.stringify([scope.slug, scope.worktree, root]);
+function registryKey(scope: FileTreeSyncScope): string {
+  return JSON.stringify([scope.slug, scope.worktree ?? null, scope.workspaceContext ?? null]);
 }
 
 function toPosixRelative(root: string, candidatePath: string): string | null {
@@ -462,7 +493,11 @@ export async function subscribeFileTreeChanges(
 ): Promise<FileTreeWatcherSubscriptionResult> {
   let resolved: { scope: FileTreeSyncScope; root: string };
   try {
-    resolved = await resolveFileTreeSyncScope(options.slug, options.worktree);
+    resolved = await resolveFileTreeSyncScope(
+      options.slug,
+      options.worktree,
+      options.workspaceContext,
+    );
   } catch (error) {
     if (error instanceof WorktreeResolutionError) {
       return degradedResult(
@@ -497,7 +532,7 @@ export async function subscribeFileTreeChanges(
     });
   }
 
-  const key = registryKey(scope, root);
+  const key = registryKey(scope);
   let entry = registry.get(key);
 
   if (!entry && registry.size >= limits.maxWatchedRoots) {

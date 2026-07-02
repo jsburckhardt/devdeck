@@ -23,6 +23,10 @@ const nextConfig: NextConfig = {
         source: "/api/terminal",
         destination: `http://127.0.0.1:${terminalPort}`,
       },
+      {
+        source: "/api/terminal/project",
+        destination: `http://127.0.0.1:${terminalPort}/project`,
+      },
     ];
   },
 };

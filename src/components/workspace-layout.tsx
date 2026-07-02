@@ -190,6 +190,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     showExplorer,
     showFileViewer,
     showTerminal,
+    activeWorkspaceContextId,
     toggleExplorer,
     toggleFileViewer,
     toggleTerminal,
@@ -471,7 +472,10 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
           className="min-h-0 min-w-0 overflow-hidden"
         >
           <ErrorBoundary>
-            <TerminalPanel />
+            <TerminalPanel
+              projectSlug={project.slug}
+              workspaceContextId={activeWorkspaceContextId}
+            />
           </ErrorBoundary>
         </Panel>
       </Group>

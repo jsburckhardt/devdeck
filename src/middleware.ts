@@ -41,6 +41,11 @@ export function middleware(request: NextRequest) {
       path: "/",
       secure: request.nextUrl.protocol === "https:",
     });
+    response.cookies.set("devdeck_token_client", token, {
+      sameSite: "lax",
+      path: "/",
+      secure: request.nextUrl.protocol === "https:",
+    });
     return response;
   }
 

@@ -56,6 +56,7 @@ describe("WorkspaceLayout terminal decoupling", () => {
       toggleFileViewer: vi.fn(),
       toggleTerminal: vi.fn(),
       activeWorktree: ".trees/feat",
+      activeWorkspaceContextId: "root",
       fileTreeSyncStatus: "ready",
       fileTreeSyncError: null,
       fileTreeSyncFallbackActive: false,
@@ -72,12 +73,15 @@ describe("WorkspaceLayout terminal decoupling", () => {
     });
   });
 
-  it("renders the terminal without slug/worktree props while file-tree sync still uses project context", () => {
+  it("passes project-scoped terminal context to the terminal panel", () => {
     render(<WorkspaceLayout project={makeProject()} />);
 
     const terminal = screen.getByTestId("terminal-panel");
     const props = JSON.parse(terminal.getAttribute("data-props") ?? "{}");
-    expect(props).toEqual({});
+    expect(props).toEqual({
+      projectSlug: "demo",
+      workspaceContextId: "root",
+    });
     expect(mockUseFileTreeSync).toHaveBeenCalledWith(
       expect.objectContaining({ slug: "demo", worktree: ".trees/feat" }),
     );

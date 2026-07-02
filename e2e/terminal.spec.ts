@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { ensureProject, openAuthed, expectTerminalConnected } from "./helpers";
+import { ensureProject, openAuthed, expectTerminalConnected, projectRoot } from "./helpers";
 
 const TERMINAL_PROJECT_SLUG = "terminal-target";
 
@@ -276,9 +276,10 @@ test("mobile keyboard helper sends an arrow key without disconnecting", async ({
   await expectTerminalLine(page, "RDY");
 
   await page.getByRole("button", { name: "Terminal keyboard helper" }).click();
-  await expect(page.getByRole("toolbar", { name: "Terminal keyboard helper keys" })).toBeVisible();
+  const helperToolbar = page.getByRole("toolbar", { name: "Terminal keyboard helper keys" });
+  await expect(helperToolbar).toBeVisible();
 
-  await page.getByRole("button", { name: "Up" }).click();
+  await helperToolbar.getByRole("button", { name: "Up" }).click();
   await expectTerminalLine(page, marker);
 
   await expect(page.locator("[data-testid=terminal-panel]").getByText("Connected")).toBeVisible();
@@ -331,13 +332,13 @@ test("rejects access without token", async ({ page }) => {
   await expect(page.locator("text=Access Denied")).toBeVisible({ timeout: 5000 });
 });
 
-test("default terminal stays on the launch cwd after selecting a project", async ({ page }) => {
-  const launchCwd = process.cwd();
+test("project root terminal starts in the selected project context", async ({ page }) => {
+  const projectPath = projectRoot(TERMINAL_PROJECT_SLUG);
   await openFirstProjectTerminal(page);
 
   const terminalContainer = page.locator('[data-testid="terminal-container"]');
   await terminalContainer.click();
   await page.keyboard.type("pwd\n");
 
-  await expectTerminalLine(page, launchCwd);
+  await expectTerminalLine(page, projectPath);
 });

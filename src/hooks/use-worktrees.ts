@@ -1,10 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Worktree } from "@/lib/types";
+import type {
+  Worktree,
+  WorkspaceContextChoice,
+  WorkspaceContextId,
+  WorkspaceContextResponse,
+} from "@/lib/types";
 
 interface UseWorktreesReturn {
   worktrees: Worktree[];
+  response: WorkspaceContextResponse | null;
+  choices: WorkspaceContextChoice[];
+  selectedContextId: WorkspaceContextId | null;
   loading: boolean;
   error: string | null;
   refresh: () => void;
@@ -30,6 +38,9 @@ export function useWorktrees(
 ): UseWorktreesReturn {
   const pollingEnabled = options.pollingEnabled ?? false;
   const [worktrees, setWorktrees] = useState<Worktree[]>([]);
+  const [response, setResponse] = useState<WorkspaceContextResponse | null>(null);
+  const [choices, setChoices] = useState<WorkspaceContextChoice[]>([]);
+  const [selectedContextId, setSelectedContextId] = useState<WorkspaceContextId | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const activeSlugRef = useRef<string | undefined>(slug);
@@ -67,9 +78,26 @@ export function useWorktrees(
           signal: controller.signal,
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as Worktree[];
+        const payload = (await res.json()) as Worktree[] | WorkspaceContextResponse;
         if (controller.signal.aborted || activeSlugRef.current !== targetSlug) return;
-        setWorktrees(data);
+        if (Array.isArray(payload)) {
+          setWorktrees(payload);
+          setResponse(null);
+          setChoices([]);
+          setSelectedContextId(null);
+        } else {
+          setWorktrees(
+            (payload.choices ?? [])
+              .filter((choice) => choice.kind === "worktree")
+              .map((choice) => ({
+                name: choice.label,
+                branch: choice.branch ?? choice.label,
+              })),
+          );
+          setResponse(payload);
+          setChoices(payload.choices ?? []);
+          setSelectedContextId(payload.selectedContextId ?? null);
+        }
         setError(null);
       } catch (err) {
         if (controller.signal.aborted || activeSlugRef.current !== targetSlug) return;
@@ -158,5 +186,5 @@ export function useWorktrees(
     if (slug) void fetchWorktrees(slug, "foreground");
   }, [slug, fetchWorktrees]);
 
-  return { worktrees, loading, error, refresh };
+  return { worktrees, response, choices, selectedContextId, loading, error, refresh };
 }

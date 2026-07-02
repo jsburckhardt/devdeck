@@ -12,6 +12,9 @@ const mockWebSocketInstances: Array<{
   url: string;
   binaryType: string;
 }> = [];
+const mockTerminalInstances: Array<{
+  write: ReturnType<typeof vi.fn>;
+}> = [];
 
 class MockWebSocket {
   static OPEN = 1;
@@ -35,6 +38,9 @@ vi.stubGlobal("WebSocket", MockWebSocket);
 
 vi.mock("@xterm/xterm", () => ({
   Terminal: class {
+    constructor() {
+      mockTerminalInstances.push(this as { write: ReturnType<typeof vi.fn> });
+    }
     open = vi.fn();
     write = vi.fn();
     focus = vi.fn();
@@ -70,6 +76,7 @@ describe("useTerminal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockWebSocketInstances.length = 0;
+    mockTerminalInstances.length = 0;
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 1440 });
     Object.defineProperty(document.documentElement, "clientWidth", {
       configurable: true,
@@ -89,6 +96,57 @@ describe("useTerminal", () => {
     expect(ws.url).toContain("/api/terminal");
     expect(ws.url).not.toContain("slug=");
     expect(ws.url).not.toContain("worktree=");
+  });
+
+  it("uses the project-scoped terminal endpoint when a workspace context is selected", async () => {
+    renderHook(() => useTerminal({ projectSlug: "demo", workspaceContextId: "wt_abc123" }));
+
+    await waitFor(() => expect(mockWebSocketInstances.length).toBeGreaterThan(0));
+    const ws = mockWebSocketInstances[0];
+    expect(ws.url).toContain("/api/terminal/project");
+    expect(ws.url).toContain("slug=demo");
+    expect(ws.url).toContain("workspaceContext=wt_abc123");
+  });
+
+  it("uses the project-scoped terminal endpoint for project pages even when the workspace context is root", async () => {
+    renderHook(() => useTerminal({ projectSlug: "demo", workspaceContextId: "root" }));
+
+    await waitFor(() => expect(mockWebSocketInstances.length).toBeGreaterThan(0));
+    const ws = mockWebSocketInstances[0];
+    expect(ws.url).toContain("/api/terminal/project");
+    expect(ws.url).toContain("slug=demo");
+    expect(ws.url).toContain("workspaceContext=root");
+  });
+
+  it("includes the auth token in the websocket URL when a browser token is available", async () => {
+    document.cookie = "devdeck_token=e2e-test-token";
+    renderHook(() => useTerminal());
+
+    await waitFor(() => expect(mockWebSocketInstances.length).toBeGreaterThan(0));
+    const ws = mockWebSocketInstances[0];
+    expect(ws.url).toContain("token=e2e-test-token");
+  });
+
+  it("writes binary terminal payloads from the websocket into the terminal surface", async () => {
+    const hook = renderHook(() => useTerminal());
+
+    await waitFor(() => expect(mockWebSocketInstances.length).toBeGreaterThan(0));
+    const ws = mockWebSocketInstances[0];
+
+    await act(async () => {
+      ws.onopen?.();
+    });
+
+    const encoded = new TextEncoder().encode("shell output");
+    await act(async () => {
+      ws.onmessage?.({ data: encoded });
+    });
+
+    await waitFor(() =>
+      expect(mockTerminalInstances[0]?.write).toHaveBeenCalledWith("shell output"),
+    );
+
+    hook.unmount();
   });
 
   it("treats close code 1008 as an unsupported-context failure without reconnecting", async () => {

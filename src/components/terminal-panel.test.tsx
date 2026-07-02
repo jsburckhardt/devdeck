@@ -87,6 +87,18 @@ describe("TerminalPanel", () => {
     expect(mockUseTerminal.mock.calls[0][0]).not.toHaveProperty("worktree");
   });
 
+  it("passes project-scoped terminal context to the hook when requested", () => {
+    render(<TerminalPanel projectSlug="demo" workspaceContextId="wt_abc123" />);
+
+    expect(mockUseTerminal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        theme: expect.anything(),
+        projectSlug: "demo",
+        workspaceContextId: "wt_abc123",
+      }),
+    );
+  });
+
   it("does not propagate Copilot status to project context for the default terminal", () => {
     render(<TerminalPanel />);
     expect(mockUpdateCopilotStatus).not.toHaveBeenCalled();

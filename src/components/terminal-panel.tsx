@@ -5,6 +5,8 @@ import { useTerminal } from "@/hooks/use-terminal";
 import { useTerminalTheme } from "@/hooks/use-terminal-theme";
 import { useVoiceInput } from "@/hooks/use-voice-input";
 import type { TerminalThemeDefinition } from "@/hooks/use-terminal-theme";
+import { useOpenProjects } from "@/lib/open-projects-context";
+import type { WorkspaceContextId } from "@/lib/types";
 import {
   WarningCircle,
   Spinner,
@@ -17,7 +19,10 @@ import {
 } from "@phosphor-icons/react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 
-type TerminalPanelProps = Record<string, never>;
+interface TerminalPanelProps {
+  projectSlug?: string;
+  workspaceContextId?: WorkspaceContextId;
+}
 
 type TerminalHelperKey = "tab" | "up" | "right";
 
@@ -128,8 +133,9 @@ function getVoiceAlertMessage({
   return null;
 }
 
-export function TerminalPanel() {
+export function TerminalPanel({ projectSlug, workspaceContextId }: TerminalPanelProps) {
   const { themeId, theme, setThemeId, themes } = useTerminalTheme();
+  const { updateCopilotStatus } = useOpenProjects();
   const voicePanelId = useId();
   const voiceReviewFieldId = `${voicePanelId}-review`;
   const voiceDisclosureId = `${voicePanelId}-disclosure`;
@@ -150,7 +156,11 @@ export function TerminalPanel() {
     copilotStatus,
     sendInput,
     focusTerminal,
-  } = useTerminal({ theme: theme.colors });
+  } = useTerminal({
+    theme: theme.colors,
+    projectSlug,
+    workspaceContextId,
+  });
   const {
     isSupported: isVoiceInputSupported,
     isListening: isVoiceInputListening,
@@ -278,6 +288,14 @@ export function TerminalPanel() {
   }, [isConnected]);
 
   useEffect(() => {
+    if (!projectSlug || !isConnected) {
+      return;
+    }
+
+    updateCopilotStatus(projectSlug, copilotStatus);
+  }, [copilotStatus, isConnected, projectSlug, updateCopilotStatus]);
+
+  useEffect(() => {
     if (!isConnected) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- close helper when terminal input becomes unavailable
       setKeyboardHelperOpen(false);
@@ -318,7 +336,6 @@ export function TerminalPanel() {
     }
 
     lastAppliedFinalTranscriptRef.current = voiceFinalTranscript;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- final browser transcript opens the user review field
     setReviewText(voiceFinalTranscript);
     setValidationError(null);
     setSendError(null);
@@ -520,6 +537,8 @@ export function TerminalPanel() {
               ref={containerRef}
               data-testid="terminal-container"
               className="h-full w-full min-h-0 min-w-0 overflow-hidden"
+              onMouseDown={() => focusTerminal()}
+              onClick={() => focusTerminal()}
             />
           </div>
         </div>

@@ -29,6 +29,7 @@ const NON_RETRY_CODES = new Set([
 export interface UseFileTreeSyncOptions {
   slug?: string;
   worktree?: string | null;
+  workspaceContext?: string | null;
   retryNonce?: number;
   onStatusChange: (status: FileTreeSyncStatus, error?: FileTreeSyncError | null) => void;
   onFallbackChange: (active: boolean) => void;
@@ -38,25 +39,50 @@ export interface UseFileTreeSyncOptions {
   eventSourceFactory?: (url: string) => EventSource;
 }
 
-function fileTreeEventsParams(slug: string, worktree?: string | null): URLSearchParams {
+function fileTreeEventsParams(
+  slug: string,
+  worktree?: string | null,
+  workspaceContext?: string | null,
+): URLSearchParams {
   const params = new URLSearchParams({ slug });
-  if (worktree) params.set("worktree", worktree);
+  if (workspaceContext && workspaceContext !== "root") {
+    params.set("workspaceContext", workspaceContext);
+  } else if (worktree) {
+    params.set("worktree", worktree);
+  }
   return params;
 }
 
-export function buildFileTreeEventsUrl(slug: string, worktree?: string | null): string {
-  const params = fileTreeEventsParams(slug, worktree);
+export function buildFileTreeEventsUrl(
+  slug: string,
+  worktree?: string | null,
+  workspaceContext?: string | null,
+): string {
+  const params = fileTreeEventsParams(slug, worktree, workspaceContext);
   return `/api/files/events?${params.toString()}`;
 }
 
-export function buildFileTreeEventsPreflightUrl(slug: string, worktree?: string | null): string {
-  const params = fileTreeEventsParams(slug, worktree);
+export function buildFileTreeEventsPreflightUrl(
+  slug: string,
+  worktree?: string | null,
+  workspaceContext?: string | null,
+): string {
+  const params = fileTreeEventsParams(slug, worktree, workspaceContext);
   params.set("preflight", "1");
   return `/api/files/events?${params.toString()}`;
 }
 
-function scopeMatches(scope: FileTreeSyncScope | undefined, slug: string, worktree: string | null) {
-  return Boolean(scope && scope.slug === slug && scope.worktree === worktree);
+function scopeMatches(
+  scope: FileTreeSyncScope | undefined,
+  slug: string,
+  worktree: string | null,
+  workspaceContext?: string | null,
+) {
+  if (!scope || scope.slug !== slug) return false;
+  if (workspaceContext && workspaceContext !== "root") {
+    return scope.workspaceContext === workspaceContext;
+  }
+  return scope.worktree === worktree;
 }
 
 function parseEventData<T>(event: MessageEvent): T | null {
@@ -167,6 +193,7 @@ function classifyPreflightNetworkError(error: unknown): FileTreeSyncError {
 export function useFileTreeSync({
   slug,
   worktree = null,
+  workspaceContext = null,
   retryNonce = 0,
   onStatusChange,
   onFallbackChange,
@@ -178,6 +205,7 @@ export function useFileTreeSync({
   useEffect(() => {
     const normalizedSlug = slug?.trim();
     const normalizedWorktree = worktree ?? null;
+    const normalizedWorkspaceContext = workspaceContext ?? null;
     if (!normalizedSlug) return;
     const activeSlug = normalizedSlug;
 
@@ -198,8 +226,12 @@ export function useFileTreeSync({
     let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
     let preflightController: AbortController | null = null;
     let source: EventSource | null = null;
-    const url = buildFileTreeEventsUrl(activeSlug, normalizedWorktree);
-    const preflightUrl = buildFileTreeEventsPreflightUrl(activeSlug, normalizedWorktree);
+    const url = buildFileTreeEventsUrl(activeSlug, normalizedWorktree, normalizedWorkspaceContext);
+    const preflightUrl = buildFileTreeEventsPreflightUrl(
+      activeSlug,
+      normalizedWorktree,
+      normalizedWorkspaceContext,
+    );
 
     const clearRetryTimer = () => {
       if (!retryTimer) return;

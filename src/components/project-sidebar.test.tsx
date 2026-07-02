@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ProjectSidebar } from "./project-sidebar";
 import type { CopilotCliState, Project } from "@/lib/types";
@@ -134,6 +134,19 @@ describe("ProjectSidebar", () => {
       };
     });
     window.localStorage.clear();
+  });
+
+  it("renders a no-selection detail state without worktree actions when no project is active", () => {
+    mockPathname = "/";
+    render(<ProjectSidebar />);
+
+    const emptyState = screen.getByTestId("selected-project-empty-state");
+    expect(emptyState).toHaveTextContent("No project selected");
+    expect(within(emptyState).queryByRole("button")).toBeNull();
+    expect(screen.getByTestId("selected-project-detail")).toHaveAttribute(
+      "aria-label",
+      "No project selected",
+    );
   });
 
   it("T8: renders correct number of tabs with first letters, names and titles", () => {

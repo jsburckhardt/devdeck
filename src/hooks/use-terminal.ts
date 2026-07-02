@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { ITheme } from "@xterm/xterm";
-import type { CopilotCliState } from "@/lib/types";
+import type { CopilotCliState, WorkspaceContextId } from "@/lib/types";
 import { TERMINAL_THEMES } from "./use-terminal-theme";
 
 export type TerminalStatus =
@@ -15,6 +15,8 @@ export type TerminalStatus =
 export interface UseTerminalOptions {
   wsUrl?: string;
   theme?: ITheme;
+  workspaceContextId?: WorkspaceContextId;
+  projectSlug?: string;
 }
 
 export type TerminalMode = "unknown" | "tmux" | "shell";
@@ -231,11 +233,61 @@ function normalizeContainerSize(
   };
 }
 
-function buildWsUrl(cols?: number, rows?: number): string {
-  if (typeof window === "undefined") return "ws://localhost:8001/api/terminal";
+function readBrowserToken(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const { searchParams } = new URL(window.location.href);
+  const queryToken = searchParams.get("token");
+  if (queryToken) {
+    return queryToken;
+  }
+
+  const clientCookieToken = document.cookie
+    .split(";")
+    .map((entry) => entry.trim())
+    .find((entry) => entry.startsWith("devdeck_token_client="))
+    ?.slice("devdeck_token_client=".length);
+  if (clientCookieToken) {
+    return decodeURIComponent(clientCookieToken);
+  }
+
+  const cookieToken = document.cookie
+    .split(";")
+    .map((entry) => entry.trim())
+    .find((entry) => entry.startsWith("devdeck_token="))
+    ?.slice("devdeck_token=".length);
+  if (cookieToken) {
+    return decodeURIComponent(cookieToken);
+  }
+
+  const localStorageToken = window.localStorage.getItem("devdeck_token");
+  return localStorageToken ?? null;
+}
+
+function buildWsUrl(
+  cols?: number,
+  rows?: number,
+  workspaceContextId?: WorkspaceContextId,
+  projectSlug?: string,
+): string {
+  if (typeof window === "undefined") {
+    return "ws://localhost:8001/api/terminal";
+  }
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const base = `${proto}//${window.location.host}/api/terminal`;
+  const isProjectScoped = Boolean(projectSlug);
+  const basePath = isProjectScoped ? "/api/terminal/project" : "/api/terminal";
+  const base = `${proto}//${window.location.host}${basePath}`;
   const params = new URLSearchParams();
+  const token = readBrowserToken();
+  if (token) {
+    params.set("token", token);
+  }
+  if (isProjectScoped && projectSlug) {
+    params.set("slug", projectSlug);
+    params.set("workspaceContext", workspaceContextId ?? "root");
+  }
   if (cols != null) params.set("cols", String(cols));
   if (rows != null) params.set("rows", String(rows));
   const qs = params.toString();
@@ -252,7 +304,9 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
   const [copilotStatus, setCopilotStatus] = useState<CopilotCliState>("idle");
   const statusRef = useRef<TerminalStatus>("disconnected");
 
-  const baseWsUrl = options?.wsUrl ?? buildWsUrl();
+  const baseWsUrl =
+    options?.wsUrl ??
+    buildWsUrl(undefined, undefined, options?.workspaceContextId, options?.projectSlug);
 
   const generationRef = useRef(0);
   const intentionalCloseRef = useRef(false);
@@ -298,6 +352,10 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
     }
 
     try {
+      const helperTextarea = containerRef.current?.querySelector(".xterm-helper-textarea");
+      if (helperTextarea instanceof HTMLTextAreaElement) {
+        helperTextarea.focus({ preventScroll: true });
+      }
       term.focus();
       return true;
     } catch {
@@ -578,8 +636,9 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
       wsUrlObj.searchParams.set("cols", String(term.cols));
       wsUrlObj.searchParams.set("rows", String(term.rows));
 
+      const wsUrl = wsUrlObj.toString();
       // Connect WebSocket — cookie is sent automatically by the browser
-      const ws = new WebSocket(wsUrlObj.toString());
+      const ws = new WebSocket(wsUrl);
       ws.binaryType = "arraybuffer";
       wsRef.current = ws;
 
@@ -597,9 +656,7 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
 
       ws.onmessage = (event: MessageEvent) => {
         if (gen !== generationRef.current) return;
-        if (event.data instanceof ArrayBuffer) {
-          term.write(decoder.decode(event.data));
-        } else if (typeof event.data === "string") {
+        if (typeof event.data === "string") {
           // JSON control message from server
           try {
             const msg = JSON.parse(event.data) as {
@@ -627,6 +684,24 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
           } catch {
             // ignore
           }
+          return;
+        }
+
+        if (event.data instanceof Blob) {
+          void event.data.arrayBuffer().then((buffer) => {
+            if (gen !== generationRef.current) return;
+            term.write(decoder.decode(buffer));
+          });
+          return;
+        }
+
+        if (event.data instanceof ArrayBuffer) {
+          term.write(decoder.decode(event.data));
+          return;
+        }
+
+        if (ArrayBuffer.isView(event.data)) {
+          term.write(decoder.decode(event.data));
         }
       };
 
@@ -645,7 +720,11 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
 
         if (event.code === WS_CLOSE_UNSUPPORTED_CONTEXT) {
           setTerminalStatus("failed");
-          setError("Project-scoped terminals are not supported by the default terminal.");
+          setError(
+            options?.projectSlug
+              ? "The selected workspace terminal is unavailable."
+              : "Project-scoped terminals are not supported by the default terminal.",
+          );
           return;
         }
 
@@ -692,6 +771,10 @@ export function useTerminal(options?: UseTerminalOptions): UseTerminalReturn {
     baseWsUrl,
     clearResponsiveFontSizeListeners,
     disconnectResizeObserver,
+    options?.theme,
+    options?.wsUrl,
+    options?.projectSlug,
+    options?.workspaceContextId,
     fitContainerToUsableSize,
     scheduleFit,
     sendInput,

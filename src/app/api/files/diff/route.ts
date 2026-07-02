@@ -3,7 +3,7 @@ import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import {
-  resolveWorktreeRoot,
+  resolveWorkspaceContextRoot,
   WorktreeResolutionError,
   worktreeResolutionErrorResponse,
 } from "@/lib/worktree-utils";
@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const slug = searchParams.get("slug");
   const filePath = searchParams.get("path");
+  const workspaceContext = searchParams.get("workspaceContext");
   const worktree = searchParams.get("worktree");
 
   if (!slug || !filePath) {
@@ -41,7 +42,8 @@ export async function GET(request: NextRequest) {
 
   let root: string;
   try {
-    root = await resolveWorktreeRoot(slug, worktree);
+    const resolution = await resolveWorkspaceContextRoot(slug, workspaceContext, worktree);
+    root = resolution.root;
   } catch (error) {
     if (error instanceof WorktreeResolutionError) {
       return worktreeResolutionErrorResponse(error);
@@ -83,9 +85,6 @@ export async function GET(request: NextRequest) {
     if (execError.stdout !== undefined && execError.stdout.length > 0) {
       return NextResponse.json({ diff: execError.stdout });
     }
-    return NextResponse.json(
-      { error: "Failed to get diff", details: String(error) },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to get diff" }, { status: 500 });
   }
 }
