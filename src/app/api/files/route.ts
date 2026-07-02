@@ -4,7 +4,7 @@ import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import {
-  resolveWorktreeRoot,
+  resolveWorkspaceContextRoot,
   WorktreeResolutionError,
   worktreeResolutionErrorResponse,
 } from "@/lib/worktree-utils";
@@ -225,6 +225,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const slug = searchParams.get("slug");
   const requestedPath = searchParams.get("path");
+  const workspaceContext = searchParams.get("workspaceContext");
   const worktree = searchParams.get("worktree");
 
   if (!slug) {
@@ -236,8 +237,9 @@ export async function GET(request: NextRequest) {
 
   let root: string;
   try {
-    root = await resolveWorktreeRoot(slug, worktree);
-    if (!worktree) {
+    const resolution = await resolveWorkspaceContextRoot(slug, workspaceContext, worktree);
+    root = resolution.root;
+    if (!workspaceContext) {
       await fs.access(root);
     }
   } catch (error) {
@@ -290,7 +292,7 @@ export async function GET(request: NextRequest) {
       );
     }
     return NextResponse.json(
-      { error: "Failed to read directory", code: "READ_DIRECTORY_FAILED", details: String(error) },
+      { error: "Failed to read directory", code: "READ_DIRECTORY_FAILED" },
       { status: 500 },
     );
   }

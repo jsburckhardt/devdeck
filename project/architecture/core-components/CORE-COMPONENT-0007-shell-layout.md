@@ -2,7 +2,7 @@
 
 ## Status
 
-Adopted (updated) - 2026-06-11
+Adopted (amended) - 2026-07-01
 
 ## Purpose
 
@@ -19,6 +19,7 @@ Define the top-level IDE shell structure that all DevDeck pages share. The shell
 - Mount animation conventions
 - Responsive behavior contract
 - Collapsible project sidebar width and transition contract
+- Selected-project/workspace detail placement and accessibility in the project sidebar
 
 ## Definition
 
@@ -56,11 +57,20 @@ Define the top-level IDE shell structure that all DevDeck pages share. The shell
 - The project badge MUST use the `languageColor(project.language)` background only for the idle first-letter badge
 - The project badge MUST replace the first-letter content with a visible Copilot-style bot head icon when Copilot status is `"running"` or `"waiting"`
 - The sidebar MUST NOT participate in the `react-resizable-panels` layout — it is a static-width element
+- The project sidebar MUST separate open-project navigation rows from the selected-project/workspace detail region; root/worktree selectors MUST NOT be nested inside any project tab row
+- The selected-project/workspace detail region MUST render only for the currently selected project and MUST appear as its own sidebar region between the open-project navigation list and sidebar footer
+- Expanded sidebar mode MUST expose the selected project label, selected workspace-context label, repository/worktree status, root choice, available worktree choices, disabled-state copy, refresh/retry actions, and polite status announcements within the selected-detail region
+- Collapsed sidebar mode MUST expose a compact selected-context summary with native `title`, `aria-label`, and non-color visual affordance; it MUST NOT keep hidden root/worktree selector controls focusable
+- Collapsed mode MAY hide the expanded selected-detail controls visually, but hidden controls MUST be removed from tab order with `hidden`, `inert`, `disabled`, or equivalent semantics
+- Sidebar focus order MUST remain deterministic: Home, open project navigation/close controls, selected-detail interactive controls when expanded, then the collapse toggle
+- Context changes, stale-context detection, and repository/worktree refresh results MUST use polite live-region announcements without duplicating announcements for unchanged state
+- Disabled or unavailable workspace choices MUST not be keyboard-focusable and MUST expose their reason through adjacent visible text, `aria-describedby`, or a disabled-state status row
+- When a focused workspace choice becomes unavailable after refresh, focus MUST recover to the selected-detail heading, refresh control, or first available choice without moving focus to a different checkout
 
 ### Interfaces
 - **ShellLayout:** The top-level page component composing Header + PanelGroup
 - **Header:** Fixed-height bar with app branding and toolbar actions (theme toggle)
-- **ProjectSidebar:** Collapsible fixed-width vertical strip rendered on project pages as a left-edge sibling of the panel workspace (see CORE-COMPONENT-0008)
+- **ProjectSidebar:** Collapsible fixed-width vertical strip rendered on project pages as a left-edge sibling of the panel workspace; owns open-project navigation plus a separate selected-project/workspace detail region (see CORE-COMPONENT-0008)
 - **Panel placeholders:** Each panel renders a centered icon + label when no real content is loaded
 - **Separator:** Visible drag handle between panels with hover/active states
 - **PanelToggle:** Toggle-bar button for workspace panels; exposes `aria-label`, `aria-pressed`, and guarded disabled semantics when hiding the last visible panel is prohibited
@@ -136,6 +146,9 @@ export default function Home() {
 - [x] Test coverage requirements: WorkspaceLayout tests must assert the current-project close action is visible, trails panel toggles, and has no `aria-pressed`
 - [ ] Automated checks: ProjectSidebar tests must assert expanded `w-44`, collapsed `w-12`, persisted collapse state, and accessible toggle attributes
 - [ ] Automated checks: ProjectSidebar tests must assert active Copilot bot badges preserve `h-6 w-6` sizing and visibility in expanded and collapsed modes
+- [ ] Automated checks: ProjectSidebar tests must assert selected workspace detail is outside project navigation rows and follows the required focus order
+- [ ] Automated checks: ProjectSidebar tests must assert collapsed selected-context summaries expose labels while hiding selector controls from the tab order
+- [ ] Automated checks: Selected-detail tests must assert stale/disabled workspace choices are not focusable and focus recovers safely after refresh
 
 ## Related ADRs
 

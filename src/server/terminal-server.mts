@@ -2,6 +2,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { spawn, type IPty } from "node-pty";
 import { timingSafeEqual } from "crypto";
 import type { IncomingMessage } from "http";
+import { resolveWorkspaceContextRoot, WorktreeResolutionError } from "../lib/worktree-utils";
 
 const MAX_CONTROL_MESSAGE_BYTES = 1024;
 
@@ -124,6 +125,24 @@ function extractWorktree(req: IncomingMessage): string | null {
   try {
     const url = new URL(req.url ?? "", `http://${req.headers.host ?? "localhost"}`);
     return url.searchParams.get("worktree");
+  } catch {
+    return null;
+  }
+}
+
+function extractWorkspaceContext(req: IncomingMessage): string | null {
+  try {
+    const url = new URL(req.url ?? "", `http://${req.headers.host ?? "localhost"}`);
+    return url.searchParams.get("workspaceContext");
+  } catch {
+    return null;
+  }
+}
+
+function extractRequestPath(req: IncomingMessage): string | null {
+  try {
+    const url = new URL(req.url ?? "", `http://${req.headers.host ?? "localhost"}`);
+    return url.pathname;
   } catch {
     return null;
   }
@@ -313,9 +332,7 @@ async function handleConnection(
     });
     pty = currentPty;
     activePtys.add(currentPty);
-    console.log(
-      `PTY spawned (pid: ${currentPty.pid}, shell: ${shell}, cwd: ${defaultCwd}, cols: ${initialCols}, rows: ${initialRows})`,
-    );
+    console.log(`PTY spawned (pid: ${currentPty.pid}, shell: ${shell})`);
 
     currentPty.onData((data: string) => {
       if (ws.readyState === WebSocket.OPEN) {
@@ -406,7 +423,7 @@ export function createTerminalServer(options?: TerminalServerOptions): TerminalS
   const copilotStatusByProject: CopilotStatusByProject = new Map();
   const copilotStatusSubscribers: CopilotStatusSubscribers = new Map();
 
-  wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
+  wss.on("connection", async (ws: WebSocket, req: IncomingMessage) => {
     const providedToken = extractToken(req);
     if (!validateToken(providedToken, effectiveToken)) {
       console.log("Rejected unauthenticated WebSocket connection");
@@ -414,10 +431,13 @@ export function createTerminalServer(options?: TerminalServerOptions): TerminalS
       return;
     }
 
+    const requestPath = extractRequestPath(req);
     const slug = extractSlug(req);
     const worktree = extractWorktree(req);
-    const hasUnsupportedContext = slug !== null || worktree !== null;
-    if (hasUnsupportedContext) {
+    const workspaceContext = extractWorkspaceContext(req);
+    const isProjectContextRoute = requestPath === "/project" || requestPath === "/project/";
+    const hasUnsupportedContext = slug !== null || worktree !== null || workspaceContext !== null;
+    if (hasUnsupportedContext && !isProjectContextRoute) {
       console.log("Rejected unsupported terminal context");
       try {
         ws.send(
@@ -434,6 +454,50 @@ export function createTerminalServer(options?: TerminalServerOptions): TerminalS
     }
 
     const dimensions = extractDimensions(req);
+
+    if (isProjectContextRoute) {
+      if (!slug) {
+        try {
+          ws.send(JSON.stringify({ type: "error", message: "Project terminal requires a slug." }));
+        } catch {
+          // send failed
+        }
+        ws.close(1008, "Unsupported terminal context");
+        return;
+      }
+
+      try {
+        const resolved = await resolveWorkspaceContextRoot(slug, workspaceContext, null);
+        void handleConnection(
+          ws,
+          slug,
+          resolved.root,
+          shell,
+          shellArgs,
+          sanitizedEnv,
+          activePtys,
+          copilotStatusByProject,
+          copilotStatusSubscribers,
+          dimensions,
+        ).catch((err) => {
+          console.error("Terminal connection setup failed:", err);
+          if (ws.readyState === WebSocket.OPEN) ws.close(1011, "Terminal setup failed");
+        });
+      } catch (error) {
+        const message =
+          error instanceof WorktreeResolutionError
+            ? error.message
+            : "Project terminal context is unavailable.";
+        try {
+          ws.send(JSON.stringify({ type: "error", message }));
+        } catch {
+          // send failed
+        }
+        ws.close(1008, "Unsupported terminal context");
+      }
+      return;
+    }
+
     void handleConnection(
       ws,
       slug,

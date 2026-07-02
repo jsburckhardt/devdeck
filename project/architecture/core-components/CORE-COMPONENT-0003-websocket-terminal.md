@@ -2,7 +2,7 @@
 
 ## Status
 
-Adopted (amended) - 2026-06-27
+Adopted (amended) - 2026-07-01
 
 ## Purpose
 
@@ -12,12 +12,17 @@ The default terminal is a host terminal. It is intentionally decoupled from proj
 worktree selection, and tmux routing so Explorer and File Preview can track the active project while
 the terminal remains rooted at the configured workspace/launch context.
 
+Project pages also provide an explicit scoped terminal context. That context follows the selected
+project root or server-issued worktree identity through a separate endpoint and component while the
+default host terminal remains unchanged.
+
 ## Scope
 
 - Frontend: xterm.js terminal widget and WebSocket client
 - Backend: WebSocket server, PTY process lifecycle management
 - Communication protocol between frontend and backend
 - Default host-terminal cwd resolution and unsupported project/worktree context rejection
+- Explicit project-page terminal context resolution, validation, restart, and redaction
 - Responsive xterm.js font-size selection, refit behavior, and PTY resize propagation
 - Terminal input helper controls, including keyboard helpers and browser-only microphone review input, that inject raw input through `useTerminal.sendInput(data)`
 
@@ -33,15 +38,16 @@ the terminal remains rooted at the configured workspace/launch context.
 - The server MUST validate the token BEFORE spawning a PTY process
 - Invalid or missing tokens MUST result in WebSocket close code 4401 ("Unauthorized") with no PTY spawned
 - The frontend MUST detect close code 4401 and surface an "Unauthorized" error without reconnecting
-- The default `/api/terminal` endpoint MUST NOT accept `slug` or `worktree` query parameters
-- After successful token validation and before spawning any PTY, requests containing `slug` or `worktree` MUST receive a fixed JSON text frame `{ "type": "error", "message": "Project-scoped terminals are not supported by the default terminal." }` and then close with WebSocket close code 1008
-- Unsupported-context rejection MUST NOT echo supplied `slug` or `worktree` values in WebSocket frames, close reasons, or logs
+- The default `/api/terminal` endpoint MUST NOT accept `slug`, `worktree`, or `workspaceContext` query parameters
+- After successful token validation and before spawning any PTY, default endpoint requests containing `slug`, `worktree`, or `workspaceContext` MUST receive a fixed JSON text frame `{ "type": "error", "message": "Project-scoped terminals are not supported by the default terminal." }` and then close with WebSocket close code 1008
+- Unsupported-context rejection MUST NOT echo supplied `slug`, `worktree`, or `workspaceContext` values in WebSocket frames, close reasons, or logs
 - The frontend MUST detect close code 1008, surface an unsupported-context error state, and MUST NOT reconnect automatically
 - The default terminal MUST spawn a regular host shell only; it MUST NOT call `resolveProjectPath(slug)`, attach to tmux, create system-default tmux sessions, or route to project/worktree directories
 - The default terminal CWD precedence MUST be `TerminalServerOptions.cwd` → explicit `DEVDECK_WORKSPACE_ROOT`/resolved `workspaceRoot` → DevDeck launch cwd forwarded by startup → standalone `process.cwd()`
-- `WorkspaceLayout` MUST render the default `TerminalPanel` without selected project slug or active worktree props
-- Default `TerminalPanelProps` MUST NOT expose `slug` or `worktree`
-- Default `UseTerminalOptions` MUST NOT expose `slug` or `worktree`; the hook may still accept `wsUrl` test overrides and terminal theme options
+- Default host-terminal surfaces MUST render the default `TerminalPanel` without selected project slug, worktree, or workspace context props
+- Project workspace pages MUST render `ProjectTerminalPanel` for selected workspace terminals instead of passing routing props to the default `TerminalPanel`
+- Default `TerminalPanelProps` MUST NOT expose `slug`, `worktree`, or `workspaceContext`
+- Default `UseTerminalOptions` MUST NOT expose `slug`, `worktree`, or `workspaceContext`; the hook may still accept `wsUrl` test overrides and terminal theme options
 - Terminal server token, bind host, bind port, projects directory, data directory, and workspace root MUST be resolved by the centralized startup config flow and forwarded to `src/server/terminal-server.mts` through environment variables; the standalone `.mts` server MUST remain env-driven and MUST NOT import the config loader.
 - The client MUST pass initial terminal dimensions as `cols` and `rows` query parameters on the WebSocket upgrade URL so the server can spawn the PTY at the correct size before any resize message arrives
 - The frontend MUST load `@xterm/addon-clipboard` (ClipboardAddon) to support OSC 52 clipboard escape sequences from programs like tmux and vim
@@ -60,10 +66,20 @@ the terminal remains rooted at the configured workspace/launch context.
 - Runtime terminal font-size tier changes MUST NOT reconnect the WebSocket solely because the font-size tier changed
 - Responsive terminal font-size listeners MUST be instance-local, SSR-safe, and cleaned up on unmount, terminal context changes, reconnects, and React Strict Mode remounts, including both modern and legacy media-query listener APIs
 - After the default PTY is successfully spawned (and before flushing any pending input messages), the server MUST send a JSON text frame `{ type: "setup", mode: "shell" }` to the client
-- `tmux` setup modes and tmux fallback setup frames are not part of the default terminal endpoint; any future explicit project terminal context requires a separate architecture amendment
-- The client MUST handle `setup` messages by updating `terminalMode` state; fallback-clearing behavior may remain for future explicit terminal contexts but MUST NOT be required for the default endpoint
+- `tmux` setup modes and tmux fallback setup frames are not part of the default terminal endpoint; explicit project-page terminal context is defined separately below
+- The client MUST handle `setup` messages by updating `terminalMode` state; fallback-clearing behavior may remain for explicit project-page terminal contexts but MUST NOT be required for the default endpoint
 - The client MUST reset `terminalMode` to `"unknown"` and `isFallback` to `false` at the start of each `connect()` attempt
 - Project-scoped and worktree-scoped terminal routing decisions (#42, #43, #44, #45, #46, #65, #66, #85, #86, #87) are superseded for the default endpoint; stale or hand-crafted default endpoint requests carrying those parameters are unsupported contexts
+- Explicit project-page terminals MUST connect to `/api/terminal/project?slug=<slug>&workspaceContext=<id>` and MUST NOT use the default `/api/terminal` endpoint for project or worktree routing
+- The project-page terminal endpoint MUST validate authentication before resolving slug or workspace context and MUST spawn no PTY for unauthenticated requests
+- The project-page terminal endpoint MUST resolve `slug` through `resolveProjectPath(slug)` and `workspaceContext` through the CORE-COMPONENT-0008 shared workspace-context resolver on every connection attempt
+- The project-page terminal endpoint MUST accept omitted or `"root"` `workspaceContext` as the project root and MUST reject unknown, stale, disabled, duplicate, locked, prunable, or unavailable worktree contexts before PTY spawn
+- Invalid or stale project-page terminal contexts MUST receive a structured JSON text frame `{ "type": "error", "code": "<SAFE_CODE>", "message": "<safe message>" }` and close with WebSocket close code 1008 without falling back to project root or another checkout
+- Project-page terminal PTYs MUST use shell-only mode with per-PTY `cwd` set to the resolved selected workspace root; they MUST NOT call `process.chdir`, run `git checkout`, attach to tmux, create tmux sessions, or mutate global server state
+- Project-page terminal reconnects and selected-context changes MUST restart the scoped PTY in the newly selected root after validation; stale connection callbacks MUST be guarded by terminal generation/context
+- Project-page terminal UI MUST display the sanitized selected workspace label and status so users can distinguish project root from worktree contexts
+- Project-page terminal logs, setup frames, error frames, and close reasons MUST NOT include absolute filesystem paths, credentials, query strings, remote URL userinfo, or raw `workspaceContext` values beyond the safe server-issued ID
+- Project-page terminal connections MAY update the per-project Copilot CLI status cache after valid slug/context resolution; default host terminal connections MUST remain excluded from project-sidebar Copilot state
 - The server MAY send `{ type: "status", copilotState: CopilotCliState }` JSON text frames to communicate Copilot CLI state changes detected via PTY output pattern matching (see ADR-0005)
 - A pure function `detectCopilotState(strippedOutput: string): CopilotCliState | null` MUST be implemented in `terminal-server.mts` to detect Copilot CLI state from PTY output
 - `detectCopilotState()` MUST strip ANSI escape sequences from PTY output before pattern matching
@@ -106,11 +122,14 @@ the terminal remains rooted at the configured workspace/launch context.
 - Terminal microphone controls MUST be disabled while terminal input is unavailable and MUST NOT start recognition when disconnected
 
 ### Interfaces
-- **WebSocket endpoint:** `/api/terminal?token=<bearer>&cols=<N>&rows=<N>` — accepts default host-terminal WebSocket upgrade requests with valid token (via query param or cookie); `cols`/`rows` are optional initial dimensions (clamped server-side, defaults to 80×24); `slug` and `worktree` are unsupported on this endpoint
-- **Token handshake:** On upgrade, server extracts `token` from query string or `devdeck_token` cookie, validates via `crypto.timingSafeEqual`, rejects with close code 4401 if invalid, then rejects unsupported `slug`/`worktree` context with close code 1008 before any PTY spawn
+- **Default WebSocket endpoint:** `/api/terminal?token=<bearer>&cols=<N>&rows=<N>` — accepts default host-terminal WebSocket upgrade requests with valid token (via query param or cookie); `cols`/`rows` are optional initial dimensions (clamped server-side, defaults to 80×24); `slug`, `worktree`, and `workspaceContext` are unsupported on this endpoint
+- **Project-page WebSocket endpoint:** `/api/terminal/project?token=<bearer>&slug=<slug>&workspaceContext=<id>&cols=<N>&rows=<N>` — accepts explicit selected-workspace terminal upgrades, validates auth first, resolves the selected root server-side, and never emits absolute paths
+- **Token handshake:** On upgrade, server extracts `token` from query string or `devdeck_token` cookie, validates via `crypto.timingSafeEqual`, rejects with close code 4401 if invalid, then routes default unsupported context or project-page context validation before any PTY spawn
 - **Unsupported context error frame:** `{ "type": "error", "message": "Project-scoped terminals are not supported by the default terminal." }` — sent as a JSON text frame before close code 1008 and never includes supplied query parameter values
-- **Frontend hook:** `useTerminal(options?: { wsUrl?, theme? })` — manages xterm.js instance, WebSocket connection, token injection, addon lifecycle, and exposes `containerRef`, `terminalMode`, `isFallback`, `sendInput(data)`, and `focusTerminal()` state/actions; default callers do not pass project or worktree identity
-- **TerminalPanel:** Default terminal panel has no `slug` or `worktree` props and calls `useTerminal({ theme })`; selected project and active worktree remain Explorer/File Preview state only
+- **Frontend hook:** `useTerminal(options?: { wsUrl?, theme? })` — manages default host-terminal xterm.js instance, WebSocket connection, token injection, addon lifecycle, and exposes `containerRef`, `terminalMode`, `isFallback`, `sendInput(data)`, and `focusTerminal()` state/actions; default callers do not pass project or worktree identity
+- **Project terminal hook:** `useProjectTerminal({ slug, workspaceContext, contextLabel, theme })` — reuses the terminal transport lifecycle for `/api/terminal/project`, restarts on selected context changes, blocks unavailable contexts, and preserves default `useTerminal` prop restrictions
+- **TerminalPanel:** Default terminal panel has no `slug`, `worktree`, or `workspaceContext` props and calls `useTerminal({ theme })`
+- **ProjectTerminalPanel:** Project-page terminal panel receives a slug, server-issued workspace context ID, sanitized context label/status, and calls `useProjectTerminal(...)`
 - **Responsive terminal font-size helper:** `getTerminalFontSize(input?)` returns `11 | 12 | 13` from layout viewport width, primary coarse pointer state, any-coarse pointer state, and `navigator.maxTouchPoints`; when browser APIs are unavailable, it returns the desktop fallback `13`
 - **Responsive font-size lifecycle:** `useTerminal` listens for layout viewport, orientation, media-query, and touch-capability changes; tier changes update xterm.js options and force-fit without reconnecting, while refit-only events may schedule the existing fit path
 - **Message format:** Raw binary data (ArrayBuffer) for terminal I/O; JSON for control messages (resize, ping)
@@ -128,6 +147,7 @@ the terminal remains rooted at the configured workspace/launch context.
 - PTY processes MUST be killed when the client disconnects
 - The terminal MUST support resize (xterm.js addon-fit → resize message → node-pty.resize)
 - Selecting projects or worktrees MUST NOT reconnect or reroute the default terminal
+- Selecting a different workspace context on a project page MUST restart only the explicit project-page terminal after the new context validates
 - Terminal font-size tiers MUST render at 11px on phones, 12px on qualifying touch tablets, and 13px on desktop tiers
 - Initial and runtime terminal font-size selection MUST keep PTY dimensions accurate without reconnecting solely for font-size changes
 - Browser zoom MUST NOT shrink terminal text by influencing font-size tier selection
@@ -173,7 +193,11 @@ wss.on('connection', (ws, req) => {
   }
   const cols = Math.max(1, Math.min(500, Number(url.searchParams.get('cols')) || 80));
   const rows = Math.max(1, Math.min(200, Number(url.searchParams.get('rows')) || 24));
-  if (url.searchParams.has('slug') || url.searchParams.has('worktree')) {
+  if (
+    url.searchParams.has('slug') ||
+    url.searchParams.has('worktree') ||
+    url.searchParams.has('workspaceContext')
+  ) {
     ws.send(JSON.stringify({
       type: 'error',
       message: 'Project-scoped terminals are not supported by the default terminal.',
@@ -192,8 +216,9 @@ wss.on('connection', (ws, req) => {
 - The WebSocket server setup should be in `src/server/terminal-server.mts` (`.mts` extension required for ESM interop with `tsx` runner)
 - Config-file loading belongs in startup code, not in `src/server/terminal-server.mts`; the terminal server consumes resolved values through env vars to preserve standalone `.mts` compatibility.
 - The frontend hook should be in `src/hooks/use-terminal.ts`
-- Default `/api/terminal` callers should rely on `useTerminal({ theme })`; do not pass project slugs or worktree paths
-- Project selection, active worktree selection, and project-sidebar Copilot state belong to CORE-COMPONENT-0008, not the default terminal panel
+- Default `/api/terminal` callers should rely on `useTerminal({ theme })`; do not pass project slugs, worktree paths, or workspace context IDs
+- Project-page terminal callers should render `ProjectTerminalPanel` and pass only the active project slug plus server-issued `WorkspaceContextId` from CORE-COMPONENT-0008
+- Project selection, selected workspace context, and project-sidebar Copilot state belong to CORE-COMPONENT-0008; default host-terminal routing remains independent
 - The responsive terminal font-size helper should stay in `src/hooks/use-terminal.ts` or a small adjacent helper file; update `LLM.txt` if a new source file is added
 - Compute terminal font size from layout viewport width plus `(pointer: coarse)`, `(any-pointer: coarse)`, and `navigator.maxTouchPoints`; do not use `visualViewport.width` for tier selection
 - Runtime font-size tier changes should reuse the existing forced-fit, `term.onResize`, and duplicate resize-message suppression path
@@ -221,9 +246,13 @@ wss.on('connection', (ws, req) => {
 - [x] Automated checks: `use-terminal.test.ts` must cover exact responsive font-size tiers, layout viewport usage, constructor options, runtime font-size tier changes without reconnect, forced fits, resize propagation, and listener cleanup
 - [x] Automated checks: Playwright terminal coverage must include a touch/tablet viewport asserting 12px rendered xterm font size, active connection, and no horizontal overflow
 - [x] Automated checks: Terminal server tests must assert `slug`/`worktree` requests close with 1008 after auth and before PTY spawn
+- [ ] Automated checks: Terminal server tests must assert default `workspaceContext` requests close with 1008 after auth and before PTY spawn
+- [ ] Automated checks: Terminal server tests must assert `/api/terminal/project` validates slug/workspaceContext, spawns shell-only PTYs in the selected root, and never falls back on invalid contexts
+- [ ] Automated checks: Project terminal hook/panel tests must assert context labels, restart-on-context-change, stale-context blocking, no reconnect loops after 1008, and no absolute path rendering
+- [ ] Automated checks: Next.js rewrite tests or configuration checks must route `/api/terminal/project` to the terminal WebSocket server while preserving `/api/terminal`
 - [x] Automated checks: Terminal server tests must assert default cwd precedence uses options, forwarded workspace root, then `process.cwd()`
 - [x] Automated checks: Terminal hook tests must assert 1008 unsupported-context closes do not reconnect
-- [x] Automated checks: WorkspaceLayout and TerminalPanel tests must assert default terminal receives no `slug`/`worktree` and updates no project-sidebar Copilot state
+- [x] Automated checks: Default host-terminal layout and TerminalPanel tests must assert the default terminal receives no `slug`/`worktree`/`workspaceContext` and updates no project-sidebar Copilot state
 - [x] Verification: `./harness verify` passes before implementation completion
 
 ## Related ADRs

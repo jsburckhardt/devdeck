@@ -72,7 +72,7 @@ export function ProjectSidebar() {
   const { openProjects, requestProjectClose, clearProjectCloseRequest, getCopilotStatus } =
     useOpenProjects();
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const activeSlug = openProjects.find((project) => pathname === projectRoute(project.slug))?.slug;
+  const activeProject = openProjects.find((project) => pathname === projectRoute(project.slug));
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: hydrate from localStorage after SSR to avoid mismatch
@@ -106,7 +106,6 @@ export function ProjectSidebar() {
       aria-label="Open projects"
     >
       <div data-testid="project-sidebar-header" className="shrink-0">
-        {/* Home button */}
         <button
           onClick={() => router.push("/")}
           className={`mx-2 flex h-9 items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground ${
@@ -126,9 +125,8 @@ export function ProjectSidebar() {
         data-testid="project-sidebar-scroll-region"
         className="min-h-0 flex-1 space-y-1 overflow-y-auto"
       >
-        {/* Project tabs */}
         {openProjects.map((project) => {
-          const isActive = activeSlug === project.slug;
+          const isActive = activeProject?.slug === project.slug;
           const copilotStatus: CopilotCliState = getCopilotStatus(project.slug);
           const hasActiveCopilotStatus = isActiveCopilotStatus(copilotStatus);
           const activeCopilotLabel = hasActiveCopilotStatus
@@ -182,12 +180,11 @@ export function ProjectSidebar() {
                 {!isCollapsed && <span className="truncate text-sm">{project.name}</span>}
               </button>
 
-              {/* Close button - accessible via keyboard and hover */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   const normalizedSlug = project.slug.trim();
-                  const request = requestProjectClose(project.slug, activeSlug ?? null);
+                  const request = requestProjectClose(project.slug, activeProject?.slug ?? null);
                   if (!request.accepted || !request.target) {
                     return;
                   }
@@ -211,17 +208,46 @@ export function ProjectSidebar() {
               >
                 <X size={10} weight="bold" aria-hidden="true" />
               </button>
-              {isActive && (
-                <div
-                  data-testid="active-worktree-wrapper"
-                  className={isCollapsed ? "hidden" : undefined}
-                >
-                  <WorktreeTree slug={project.slug} />
-                </div>
-              )}
             </div>
           );
         })}
+      </div>
+
+      <div
+        data-testid="selected-project-detail"
+        className="border-t border-border px-2 py-2"
+        aria-label={
+          activeProject ? `Selected project ${activeProject.name}` : "No project selected"
+        }
+        role="status"
+        aria-live="polite"
+      >
+        {!isCollapsed && (
+          <div className="mb-2 px-2">
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              {activeProject ? "Selected project" : "Selected workspace"}
+            </div>
+          </div>
+        )}
+        {activeProject ? (
+          <div data-testid="active-worktree-wrapper" className={isCollapsed ? "hidden" : ""}>
+            <WorktreeTree slug={activeProject.slug} />
+          </div>
+        ) : (
+          <div
+            data-testid="selected-project-empty-state"
+            className={isCollapsed ? "flex justify-center py-1" : "px-2 py-1"}
+          >
+            <span className="text-[11px] text-muted-foreground" aria-hidden="true">
+              {isCollapsed ? "○" : "No project selected"}
+            </span>
+            {!isCollapsed && (
+              <span className="mt-1 block text-xs text-muted-foreground">
+                Select a project to view its workspace context.
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <div data-testid="project-sidebar-footer" className="shrink-0 pt-1">

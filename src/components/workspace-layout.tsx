@@ -190,6 +190,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     showExplorer,
     showFileViewer,
     showTerminal,
+    activeWorkspaceContextId,
     toggleExplorer,
     toggleFileViewer,
     toggleTerminal,
@@ -207,6 +208,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
   useFileTreeSync({
     slug: project.slug,
     worktree: activeWorktree,
+    workspaceContext: activeWorkspaceContextId,
     retryNonce: fileTreeSyncRetryNonce,
     onStatusChange: updateFileTreeSyncState,
     onFallbackChange: setFileTreeSyncFallbackActive,
@@ -249,7 +251,7 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
     return () => {
       cancelled = true;
     };
-  }, [activeWorktree, project.slug, loadRootFileTree]);
+  }, [activeWorkspaceContextId, activeWorktree, project.slug, loadRootFileTree]);
 
   useEffect(() => {
     if (!fileTreeSyncFallbackActive) return;
@@ -285,7 +287,13 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
       stopPolling();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [activeWorktree, fileTreeSyncFallbackActive, project.slug, refreshFileTree]);
+  }, [
+    activeWorkspaceContextId,
+    activeWorktree,
+    fileTreeSyncFallbackActive,
+    project.slug,
+    refreshFileTree,
+  ]);
 
   const handleRetry = useCallback(() => {
     void loadRootFileTree(project.slug);
@@ -471,7 +479,10 @@ export function WorkspaceLayout({ project }: WorkspaceLayoutProps) {
           className="min-h-0 min-w-0 overflow-hidden"
         >
           <ErrorBoundary>
-            <TerminalPanel />
+            <TerminalPanel
+              projectSlug={project.slug}
+              workspaceContextId={activeWorkspaceContextId}
+            />
           </ErrorBoundary>
         </Panel>
       </Group>

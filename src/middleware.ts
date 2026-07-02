@@ -18,8 +18,11 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Skip WebSocket terminal endpoint — terminal server handles its own auth
-  if (request.nextUrl.pathname === "/api/terminal") {
+  // Skip WebSocket terminal endpoints — terminal server handles its own auth
+  if (
+    request.nextUrl.pathname === "/api/terminal" ||
+    request.nextUrl.pathname.startsWith("/api/terminal/")
+  ) {
     return NextResponse.next();
   }
 

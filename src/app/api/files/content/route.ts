@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import {
   isPathInside,
-  resolveWorktreeRoot,
+  resolveWorkspaceContextRoot,
   WorktreeResolutionError,
   worktreeResolutionErrorResponse,
 } from "@/lib/worktree-utils";
@@ -139,6 +139,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const slug = searchParams.get("slug");
   const filePath = searchParams.get("path");
+  const workspaceContext = searchParams.get("workspaceContext");
   const worktree = searchParams.get("worktree");
 
   if (!slug || !filePath) {
@@ -150,7 +151,12 @@ export async function GET(request: NextRequest) {
 
   let root: string;
   try {
-    root = await resolveWorktreeRoot(slug, worktree);
+    const resolution = await resolveWorkspaceContextRoot(
+      slug,
+      workspaceContext ?? null,
+      worktree ?? null,
+    );
+    root = resolution.root;
   } catch (error) {
     if (error instanceof WorktreeResolutionError) {
       return worktreeResolutionErrorResponse(error);
@@ -243,7 +249,6 @@ export async function GET(request: NextRequest) {
         error: "Cannot preview file",
         code: "READ_FAILED",
         kind: "regular-file",
-        details: String(error),
       },
       { status: 500 },
     );
@@ -256,6 +261,7 @@ export async function PUT(request: NextRequest) {
     path?: string;
     content?: string;
     mtime?: number;
+    workspaceContext?: string | null;
     worktree?: string | null;
   };
   try {
@@ -264,7 +270,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { slug, path: filePath, content, mtime, worktree } = body;
+  const { slug, path: filePath, content, mtime, workspaceContext, worktree } = body;
 
   if (!slug || !filePath || content === undefined || content === null) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -272,7 +278,12 @@ export async function PUT(request: NextRequest) {
 
   let root: string;
   try {
-    root = await resolveWorktreeRoot(slug, worktree);
+    const resolution = await resolveWorkspaceContextRoot(
+      slug,
+      workspaceContext ?? null,
+      worktree ?? null,
+    );
+    root = resolution.root;
   } catch (error) {
     if (error instanceof WorktreeResolutionError) {
       return worktreeResolutionErrorResponse(error);
@@ -327,9 +338,6 @@ export async function PUT(request: NextRequest) {
     };
     return NextResponse.json(result);
   } catch (error) {
-    return NextResponse.json(
-      { error: "Failed to write file", details: String(error) },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to write file" }, { status: 500 });
   }
 }

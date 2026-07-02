@@ -139,6 +139,7 @@ export async function GET(request: NextRequest) {
 
   const slug = request.nextUrl.searchParams.get("slug")?.trim();
   const worktree = request.nextUrl.searchParams.get("worktree");
+  const workspaceContext = request.nextUrl.searchParams.get("workspaceContext");
   if (!slug) {
     return structuredError("Missing 'slug' parameter", "MISSING_PARAMETERS", 400);
   }
@@ -148,7 +149,10 @@ export async function GET(request: NextRequest) {
 
   let resolvedScope: FileTreeSyncScope;
   try {
-    const resolved = await resolveFileTreeSyncScope(slug, worktree);
+    const resolved =
+      workspaceContext !== null
+        ? await resolveFileTreeSyncScope(slug, worktree, workspaceContext)
+        : await resolveFileTreeSyncScope(slug, worktree);
     resolvedScope = resolved.scope;
   } catch (error) {
     return resolutionErrorResponse(error);
@@ -207,7 +211,8 @@ export async function GET(request: NextRequest) {
 
       const result = await subscribeFileTreeChanges({
         slug,
-        worktree,
+        ...(worktree !== null ? { worktree } : {}),
+        ...(workspaceContext !== null ? { workspaceContext } : {}),
         signal: request.signal,
         onChange: (event) => write(sseEvent("file-tree:changed", sanitizeChangedEvent(event))),
         onDegraded: (event) => write(sseEvent("file-tree:degraded", event)),

@@ -130,3 +130,14 @@ test("Issue #69: Explorer then File Preview leaves Terminal filling workspace", 
   await expectTerminalFillsWorkspace(page);
   await expect(page.locator('[data-testid="terminal-panel"]').getByText("Connected")).toBeVisible();
 });
+
+test("selected-project detail renders workspace context controls in the sidebar", async ({
+  page,
+}) => {
+  await openLayoutTarget(page);
+
+  const selectedDetail = page.getByTestId("selected-project-detail");
+  await expect(selectedDetail).toContainText("Selected project");
+  await expect(selectedDetail).toContainText("Project root");
+  await expect(page.getByRole("button", { name: "Switch to project root" })).toBeVisible();
+});

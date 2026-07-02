@@ -59,6 +59,7 @@ describe("terminal server default endpoint", () => {
   it.each([
     ["slug", "slug=demo"],
     ["worktree", "worktree=.trees/demo"],
+    ["workspaceContext", "workspaceContext=wt_demo"],
     ["slug and worktree", "slug=demo&worktree=.trees/demo"],
   ])("rejects %s context with a 1008 error frame before spawning a PTY", async (_label, query) => {
     const server = createTerminalServer({ port: 0, token: "secret" });
@@ -81,6 +82,29 @@ describe("terminal server default endpoint", () => {
         message: "Project-scoped terminals are not supported by the default terminal.",
       }),
     );
+
+    client.close();
+    server.cleanup();
+  });
+
+  it("rejects project-scoped terminal requests without a slug", async () => {
+    const server = createTerminalServer({ port: 0, token: "secret" });
+    await waitForListening(server);
+    const client = new WebSocket(`ws://127.0.0.1:${serverPort(server)}/project?token=secret`);
+
+    const messages: string[] = [];
+    client.on("message", (message) => {
+      messages.push(message.toString());
+    });
+
+    const closeEvent = await waitForClose(client);
+
+    expect(closeEvent.code).toBe(1008);
+    expect(closeEvent.reason).toBe("Unsupported terminal context");
+    expect(messages).toContain(
+      JSON.stringify({ type: "error", message: "Project terminal requires a slug." }),
+    );
+    expect(spawnMock).not.toHaveBeenCalled();
 
     client.close();
     server.cleanup();
